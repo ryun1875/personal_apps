@@ -578,32 +578,89 @@ function positionNode(id) {
 }
 
 function renderEdges() {
-  let paths = '';
+  // 부모별로 자식들 그룹핑
+  const byParent = {};
   for (const e of edges) {
-    const fn = nodes[e.from], tn = nodes[e.to];
-    if (!fn || !tn) continue;
-    const fx = fn.x, fy = fn.y, tx = tn.x, ty = tn.y;
-    const col = tn.color || '#7c6af7';
-    const lineStyle = fn.lineStyle || 'curve';
-    let d = '';
-    if (lineStyle === 'curve') {
-      const mx = (fx+tx)/2;
-      d = `M${fx},${fy} C${mx},${fy} ${mx},${ty} ${tx},${ty}`;
-    } else if (lineStyle === 'bezier-h') {
-      const mx = (fx+tx)/2;
-      d = `M${fx},${fy} C${mx},${fy} ${mx},${ty} ${tx},${ty}`;
-    } else if (lineStyle === 'elbow') {
-      const mx = (fx+tx)/2;
-      d = `M${fx},${fy} L${mx},${fy} L${mx},${ty} L${tx},${ty}`;
-    } else if (lineStyle === 'straight') {
-      d = `M${fx},${fy} L${tx},${ty}`;
-    } else {
-      const mx = (fx+tx)/2;
-      d = `M${fx},${fy} C${mx},${fy} ${mx},${ty} ${tx},${ty}`;
-    }
-    const dash = lineStyle === 'bezier-h' ? 'stroke-dasharray="6,3"' : '';
-    paths += `<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round" ${dash}/>`;
+    if (!nodes[e.from] || !nodes[e.to]) continue;
+    if (!byParent[e.from]) byParent[e.from] = [];
+    byParent[e.from].push(e.to);
   }
+
+  let paths = '';
+
+  for (const parentId in byParent) {
+    const parent = nodes[parentId];
+    if (!parent) continue;
+    const children = byParent[parentId].map(id => nodes[id]).filter(Boolean);
+    if (!children.length) continue;
+
+    const px = parent.x, py = parent.y;
+    const lineStyle = parent.lineStyle || 'curve';
+
+    if (lineStyle === 'straight') {
+      // 직선: 그냥 각자 직선
+      children.forEach(c => {
+        paths += `<path d="M${px},${py} L${c.x},${c.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round"/>`;
+      });
+
+    } else if (lineStyle === 'elbow') {
+      // 꺾임: 부모→공유수직선→각 자식
+      if (children.length === 1) {
+        const c = children[0];
+        const mx = (px + c.x) / 2;
+        paths += `<path d="M${px},${py} L${mx},${py} L${mx},${c.y} L${c.x},${c.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round"/>`;
+      } else {
+        const minY = Math.min(...children.map(c => c.y));
+        const maxY = Math.max(...children.map(c => c.y));
+        // 수평 분기점: 부모와 자식들 x 중간쯤
+        const avgX = children.reduce((s,c) => s + c.x, 0) / children.length;
+        const mx = (px + avgX) / 2;
+        // 부모→mx 수평 줄기 (자식 색 혼합 대신 첫 자식 색)
+        const trunkCol = children[0].color || '#7c6af7';
+        paths += `<path d="M${px},${py} L${mx},${py}" fill="none" stroke="${trunkCol}" stroke-width="2.5" stroke-opacity="0.45" stroke-linecap="round"/>`;
+        // mx에서 수직 줄기 (minY~maxY)
+        paths += `<path d="M${mx},${minY} L${mx},${maxY}" fill="none" stroke="${trunkCol}" stroke-width="2.5" stroke-opacity="0.45" stroke-linecap="round"/>`;
+        // 각 자식으로 수평 가지
+        children.forEach(c => {
+          paths += `<path d="M${mx},${c.y} L${c.x},${c.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round"/>`;
+        });
+      }
+
+    } else {
+      // curve / bezier-h / 기본: XMind 스타일 공유 줄기
+      if (children.length === 1) {
+        const c = children[0];
+        const mx = (px + c.x) / 2;
+        const dash = lineStyle === 'bezier-h' ? 'stroke-dasharray="6,3"' : '';
+        paths += `<path d="M${px},${py} C${mx},${py} ${mx},${c.y} ${c.x},${c.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round" ${dash}/>`;
+      } else {
+        // 자식들 y 범위
+        const minY = Math.min(...children.map(c => c.y));
+        const maxY = Math.max(...children.map(c => c.y));
+        const midY = (minY + maxY) / 2;
+
+        // 부모→줄기 끝점(공유 지점): 부모와 자식들 x 사이 40% 지점
+        const avgX = children.reduce((s,c) => s + c.x, 0) / children.length;
+        const trunkEndX = px + (avgX - px) * 0.42;
+
+        const trunkCol = children[0].color || '#7c6af7';
+        const dash = lineStyle === 'bezier-h' ? 'stroke-dasharray="6,3"' : '';
+
+        // 공유 줄기: 부모 → trunkEndX (중간 y)
+        paths += `<path d="M${px},${py} C${px + (trunkEndX-px)*0.6},${py} ${trunkEndX},${midY} ${trunkEndX},${midY}" fill="none" stroke="${trunkCol}" stroke-width="3" stroke-opacity="0.35" stroke-linecap="round" ${dash}/>`;
+
+        // 각 자식으로 갈라지는 가지
+        children.forEach(c => {
+          const cx = c.x, cy = c.y;
+          const col = c.color || '#7c6af7';
+          // trunkEndX에서 자식까지 곡선
+          const cpx = trunkEndX + (cx - trunkEndX) * 0.5;
+          paths += `<path d="M${trunkEndX},${midY} C${cpx},${midY} ${cpx},${cy} ${cx},${cy}" fill="none" stroke="${col}" stroke-width="2" stroke-opacity="0.6" stroke-linecap="round" ${dash}/>`;
+        });
+      }
+    }
+  }
+
   svgEl.innerHTML = paths;
 }
 
