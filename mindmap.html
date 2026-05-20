@@ -164,6 +164,44 @@
   }
   .cdot:hover, .cdot.active { transform: scale(1.25); border-color: #fff; }
 
+  /* Node style panel (per-parent) */
+  #node-style-panel {
+    position: fixed; bottom: 76px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 10px 12px; z-index: 51;
+    display: none; flex-direction: column; gap: 10px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.35); min-width: 300px;
+  }
+  #node-style-panel.open { display: flex; }
+  .sp-section { display: flex; flex-direction: column; gap: 6px; }
+  .sp-label { font-size: 10px; font-weight: 700; color: var(--text2);
+    text-transform: uppercase; letter-spacing: .7px; }
+  .sp-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sp-opt {
+    display: flex; align-items: center; justify-content: center;
+    border: 1.5px solid var(--border); border-radius: 8px;
+    padding: 5px 10px; cursor: pointer; font-size: 12px; font-weight: 500;
+    color: var(--text2); background: transparent; transition: all .12s;
+    gap: 5px; white-space: nowrap;
+  }
+  .sp-opt:hover { border-color: var(--accent); color: var(--text); }
+  .sp-opt.active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent2); }
+  .sp-opt svg { width: 28px; height: 16px; }
+
+  /* Node shape variants applied via data attrs on node-box */
+  .node-box[data-shape="rect"] { border-radius: 6px; }
+  .node-box[data-shape="pill"] { border-radius: 20px; }
+  .node-box[data-shape="underline"] {
+    border-radius: 0; border-top: none; border-left: none; border-right: none;
+    background: transparent !important; padding-left: 4px; padding-right: 4px;
+  }
+  .node-box[data-shape="diamond"] {
+    border-radius: 6px; transform: rotate(2deg);
+  }
+  .node-box[data-shape="none"] {
+    border: none; background: transparent !important;
+  }
+
   /* Layout preset panel */
   #layout-panel {
     position: fixed; top: 62px; right: 10px;
@@ -260,9 +298,41 @@
   <div id="hint">더블탭: 편집 &nbsp;|&nbsp; 노드 선택 후 Tab: 자식 추가 &nbsp;|&nbsp; Delete: 삭제</div>
 </div>
 
+<!-- Node style panel -->
+<div id="node-style-panel">
+  <div class="sp-section">
+    <div class="sp-label">연결선 스타일 (이 노드 → 자식)</div>
+    <div class="sp-row" id="sp-line-row">
+      <div class="sp-opt active" data-line="curve">
+        <svg viewBox="0 0 28 16"><path d="M2,8 C8,2 20,14 26,8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>곡선
+      </div>
+      <div class="sp-opt" data-line="bezier-h">
+        <svg viewBox="0 0 28 16"><path d="M2,8 C12,8 16,8 26,8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>S자
+      </div>
+      <div class="sp-opt" data-line="elbow">
+        <svg viewBox="0 0 28 16"><path d="M2,8 L14,8 L14,3 L26,3 M14,8 L14,13 L26,13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>꺾임
+      </div>
+      <div class="sp-opt" data-line="straight">
+        <svg viewBox="0 0 28 16"><line x1="2" y1="12" x2="26" y2="4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>직선
+      </div>
+    </div>
+  </div>
+  <div class="sp-section">
+    <div class="sp-label">자식 노드 모양</div>
+    <div class="sp-row" id="sp-shape-row">
+      <div class="sp-opt active" data-shape="pill">● 둥근 박스</div>
+      <div class="sp-opt" data-shape="rect">■ 사각형</div>
+      <div class="sp-opt" data-shape="underline">▬ 밑줄</div>
+      <div class="sp-opt" data-shape="none">○ 텍스트만</div>
+    </div>
+  </div>
+</div>
+
 <div id="toolbar" style="display:none">
   <button class="tb-btn" id="btn-child">＋ 자식</button>
   <button class="tb-btn" id="btn-sibling">↕ 형제</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-style" title="연결선/모양 설정">✦ 스타일</button>
   <div class="tb-sep"></div>
   <div class="color-dots" id="color-dots"></div>
   <div class="tb-sep"></div>
@@ -457,17 +527,46 @@ function renderNode(n) {
   div.className = 'mm-node';
   div.id = 'node-' + n.id;
   const box = document.createElement('div');
-  box.className = 'node-box' + (n.parentId === null ? ' root' : '');
+  const isRoot = n.parentId === null;
+  box.className = 'node-box' + (isRoot ? ' root' : '');
+
+  // 모양: 부모의 childShape를 따름 (루트는 항상 pill)
+  let shape = 'pill';
+  if (!isRoot && n.parentId && nodes[n.parentId]) {
+    shape = nodes[n.parentId].childShape || 'pill';
+  }
+  box.dataset.shape = shape;
+
   box.textContent = n.label;
   box.style.borderColor = n.color || '#7c6af7';
-  box.style.background = COLOR_BG[n.color] || 'rgba(124,106,247,.15)';
   box.style.color = n.color || '#7c6af7';
+  if (shape !== 'underline' && shape !== 'none') {
+    box.style.background = COLOR_BG[n.color] || 'rgba(124,106,247,.15)';
+  }
   div.appendChild(box);
   nodesLayer.appendChild(div);
   nodes[n.id].el = div;
   positionNode(n.id);
   setupNodeEvents(n.id);
   renderEdges();
+}
+
+// 기존 노드 box의 모양을 새로고침
+function refreshNodeShape(id) {
+  const n = nodes[id];
+  if (!n || !n.el) return;
+  const box = n.el.querySelector('.node-box');
+  const isRoot = n.parentId === null;
+  let shape = 'pill';
+  if (!isRoot && n.parentId && nodes[n.parentId]) {
+    shape = nodes[n.parentId].childShape || 'pill';
+  }
+  box.dataset.shape = shape;
+  if (shape !== 'underline' && shape !== 'none') {
+    box.style.background = COLOR_BG[n.color] || 'rgba(124,106,247,.15)';
+  } else {
+    box.style.background = 'transparent';
+  }
 }
 
 function positionNode(id) {
@@ -479,15 +578,31 @@ function positionNode(id) {
 }
 
 function renderEdges() {
-  const W = appDiv.offsetWidth * 2, H = appDiv.offsetHeight * 2;
   let paths = '';
   for (const e of edges) {
     const fn = nodes[e.from], tn = nodes[e.to];
     if (!fn || !tn) continue;
     const fx = fn.x, fy = fn.y, tx = tn.x, ty = tn.y;
-    const mx = (fx+tx)/2;
     const col = tn.color || '#7c6af7';
-    paths += `<path d="M${fx},${fy} C${mx},${fy} ${mx},${ty} ${tx},${ty}" fill="none" stroke="${col}" stroke-width="2" stroke-opacity="0.5" stroke-linecap="round"/>`;
+    const lineStyle = fn.lineStyle || 'curve';
+    let d = '';
+    if (lineStyle === 'curve') {
+      const mx = (fx+tx)/2;
+      d = `M${fx},${fy} C${mx},${fy} ${mx},${ty} ${tx},${ty}`;
+    } else if (lineStyle === 'bezier-h') {
+      const mx = (fx+tx)/2;
+      d = `M${fx},${fy} C${mx},${fy} ${mx},${ty} ${tx},${ty}`;
+    } else if (lineStyle === 'elbow') {
+      const mx = (fx+tx)/2;
+      d = `M${fx},${fy} L${mx},${fy} L${mx},${ty} L${tx},${ty}`;
+    } else if (lineStyle === 'straight') {
+      d = `M${fx},${fy} L${tx},${ty}`;
+    } else {
+      const mx = (fx+tx)/2;
+      d = `M${fx},${fy} C${mx},${fy} ${mx},${ty} ${tx},${ty}`;
+    }
+    const dash = lineStyle === 'bezier-h' ? 'stroke-dasharray="6,3"' : '';
+    paths += `<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round" ${dash}/>`;
   }
   svgEl.innerHTML = paths;
 }
@@ -564,8 +679,54 @@ function selectNode(id) {
     document.querySelectorAll('.cdot').forEach(d => {
       d.classList.toggle('active', d.dataset.color === nodes[id].color);
     });
+    // Update style panel active states
+    const n = nodes[id];
+    document.querySelectorAll('#sp-line-row .sp-opt').forEach(o =>
+      o.classList.toggle('active', o.dataset.line === (n.lineStyle || 'curve')));
+    document.querySelectorAll('#sp-shape-row .sp-opt').forEach(o =>
+      o.classList.toggle('active', o.dataset.shape === (n.childShape || 'pill')));
   }
 }
+
+// Style panel open/close
+const stylePanel = document.getElementById('node-style-panel');
+document.getElementById('btn-style').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!selectedId) return;
+  stylePanel.classList.toggle('open');
+});
+document.addEventListener('click', (e) => {
+  if (!stylePanel.contains(e.target) && e.target.id !== 'btn-style') {
+    stylePanel.classList.remove('open');
+  }
+});
+
+// Line style selection
+document.querySelectorAll('#sp-line-row .sp-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    if (!selectedId) return;
+    const lineStyle = opt.dataset.line;
+    nodes[selectedId].lineStyle = lineStyle;
+    document.querySelectorAll('#sp-line-row .sp-opt').forEach(o =>
+      o.classList.toggle('active', o.dataset.line === lineStyle));
+    renderEdges();
+    scheduleSave();
+  });
+});
+
+// Child shape selection
+document.querySelectorAll('#sp-shape-row .sp-opt').forEach(opt => {
+  opt.addEventListener('click', () => {
+    if (!selectedId) return;
+    const shape = opt.dataset.shape;
+    nodes[selectedId].childShape = shape;
+    document.querySelectorAll('#sp-shape-row .sp-opt').forEach(o =>
+      o.classList.toggle('active', o.dataset.shape === shape));
+    // 기존 자식 노드들에 즉시 반영
+    Object.values(nodes).filter(n => n.parentId === selectedId).forEach(c => refreshNodeShape(c.id));
+    scheduleSave();
+  });
+});
 
 function startEdit(id) {
   const n = nodes[id];
