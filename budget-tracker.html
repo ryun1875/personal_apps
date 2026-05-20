@@ -210,7 +210,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .pay-name{font-size:13px;font-weight:500;color:var(--text);}
 .pay-meta{font-size:10px;color:var(--text3);margin-top:2px;}
 .pay-spent{font-family:'Gmarket Sans',sans-serif;font-size:14px;font-weight:700;color:var(--accent2);flex-shrink:0;}
-.pay-manage-item{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:11px 13px;display:flex;align-items:center;gap:8px;margin-bottom:7px;}
+.pay-manage-item{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:11px 13px;display:flex;align-items:center;gap:8px;margin-bottom:7px;transition:opacity .2s,box-shadow .2s;cursor:default;}
+.pay-manage-item.dragging{opacity:0.4;}
+.pay-manage-item.drag-over{box-shadow:0 0 0 2px var(--accent);}
+.drag-handle{color:var(--text3);cursor:grab;font-size:16px;padding:0 2px;user-select:none;flex-shrink:0;}
+.drag-handle:active{cursor:grabbing;}
 .pay-emoji-box{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;flex-shrink:0;transition:var(--tr);}
 .pay-emoji-box:hover{transform:scale(1.1);}
 .pay-name-inp{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:6px 9px;color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:13px;outline:none;transition:var(--tr);}
@@ -716,9 +720,10 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     </div>
     <!-- 결제수단 관리 -->
     <div class="form-card">
-      <h3>결제수단 관리</h3>
+      <h3>결제수단 관리 <span style="font-size:11px;color:var(--text3);font-weight:400">≡ 드래그로 순서 변경</span></h3>
       <div id="payment-manage-list"></div>
-      <button class="btn-secondary" onclick="addPayMethod()">+ 결제수단 추가</button>
+      <button class="btn-secondary" onclick="addPayMethodLocal()">+ 결제수단 추가</button>
+      <button class="btn-primary" onclick="savePayMethods()" style="margin-top:8px;margin-bottom:16px">💾 저장</button>
     </div>
   </div>
 
@@ -1048,9 +1053,9 @@ function initApp(){
   });
   // 결제수단 구독
   onSnapshot(collection(db,up('payMethods')),snap=>{
+    if(document.getElementById('panel-payment').classList.contains('active'))return;
     payMethods=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.order-b.order||0);
     rebuildPaySelects();
-    renderPayment();
   });
   // 마이너스통장 구독
   onSnapshot(collection(db,up('minusAccounts')),snap=>{
@@ -2638,6 +2643,21 @@ function rebuildPaySelects(){
   });
 }
 
+// 결제수단 로컬 상태 (저장 전)
+let payMethodsLocal=[];
+let payDragSrc=null;
+
+function syncPayInputs(){
+  document.querySelectorAll('.pay-manage-item').forEach((item,i)=>{
+    const nameInp=item.querySelector('.pay-name-inp');
+    const goalInp=item.querySelector('.pay-goal-inp');
+    if(payMethodsLocal[i]){
+      if(nameInp)payMethodsLocal[i].name=nameInp.value.trim()||payMethodsLocal[i].name;
+      if(goalInp)payMethodsLocal[i].goal=parseInt(goalInp.value)||0;
+    }
+  });
+}
+
 function renderPayment(){
   if(isEditing())return;
   // 실적 섹션
@@ -2667,7 +2687,6 @@ function renderPayment(){
           </div>`;
         statsEl.appendChild(div);
       });
-      // 결제수단 미지정 지출
       const unassigned=expenses.filter(e=>!e.payId).reduce((s,e)=>s+e.amount,0);
       if(unassigned>0){
         const div=document.createElement('div');div.className='pay-item';
@@ -2680,36 +2699,108 @@ function renderPayment(){
     }
   }
 
-  // 관리 섹션
-  const manageEl=document.getElementById('payment-manage-list');
-  if(manageEl){
-    manageEl.innerHTML='';
-    if(!payMethods.length){
-      manageEl.innerHTML=`<div style="font-size:12px;color:var(--text3);margin-bottom:12px">신한카드, 우리카드, 카카오페이 등 자유롭게 추가하세요</div>`;
-    }
-    payMethods.forEach(p=>{
-      const div=document.createElement('div');div.className='pay-manage-item';
-      div.innerHTML=`
-        <div class="pay-emoji-box" style="background:${p.color||'#6bb5ff'}22" onclick="openPayEmojiPicker('${p.id}')">${p.emoji||'💳'}</div>
-        <input class="pay-name-inp" type="text" value="${p.name||''}" placeholder="카드/계좌 이름"
-          onblur="updatePayMethod('${p.id}','name',this.value)">
-        <input class="pay-goal-inp" type="number" value="${p.goal||''}" placeholder="실적목표"
-          onblur="updatePayMethod('${p.id}','goal',this.value)" title="월 실적 목표금액">
-        <span style="font-size:10px;color:var(--text3)">원</span>
-        <div class="color-dot-btn" style="background:${p.color||'#6bb5ff'}" onclick="openPayColorPicker('${p.id}')"></div>
-        <button class="act-btn del" onclick="deletePayMethod('${p.id}')">✕</button>`;
-      manageEl.appendChild(div);
-    });
-  }
+  // 관리 섹션 - 로컬 상태로 편집
+  payMethodsLocal=payMethods.map(p=>({...p}));
+  renderPayManageList();
 }
 
-window.addPayMethod=async function(){
+function renderPayManageList(){
+  const manageEl=document.getElementById('payment-manage-list');
+  if(!manageEl)return;
+  manageEl.innerHTML='';
+  if(!payMethodsLocal.length){
+    manageEl.innerHTML=`<div style="font-size:12px;color:var(--text3);margin-bottom:12px">신한카드, 우리카드, 카카오페이 등 자유롭게 추가하세요</div>`;
+    return;
+  }
+  payMethodsLocal.forEach((p,i)=>{
+    const div=document.createElement('div');
+    div.className='pay-manage-item';
+    div.draggable=true;
+    div.dataset.index=i;
+    div.innerHTML=`
+      <span class="drag-handle" title="드래그해서 순서 변경">⠿</span>
+      <div class="pay-emoji-box" style="background:${p.color||'#6bb5ff'}22" onclick="openPayEmojiPickerLocal(${i})">${p.emoji||'💳'}</div>
+      <input class="pay-name-inp" type="text" value="${p.name||''}" placeholder="카드/계좌 이름"
+        oninput="payMethodsLocal[${i}].name=this.value">
+      <input class="pay-goal-inp" type="number" value="${p.goal||''}" placeholder="실적목표"
+        oninput="payMethodsLocal[${i}].goal=parseInt(this.value)||0" title="월 실적 목표금액">
+      <span style="font-size:10px;color:var(--text3)">원</span>
+      <div class="color-dot-btn" style="background:${p.color||'#6bb5ff'}" onclick="openPayColorPickerLocal(${i})"></div>
+      <button class="act-btn del" onclick="deletePayMethodLocal(${i})">✕</button>`;
+
+    // 드래그 이벤트
+    div.addEventListener('dragstart',e=>{
+      payDragSrc=i;div.classList.add('dragging');
+      e.dataTransfer.effectAllowed='move';
+    });
+    div.addEventListener('dragend',()=>div.classList.remove('dragging'));
+    div.addEventListener('dragover',e=>{e.preventDefault();div.classList.add('drag-over');});
+    div.addEventListener('dragleave',()=>div.classList.remove('drag-over'));
+    div.addEventListener('drop',e=>{
+      e.preventDefault();div.classList.remove('drag-over');
+      if(payDragSrc===null||payDragSrc===i)return;
+      syncPayInputs();
+      const moved=payMethodsLocal.splice(payDragSrc,1)[0];
+      payMethodsLocal.splice(i,0,moved);
+      payDragSrc=null;
+      renderPayManageList();
+    });
+    manageEl.appendChild(div);
+  });
+}
+
+window.addPayMethodLocal=function(){
+  syncPayInputs();
   const colors=['#6bb5ff','#ff6b6b','#c8f04a','#a78bfa','#ffb347','#34d399','#f472b6','#fb7185'];
-  const color=colors[payMethods.length%colors.length];
+  payMethodsLocal.push({id:uid(),name:'새 결제수단',emoji:'💳',goal:0,color:colors[payMethodsLocal.length%colors.length],isNew:true});
+  renderPayManageList();
+};
+
+window.deletePayMethodLocal=function(i){
+  syncPayInputs();
+  const p=payMethodsLocal[i];
+  showConfirm(`"${p?.name||'결제수단'}"을 삭제할까요?`,()=>{
+    payMethodsLocal.splice(i,1);
+    renderPayManageList();
+  });
+};
+
+window.openPayEmojiPickerLocal=function(i){
+  const picker=document.getElementById('emoji-picker');picker.innerHTML='';
+  ['💳','🏦','💵','📱','🪙','💴','🏧','💰','🎴','🔖','⭐','🌟'].forEach(e=>{
+    const s=document.createElement('span');s.className='emoji-opt';s.textContent=e;
+    s.onclick=()=>{syncPayInputs();payMethodsLocal[i].emoji=e;closeModal('emoji-modal');renderPayManageList();};
+    picker.appendChild(s);
+  });
+  document.getElementById('emoji-modal').classList.add('open');
+};
+
+window.openPayColorPickerLocal=function(i){
+  const picker=document.getElementById('color-picker');picker.innerHTML='';
+  COLORS.forEach(c=>{
+    const d=document.createElement('div');d.className='color-opt';d.style.background=c;
+    d.onclick=()=>{syncPayInputs();payMethodsLocal[i].color=c;closeModal('color-modal');renderPayManageList();};
+    picker.appendChild(d);
+  });
+  document.getElementById('color-modal').classList.add('open');
+};
+
+window.savePayMethods=async function(){
+  syncPayInputs();
+  setSyncStatus('syncing');
   try{
-    await setDoc(doc(db,up('payMethods'),uid()),{name:'새 결제수단',emoji:'💳',type:'신용카드',goal:0,color,order:payMethods.length});
-    showToast('결제수단이 추가됐어요 ✓','success');
-  }catch(e){showToast('저장 실패','error');}
+    const batch=writeBatch(db);
+    // 기존 결제수단 삭제 후 재저장 (순서 반영)
+    const existing=await getDocs(collection(db,up('payMethods')));
+    existing.docs.forEach(d=>batch.delete(d.ref));
+    payMethodsLocal.forEach((p,i)=>{
+      const {isNew,...data}=p;
+      batch.set(doc(db,up('payMethods'),p.id),{...data,order:i});
+    });
+    await batch.commit();
+    setSyncStatus('online');
+    showToast('결제수단이 저장됐어요 ✓','success');
+  }catch(e){setSyncStatus('offline');showToast('저장 실패: '+e.message,'error');}
 };
 
 window.deletePayMethod=async function(id){
@@ -3872,9 +3963,13 @@ window.deletePortItem=async function(id){
 };
 
 window.switchNav=function(name,btn){
-  // 카테고리 탭에서 떠날 때 저장된 CATS 반영
-  if(document.getElementById('panel-cats').classList.contains('active')){
-    syncCatInputs();
+  // 카테고리/결제수단 탭에서 떠날 때 로컬 상태 반영
+  if(document.getElementById('panel-cats').classList.contains('active')) syncCatInputs();
+  if(document.getElementById('panel-payment').classList.contains('active')){
+    getDocs(collection(db,up('payMethods'))).then(snap=>{
+      payMethods=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.order-b.order||0);
+      rebuildPaySelects();
+    }).catch(()=>{});
   }
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
@@ -3908,6 +4003,13 @@ window.switchNav=function(name,btn){
 };
 
 window.switchSettings=function(name,btn){
+  // 결제수단 탭 떠날 때 서버에서 최신 로드
+  if(document.getElementById('panel-payment').classList.contains('active')&&name!=='payment'){
+    getDocs(collection(db,up('payMethods'))).then(snap=>{
+      payMethods=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.order-b.order||0);
+      rebuildPaySelects();
+    }).catch(()=>{});
+  }
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.settings-tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
