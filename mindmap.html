@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>마인드맵</title>
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a22;
+    --surface2: #22222e;
+    --border: #2e2e3e;
+    --text: #e8e8f0;
+    --text2: #8888a8;
+    --accent: #7c6af7;
+    --accent2: #a594f9;
+    --accent-glow: rgba(124,106,247,0.18);
+    --green: #4ade9a;
+    --coral: #f97b6a;
+    --amber: #f9c74f;
+    --blue: #60a5fa;
+    --pink: #f472b6;
+    --node-colors: #7c6af7,#4ade9a,#f97b6a,#f9c74f,#60a5fa,#f472b6;
+  }
+  .light {
+    --bg: #f5f4ff;
+    --surface: #ffffff;
+    --surface2: #f0effe;
+    --border: #dddaf8;
+    --text: #1a1a2e;
+    --text2: #6666aa;
+    --accent: #6c5ce7;
+    --accent2: #8b7cf8;
+    --accent-glow: rgba(108,92,231,0.12);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+
+  /* Login */
+  #login-screen {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: var(--bg); z-index: 100; gap: 24px;
+  }
+  .login-logo { font-size: 36px; font-weight: 700; color: var(--text); letter-spacing: -1px; }
+  .login-logo span { color: var(--accent); }
+  .login-sub { color: var(--text2); font-size: 14px; }
+  .google-btn {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 12px; padding: 12px 24px;
+    font-size: 15px; font-weight: 500; cursor: pointer;
+    transition: all .2s; text-decoration: none;
+  }
+  .google-btn:hover { border-color: var(--accent); background: var(--surface2); }
+  .google-btn svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+  /* Top bar */
+  #topbar {
+    position: fixed; top: 0; left: 0; right: 0; height: 52px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 12px; gap: 8px; z-index: 50;
+  }
+  .app-title { font-size: 16px; font-weight: 700; color: var(--text); flex: 1; letter-spacing: -.5px; }
+  .app-title span { color: var(--accent); }
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--border);
+    background: transparent; color: var(--text2); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; font-size: 17px;
+    transition: all .15s; flex-shrink: 0;
+  }
+  .icon-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--accent); }
+
+  /* Map list drawer */
+  #map-drawer {
+    position: fixed; top: 52px; left: 0; bottom: 0; width: 260px;
+    background: var(--surface); border-right: 1px solid var(--border);
+    z-index: 40; transform: translateX(-100%); transition: transform .25s ease;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  #map-drawer.open { transform: translateX(0); }
+  .drawer-header {
+    padding: 14px 14px 10px; font-size: 12px; font-weight: 600;
+    color: var(--text2); text-transform: uppercase; letter-spacing: .8px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .new-map-btn {
+    background: var(--accent); color: #fff; border: none;
+    border-radius: 7px; padding: 4px 10px; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: opacity .15s;
+  }
+  .new-map-btn:hover { opacity: .85; }
+  #map-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
+  .map-item {
+    padding: 9px 10px; border-radius: 8px; cursor: pointer;
+    font-size: 14px; color: var(--text); transition: background .1s;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .map-item:hover { background: var(--surface2); }
+  .map-item.active { background: var(--accent-glow); color: var(--accent2); }
+  .map-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .map-item-del {
+    opacity: 0; font-size: 16px; color: var(--text2); flex-shrink: 0;
+    width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    border-radius: 5px; transition: all .1s;
+  }
+  .map-item:hover .map-item-del { opacity: 1; }
+  .map-item-del:hover { background: rgba(249,123,106,.18); color: var(--coral); }
+  #drawer-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4);
+    z-index: 39;
+  }
+  #drawer-overlay.open { display: block; }
+
+  /* Canvas */
+  #app { position: fixed; top: 52px; left: 0; right: 0; bottom: 0; overflow: hidden; touch-action: none; }
+  #canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  svg#edges { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
+
+  /* Node */
+  .mm-node {
+    position: absolute; cursor: grab;
+    display: flex; flex-direction: column; align-items: center;
+    user-select: none; -webkit-user-select: none;
+    touch-action: none;
+  }
+  .mm-node:active { cursor: grabbing; }
+  .node-box {
+    min-width: 64px; max-width: 180px;
+    padding: 7px 14px; border-radius: 20px;
+    font-size: 13px; font-weight: 600; text-align: center;
+    border: 2px solid; word-break: break-word; line-height: 1.4;
+    transition: box-shadow .2s, transform .15s;
+    position: relative; white-space: pre-wrap;
+  }
+  .node-box:focus { outline: none; }
+  .node-box.selected { box-shadow: 0 0 0 3px var(--accent-glow), 0 0 16px var(--accent-glow); transform: scale(1.04); }
+  .node-box.root { font-size: 16px; font-weight: 700; padding: 10px 20px; border-radius: 24px; }
+
+  /* Toolbar */
+  #toolbar {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 8px 10px;
+    display: flex; gap: 6px; align-items: center; z-index: 50;
+    box-shadow: 0 4px 24px rgba(0,0,0,.3);
+  }
+  .tb-btn {
+    height: 36px; border-radius: 9px; border: 1px solid var(--border);
+    background: transparent; color: var(--text2); cursor: pointer;
+    display: flex; align-items: center; gap: 6px; padding: 0 12px;
+    font-size: 13px; font-weight: 500; transition: all .15s; white-space: nowrap;
+  }
+  .tb-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--accent); }
+  .tb-btn.danger:hover { background: rgba(249,123,106,.12); color: var(--coral); border-color: var(--coral); }
+  .tb-sep { width: 1px; height: 24px; background: var(--border); margin: 0 2px; }
+  .color-dots { display: flex; gap: 5px; align-items: center; padding: 0 4px; }
+  .cdot {
+    width: 18px; height: 18px; border-radius: 50%; cursor: pointer;
+    border: 2px solid transparent; transition: transform .12s, border-color .12s;
+    flex-shrink: 0;
+  }
+  .cdot:hover, .cdot.active { transform: scale(1.25); border-color: #fff; }
+
+  /* Hint */
+  #hint { position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 5px 12px; font-size: 11px; color: var(--text2); pointer-events: none;
+    opacity: 1; transition: opacity .5s; white-space: nowrap; z-index: 49;
+  }
+  #hint.hide { opacity: 0; }
+
+  /* Loading */
+  #loading { position: fixed; inset: 0; background: var(--bg); z-index: 200;
+    display: flex; align-items: center; justify-content: center; color: var(--text2); font-size: 14px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div id="loading">불러오는 중...</div>
+
+<div id="login-screen" style="display:none">
+  <div class="login-logo">Mind<span>Map</span></div>
+  <div class="login-sub">나만의 마인드맵</div>
+  <button class="google-btn" id="google-login-btn">
+    <svg viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+    Google로 로그인
+  </button>
+</div>
+
+<div id="drawer-overlay"></div>
+<div id="map-drawer">
+  <div class="drawer-header">
+    <span>내 마인드맵</span>
+    <button class="new-map-btn" id="new-map-btn">+ 새 맵</button>
+  </div>
+  <div id="map-list"></div>
+</div>
+
+<div id="topbar" style="display:none">
+  <button class="icon-btn" id="menu-btn" title="맵 목록">☰</button>
+  <div class="app-title">Mind<span>Map</span></div>
+  <button class="icon-btn" id="theme-btn" title="테마 변경">🌙</button>
+  <button class="icon-btn" id="fit-btn" title="화면에 맞추기">⊡</button>
+  <button class="icon-btn" id="logout-btn" title="로그아웃">⏏</button>
+</div>
+
+<div id="app" style="display:none">
+  <div id="canvas">
+    <svg id="edges"></svg>
+  </div>
+  <div id="hint">더블탭: 편집 &nbsp;|&nbsp; 노드 선택 후 Tab: 자식 추가 &nbsp;|&nbsp; Delete: 삭제</div>
+</div>
+
+<div id="toolbar" style="display:none">
+  <button class="tb-btn" id="btn-child">＋ 자식</button>
+  <button class="tb-btn" id="btn-sibling">↕ 형제</button>
+  <div class="tb-sep"></div>
+  <div class="color-dots" id="color-dots"></div>
+  <div class="tb-sep"></div>
+  <button class="tb-btn danger" id="btn-delete">✕</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc, query, where }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
+
+const COLORS = ['#7c6af7','#4ade9a','#f97b6a','#f9c74f','#60a5fa','#f472b6'];
+const COLOR_BG = {
+  '#7c6af7':'rgba(124,106,247,.15)', '#4ade9a':'rgba(74,222,154,.15)',
+  '#f97b6a':'rgba(249,123,106,.15)', '#f9c74f':'rgba(249,199,79,.15)',
+  '#60a5fa':'rgba(96,165,250,.15)', '#f472b6':'rgba(244,114,182,.15)'
+};
+
+let uid = null, currentMapId = null, nodes = {}, edges = [], selectedId = null;
+let pan = {x: 0, y: 0}, zoom = 1;
+let nodeCounter = 0;
+let isDark = true;
+let saveTimer = null;
+
+// DOM refs
+const loginScreen = document.getElementById('login-screen');
+const loading = document.getElementById('loading');
+const topbar = document.getElementById('topbar');
+const appDiv = document.getElementById('app');
+const toolbar = document.getElementById('toolbar');
+const canvas = document.getElementById('canvas');
+const svgEl = document.getElementById('edges');
+const mapList = document.getElementById('map-list');
+const drawer = document.getElementById('map-drawer');
+const overlay = document.getElementById('drawer-overlay');
+const hint = document.getElementById('hint');
+
+// Color dots
+const cdots = document.getElementById('color-dots');
+COLORS.forEach(c => {
+  const d = document.createElement('div');
+  d.className = 'cdot'; d.style.background = c; d.dataset.color = c;
+  d.addEventListener('click', () => setNodeColor(c));
+  cdots.appendChild(d);
+});
+
+// Auth
+document.getElementById('google-login-btn').addEventListener('click', () => {
+  signInWithPopup(auth, provider).catch(e => alert('로그인 실패: ' + e.message));
+});
+document.getElementById('logout-btn').addEventListener('click', () => {
+  if (confirm('로그아웃 할까요?')) signOut(auth);
+});
+
+onAuthStateChanged(auth, async user => {
+  loading.style.display = 'none';
+  if (user) {
+    uid = user.uid;
+    loginScreen.style.display = 'none';
+    topbar.style.display = 'flex';
+    appDiv.style.display = 'block';
+    toolbar.style.display = 'flex';
+    hint.style.display = 'block';
+    await loadMapList();
+    setTimeout(() => hint.classList.add('hide'), 5000);
+  } else {
+    uid = null; currentMapId = null;
+    loginScreen.style.display = 'flex';
+    topbar.style.display = 'none';
+    appDiv.style.display = 'none';
+    toolbar.style.display = 'none';
+  }
+});
+
+// Map list
+async function loadMapList() {
+  mapList.innerHTML = '';
+  try {
+    const q = query(collection(db, 'users', uid, 'mindmaps'));
+    const snap = await getDocs(q);
+    const maps = [];
+    snap.forEach(d => maps.push({ id: d.id, ...d.data() }));
+    maps.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    if (maps.length === 0) { await createNewMap(); return; }
+    maps.forEach(m => addMapItem(m.id, m.title || '새 마인드맵'));
+    if (!currentMapId) loadMap(maps[0].id);
+  } catch(e) { console.error(e); await createNewMap(); }
+}
+
+function addMapItem(id, title) {
+  const el = document.createElement('div');
+  el.className = 'map-item' + (id === currentMapId ? ' active' : '');
+  el.dataset.id = id;
+  el.innerHTML = `<span class="map-item-name">${escHtml(title)}</span><span class="map-item-del" title="삭제">✕</span>`;
+  el.querySelector('.map-item-name').addEventListener('click', () => { loadMap(id); closeDrawer(); });
+  el.querySelector('.map-item-del').addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!confirm('이 마인드맵을 삭제할까요?')) return;
+    await deleteDoc(doc(db, 'users', uid, 'mindmaps', id));
+    el.remove();
+    if (currentMapId === id) {
+      currentMapId = null;
+      const first = mapList.querySelector('.map-item');
+      if (first) loadMap(first.dataset.id);
+      else createNewMap();
+    }
+  });
+  mapList.appendChild(el);
+}
+
+async function createNewMap() {
+  const title = '새 마인드맵 ' + (mapList.children.length + 1);
+  const id = 'map_' + Date.now();
+  const rootId = 'n1';
+  const defaultData = {
+    title,
+    updatedAt: Date.now(),
+    nodes: { n1: { id:'n1', label: title, x: 0, y: 0, parentId: null, color: '#7c6af7' } },
+    edges: []
+  };
+  await setDoc(doc(db, 'users', uid, 'mindmaps', id), defaultData);
+  addMapItem(id, title);
+  await loadMap(id);
+  closeDrawer();
+}
+
+async function loadMap(id) {
+  currentMapId = id;
+  document.querySelectorAll('.map-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === id);
+  });
+  clearCanvas();
+  try {
+    const snap = await getDoc(doc(db, 'users', uid, 'mindmaps', id));
+    if (!snap.exists()) return;
+    const data = snap.data();
+    nodes = data.nodes || {};
+    edges = data.edges || [];
+    nodeCounter = Object.keys(nodes).reduce((m, k) => {
+      const n = parseInt(k.replace('n','')) || 0; return Math.max(m, n);
+    }, 1);
+    Object.values(nodes).forEach(n => renderNode(n));
+    fitToScreen();
+  } catch(e) { console.error(e); }
+}
+
+function clearCanvas() {
+  document.querySelectorAll('.mm-node').forEach(el => el.remove());
+  svgEl.innerHTML = '';
+  nodes = {}; edges = []; selectedId = null;
+  pan = {x:0,y:0}; zoom=1;
+  canvas.style.transform = '';
+}
+
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => saveMap(), 1200);
+}
+
+async function saveMap() {
+  if (!uid || !currentMapId) return;
+  const title = nodes['n1']?.label || '마인드맵';
+  const mapItem = document.querySelector(`.map-item[data-id="${currentMapId}"] .map-item-name`);
+  if (mapItem) mapItem.textContent = title;
+  await setDoc(doc(db, 'users', uid, 'mindmaps', currentMapId), {
+    title, updatedAt: Date.now(), nodes, edges
+  });
+}
+
+// Node rendering
+function renderNode(n) {
+  const div = document.createElement('div');
+  div.className = 'mm-node';
+  div.id = 'node-' + n.id;
+  const box = document.createElement('div');
+  box.className = 'node-box' + (n.parentId === null ? ' root' : '');
+  box.textContent = n.label;
+  box.style.borderColor = n.color || '#7c6af7';
+  box.style.background = COLOR_BG[n.color] || 'rgba(124,106,247,.15)';
+  box.style.color = n.color || '#7c6af7';
+  div.appendChild(box);
+  canvas.appendChild(div);
+  nodes[n.id].el = div;
+  positionNode(n.id);
+  setupNodeEvents(n.id);
+  renderEdges();
+}
+
+function positionNode(id) {
+  const n = nodes[id];
+  if (!n || !n.el) return;
+  const bw = n.el.offsetWidth || 100, bh = n.el.offsetHeight || 36;
+  n.el.style.left = (n.x - bw/2) + 'px';
+  n.el.style.top = (n.y - bh/2) + 'px';
+}
+
+function renderEdges() {
+  const W = appDiv.offsetWidth * 2, H = appDiv.offsetHeight * 2;
+  let paths = '';
+  for (const e of edges) {
+    const fn = nodes[e.from], tn = nodes[e.to];
+    if (!fn || !tn) continue;
+    const fx = fn.x, fy = fn.y, tx = tn.x, ty = tn.y;
+    const mx = (fx+tx)/2;
+    const col = tn.color || '#7c6af7';
+    paths += `<path d="M${fx},${fy} C${mx},${fy} ${mx},${ty} ${tx},${ty}" fill="none" stroke="${col}" stroke-width="2" stroke-opacity="0.5" stroke-linecap="round"/>`;
+  }
+  svgEl.innerHTML = paths;
+}
+
+function applyTransform() {
+  canvas.style.transform = `translate(${pan.x}px,${pan.y}px) scale(${zoom})`;
+  canvas.style.transformOrigin = '0 0';
+}
+
+function fitToScreen() {
+  const keys = Object.keys(nodes);
+  if (!keys.length) return;
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  keys.forEach(id => {
+    const n = nodes[id];
+    minX=Math.min(minX,n.x); minY=Math.min(minY,n.y);
+    maxX=Math.max(maxX,n.x); maxY=Math.max(maxY,n.y);
+  });
+  const W = appDiv.offsetWidth, H = appDiv.offsetHeight;
+  const mw = maxX-minX+200, mh = maxY-minY+160;
+  zoom = Math.min(1.2, Math.min(W/mw, H/mh));
+  pan.x = W/2 - (minX+maxX)/2*zoom;
+  pan.y = H/2 - (minY+maxY)/2*zoom;
+  applyTransform();
+  setTimeout(() => { Object.keys(nodes).forEach(positionNode); renderEdges(); }, 50);
+}
+
+// Node events
+function setupNodeEvents(id) {
+  const n = nodes[id];
+  const el = n.el;
+  let startX, startY, startNX, startNY, moved;
+
+  // Pointer drag
+  el.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    selectNode(id);
+    startX = e.clientX; startY = e.clientY;
+    startNX = n.x; startNY = n.y; moved = false;
+    el.setPointerCapture(e.pointerId);
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerup', onUp, {once:true});
+  });
+  function onMove(e) {
+    const dx = (e.clientX - startX) / zoom, dy = (e.clientY - startY) / zoom;
+    if (Math.abs(dx)+Math.abs(dy) > 4) moved = true;
+    if (moved) { n.x = startNX+dx; n.y = startNY+dy; positionNode(id); renderEdges(); }
+  }
+  function onUp() {
+    el.removeEventListener('pointermove', onMove);
+    if (moved) scheduleSave();
+  }
+
+  // Double click/tap for edit
+  let tapTimer = null, tapCount = 0;
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    tapCount++;
+    if (tapCount === 1) tapTimer = setTimeout(() => { tapCount = 0; }, 300);
+    else { clearTimeout(tapTimer); tapCount = 0; startEdit(id); }
+  });
+  el.addEventListener('dblclick', e => { e.stopPropagation(); e.preventDefault(); startEdit(id); });
+}
+
+function selectNode(id) {
+  if (selectedId) {
+    const prev = nodes[selectedId];
+    if (prev?.el) prev.el.querySelector('.node-box').classList.remove('selected');
+  }
+  selectedId = id;
+  if (id && nodes[id]?.el) {
+    nodes[id].el.querySelector('.node-box').classList.add('selected');
+    // Update color dots active state
+    document.querySelectorAll('.cdot').forEach(d => {
+      d.classList.toggle('active', d.dataset.color === nodes[id].color);
+    });
+  }
+}
+
+function startEdit(id) {
+  const n = nodes[id];
+  const box = n.el.querySelector('.node-box');
+  box.contentEditable = 'true';
+  box.focus();
+  const sel = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(box);
+  sel.removeAllRanges(); sel.addRange(range);
+  function finish() {
+    box.contentEditable = 'false';
+    const newLabel = box.textContent.trim() || n.label;
+    n.label = newLabel; box.textContent = newLabel;
+    box.removeEventListener('blur', finish);
+    box.removeEventListener('keydown', onKey);
+    positionNode(id); renderEdges(); scheduleSave();
+  }
+  function onKey(e) {
+    if (e.key === 'Enter') { e.preventDefault(); finish(); }
+    if (e.key === 'Escape') { box.textContent = n.label; finish(); }
+  }
+  box.addEventListener('blur', finish);
+  box.addEventListener('keydown', onKey);
+}
+
+function addChild(parentId) {
+  const parent = nodes[parentId];
+  const children = Object.values(nodes).filter(n => n.parentId === parentId);
+  const angle = (children.length * 55 - 90) * (Math.PI/180);
+  const dist = 170;
+  const nx = parent.x + Math.cos(angle) * dist;
+  const ny = parent.y + Math.sin(angle) * dist;
+  const id = 'n' + (++nodeCounter);
+  const colors = COLORS;
+  const color = parent.color || colors[children.length % colors.length];
+  const newNode = { id, label: '새 항목', x: nx, y: ny, parentId, color };
+  nodes[id] = newNode;
+  edges.push({ from: parentId, to: id });
+  renderNode(newNode);
+  selectNode(id);
+  setTimeout(() => startEdit(id), 80);
+}
+
+function addSibling(sibId) {
+  const sib = nodes[sibId];
+  if (!sib.parentId) { addChild(sibId); return; }
+  const parent = nodes[sib.parentId];
+  const children = Object.values(nodes).filter(n => n.parentId === sib.parentId);
+  const angle = (children.length * 55 - 90) * (Math.PI/180);
+  const nx = parent.x + Math.cos(angle) * 170;
+  const ny = parent.y + Math.sin(angle) * 170;
+  const id = 'n' + (++nodeCounter);
+  const newNode = { id, label: '새 항목', x: nx, y: ny, parentId: sib.parentId, color: sib.color };
+  nodes[id] = newNode;
+  edges.push({ from: sib.parentId, to: id });
+  renderNode(newNode);
+  selectNode(id);
+  setTimeout(() => startEdit(id), 80);
+}
+
+function deleteNode(id) {
+  if (!nodes[id] || !nodes[id].parentId) return;
+  const toDelete = [id];
+  function collectChildren(nid) {
+    Object.values(nodes).filter(n => n.parentId === nid).forEach(n => {
+      toDelete.push(n.id); collectChildren(n.id);
+    });
+  }
+  collectChildren(id);
+  toDelete.forEach(nid => {
+    if (nodes[nid]?.el) nodes[nid].el.remove();
+    delete nodes[nid];
+  });
+  edges = edges.filter(e => !toDelete.includes(e.from) && !toDelete.includes(e.to));
+  selectedId = null;
+  renderEdges(); scheduleSave();
+}
+
+function setNodeColor(color) {
+  if (!selectedId) return;
+  const n = nodes[selectedId];
+  n.color = color;
+  const box = n.el.querySelector('.node-box');
+  box.style.borderColor = color;
+  box.style.background = COLOR_BG[color] || 'rgba(124,106,247,.15)';
+  box.style.color = color;
+  // update child edges
+  renderEdges();
+  document.querySelectorAll('.cdot').forEach(d => d.classList.toggle('active', d.dataset.color === color));
+  scheduleSave();
+}
+
+// Toolbar
+document.getElementById('btn-child').addEventListener('click', () => {
+  if (selectedId) addChild(selectedId);
+  else { const r = Object.values(nodes).find(n=>!n.parentId); if(r) addChild(r.id); }
+});
+document.getElementById('btn-sibling').addEventListener('click', () => { if (selectedId) addSibling(selectedId); });
+document.getElementById('btn-delete').addEventListener('click', () => { if (selectedId) deleteNode(selectedId); });
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (document.activeElement.contentEditable === 'true') return;
+  if (e.key === 'Tab') { e.preventDefault(); if (selectedId) addChild(selectedId); }
+  if (e.key === 'Enter') { e.preventDefault(); if (selectedId) addSibling(selectedId); }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) deleteNode(selectedId);
+});
+
+// Canvas pan
+let panStart = null;
+appDiv.addEventListener('pointerdown', e => {
+  if (e.target !== appDiv && e.target !== canvas && e.target !== svgEl) return;
+  panStart = { mx: e.clientX, my: e.clientY, ox: pan.x, oy: pan.y };
+  appDiv.setPointerCapture(e.pointerId);
+});
+appDiv.addEventListener('pointermove', e => {
+  if (!panStart) return;
+  pan.x = panStart.ox + (e.clientX - panStart.mx);
+  pan.y = panStart.oy + (e.clientY - panStart.my);
+  applyTransform();
+});
+appDiv.addEventListener('pointerup', () => { panStart = null; });
+
+// Pinch zoom
+let pinchDist = null;
+appDiv.addEventListener('touchstart', e => { if (e.touches.length===2) { pinchDist = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); } }, {passive:true});
+appDiv.addEventListener('touchmove', e => {
+  if (e.touches.length!==2 || !pinchDist) return;
+  const d = Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+  zoom = Math.max(0.3, Math.min(2.5, zoom * d/pinchDist));
+  pinchDist = d; applyTransform();
+}, {passive:true});
+appDiv.addEventListener('touchend', () => { pinchDist = null; });
+
+// Wheel zoom
+appDiv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.92 : 1.08;
+  zoom = Math.max(0.3, Math.min(2.5, zoom*delta));
+  applyTransform();
+}, {passive:false});
+
+// Click outside deselect
+appDiv.addEventListener('click', e => {
+  if (e.target === appDiv || e.target === canvas || e.target === svgEl) selectNode(null);
+});
+
+// Menu / drawer
+document.getElementById('menu-btn').addEventListener('click', () => drawer.classList.toggle('open') || overlay.classList.toggle('open'));
+overlay.addEventListener('click', closeDrawer);
+function closeDrawer() { drawer.classList.remove('open'); overlay.classList.remove('open'); }
+
+document.getElementById('new-map-btn').addEventListener('click', createNewMap);
+
+// Theme
+document.getElementById('theme-btn').addEventListener('click', () => {
+  isDark = !isDark;
+  document.body.classList.toggle('light', !isDark);
+  document.getElementById('theme-btn').textContent = isDark ? '🌙' : '☀️';
+});
+
+// Fit
+document.getElementById('fit-btn').addEventListener('click', fitToScreen);
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+window.addEventListener('resize', () => { renderEdges(); Object.keys(nodes).forEach(positionNode); });
+</script>
+</body>
+</html>
