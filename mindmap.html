@@ -121,23 +121,37 @@
 
   /* Node */
   .mm-node {
-    position: absolute; cursor: grab;
+    position: absolute;
     display: flex; flex-direction: column; align-items: center;
     user-select: none; -webkit-user-select: none;
     touch-action: none;
   }
-  .mm-node:active { cursor: grabbing; }
   .node-box {
-    min-width: 64px; max-width: 180px;
+    min-width: 64px; min-height: 32px;
     padding: 7px 14px; border-radius: 20px;
     font-size: 13px; font-weight: 600; text-align: center;
     border: 2px solid; word-break: break-word; line-height: 1.4;
-    transition: box-shadow .2s, transform .15s;
+    transition: box-shadow .2s;
     position: relative; white-space: pre-wrap;
+    cursor: grab; box-sizing: border-box;
   }
-  .node-box:focus { outline: none; }
-  .node-box.selected { box-shadow: 0 0 0 3px var(--accent-glow), 0 0 16px var(--accent-glow); transform: scale(1.04); }
+  .node-box:active { cursor: grabbing; }
+  .node-box:focus { outline: none; cursor: text; }
+  .node-box.selected { box-shadow: 0 0 0 3px var(--accent-glow), 0 0 16px var(--accent-glow); }
   .node-box.root { font-size: 16px; font-weight: 700; padding: 10px 20px; border-radius: 24px; }
+
+  /* Resize handles */
+  .resize-handle {
+    position: absolute; width: 10px; height: 10px;
+    background: var(--accent); border-radius: 2px;
+    opacity: 0; transition: opacity .15s;
+    z-index: 10; touch-action: none;
+  }
+  .mm-node.selected-node .resize-handle { opacity: 1; }
+  .resize-handle.se { bottom: -5px; right: -5px; cursor: se-resize; }
+  .resize-handle.sw { bottom: -5px; left: -5px; cursor: sw-resize; }
+  .resize-handle.ne { top: -5px; right: -5px; cursor: ne-resize; }
+  .resize-handle.nw { top: -5px; left: -5px; cursor: nw-resize; }
 
   /* Toolbar */
   #toolbar {
@@ -530,6 +544,10 @@ function renderNode(n) {
   const isRoot = n.parentId === null;
   box.className = 'node-box' + (isRoot ? ' root' : '');
 
+  // 저장된 크기 적용
+  if (n.w) box.style.width = n.w + 'px';
+  if (n.h) box.style.height = n.h + 'px';
+
   // 모양: 부모의 childShape를 따름 (루트는 항상 pill)
   let shape = 'pill';
   if (!isRoot && n.parentId && nodes[n.parentId]) {
@@ -544,6 +562,16 @@ function renderNode(n) {
     box.style.background = COLOR_BG[n.color] || 'rgba(124,106,247,.15)';
   }
   div.appendChild(box);
+
+  // 리사이즈 핸들 4개
+  ['nw','ne','sw','se'].forEach(dir => {
+    const h = document.createElement('div');
+    h.className = `resize-handle ${dir}`;
+    h.dataset.dir = dir;
+    div.appendChild(h);
+    setupResizeHandle(h, n.id, dir);
+  });
+
   nodesLayer.appendChild(div);
   nodes[n.id].el = div;
   positionNode(n.id);
@@ -572,9 +600,18 @@ function refreshNodeShape(id) {
 function positionNode(id) {
   const n = nodes[id];
   if (!n || !n.el) return;
-  const bw = n.el.offsetWidth || 100, bh = n.el.offsetHeight || 36;
+  const box = n.el.querySelector('.node-box');
+  // 저장된 크기가 있으면 적용
+  if (n.w) box.style.width = n.w + 'px';
+  if (n.h) box.style.height = n.h + 'px';
+  // 실측 크기 (항상 양수 보장)
+  const bw = (n.w || box.offsetWidth || 100);
+  const bh = (n.h || box.offsetHeight || 36);
+  // 크기 캐시 저장 (처음 렌더링 시)
+  if (!n.w && box.offsetWidth > 0) n.w = box.offsetWidth;
+  if (!n.h && box.offsetHeight > 0) n.h = box.offsetHeight;
   n.el.style.left = (n.x - bw/2) + 'px';
-  n.el.style.top = (n.y - bh/2) + 'px';
+  n.el.style.top  = (n.y - bh/2) + 'px';
 }
 
 function renderEdges() {
@@ -693,8 +730,9 @@ function setupNodeEvents(id) {
   const el = n.el;
   let startX, startY, startNX, startNY, moved;
 
-  // Pointer drag
+  // Pointer drag (리사이즈 핸들 제외)
   el.addEventListener('pointerdown', e => {
+    if (e.target.classList.contains('resize-handle')) return;
     e.stopPropagation();
     selectNode(id);
     startX = e.clientX; startY = e.clientY;
@@ -724,19 +762,58 @@ function setupNodeEvents(id) {
   el.addEventListener('dblclick', e => { e.stopPropagation(); e.preventDefault(); startEdit(id); });
 }
 
+// Resize handle
+function setupResizeHandle(handle, id, dir) {
+  handle.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const n = nodes[id];
+    const box = n.el.querySelector('.node-box');
+    const startX = e.clientX, startY = e.clientY;
+    const startW = box.offsetWidth, startH = box.offsetHeight;
+    handle.setPointerCapture(e.pointerId);
+
+    function onMove(e2) {
+      const dx = (e2.clientX - startX) / zoom;
+      const dy = (e2.clientY - startY) / zoom;
+      let newW = startW, newH = startH;
+      if (dir.includes('e')) newW = Math.max(64, startW + dx);
+      if (dir.includes('w')) newW = Math.max(64, startW - dx);
+      if (dir.includes('s')) newH = Math.max(28, startH + dy);
+      if (dir.includes('n')) newH = Math.max(28, startH - dy);
+      box.style.width = newW + 'px';
+      box.style.height = newH + 'px';
+      n.w = newW; n.h = newH;
+      // 서쪽/북쪽 드래그 시 노드 위치도 보정
+      if (dir.includes('w')) { n.x = n.x - (newW - startW) / 2; }
+      if (dir.includes('n')) { n.y = n.y - (newH - startH) / 2; }
+      positionNode(id);
+      renderEdges();
+    }
+    function onUp() {
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      scheduleSave();
+    }
+    handle.addEventListener('pointermove', onMove);
+    handle.addEventListener('pointerup', onUp);
+  });
+}
+
 function selectNode(id) {
   if (selectedId) {
     const prev = nodes[selectedId];
-    if (prev?.el) prev.el.querySelector('.node-box').classList.remove('selected');
+    if (prev?.el) {
+      prev.el.querySelector('.node-box').classList.remove('selected');
+      prev.el.classList.remove('selected-node');
+    }
   }
   selectedId = id;
   if (id && nodes[id]?.el) {
     nodes[id].el.querySelector('.node-box').classList.add('selected');
-    // Update color dots active state
+    nodes[id].el.classList.add('selected-node');
     document.querySelectorAll('.cdot').forEach(d => {
       d.classList.toggle('active', d.dataset.color === nodes[id].color);
     });
-    // Update style panel active states
     const n = nodes[id];
     document.querySelectorAll('#sp-line-row .sp-opt').forEach(o =>
       o.classList.toggle('active', o.dataset.line === (n.lineStyle || 'curve')));
