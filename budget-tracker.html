@@ -1716,8 +1716,8 @@ function renderHome(){
   const firstDay=new Date(y,m-1,1).getDay();
   const grid=document.getElementById('home-cal-grid');
   const dayMap={};
-  // 홈 달력: 순수 지출만 (대출상환/투자 제외)
-  expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment).forEach(e=>{
+  // 홈 달력: 현재 월의 순수 지출만 (대출상환/투자 제외)
+  expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment&&(e.date||'').startsWith(curMonth)).forEach(e=>{
     const d=parseInt(e.date.split('-')[2]);
     if(!dayMap[d])dayMap[d]={total:0,cats:[]};
     dayMap[d].total+=e.amount;
@@ -1860,8 +1860,8 @@ function renderCalendar(){
   const today=new Date();
   const grid=document.getElementById('cal-grid');grid.innerHTML='';
   const dayMap={};
-  // 달력: 순수 지출만 (대출상환/투자 제외)
-  expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment).forEach(e=>{
+  // 달력: 현재 월의 순수 지출만 (대출상환/투자 제외)
+  expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment&&(e.date||'').startsWith(curMonth)).forEach(e=>{
     const d=parseInt(e.date.split('-')[2]);
     if(!dayMap[d])dayMap[d]={total:0,cats:[]};
     dayMap[d].total+=e.amount;
