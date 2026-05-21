@@ -115,9 +115,8 @@
 
   /* Canvas */
   #app { position: fixed; top: 52px; left: 0; right: 0; bottom: 0; overflow: hidden; touch-action: none; }
-  #canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-  svg#edges { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; z-index: 0; }
-  #nodes-layer { position: absolute; top: 0; left: 0; z-index: 1; }
+  #canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+  #nodes-layer { position: absolute; top: 0; left: 0; }
 
   /* Node */
   .mm-node {
@@ -305,8 +304,8 @@
 </div>
 
 <div id="app" style="display:none">
+  <svg id="edges" style="position:fixed;top:52px;left:0;width:100%;height:calc(100% - 52px);pointer-events:none;z-index:0;overflow:visible;"></svg>
   <div id="canvas">
-    <svg id="edges"></svg>
     <div id="nodes-layer"></div>
   </div>
   <div id="hint">더블탭: 편집 &nbsp;|&nbsp; 노드 선택 후 Tab: 자식 추가 &nbsp;|&nbsp; Delete: 삭제</div>
@@ -614,8 +613,19 @@ function positionNode(id) {
   n.el.style.top  = (n.y - bh/2) + 'px';
 }
 
+// 노드의 실제 화면 좌표 반환 (pan/zoom 적용)
+function screenPos(n) {
+  const w = n.w || 100, h = n.h || 36;
+  return {
+    x: n.x * zoom + pan.x,
+    y: n.y * zoom + pan.y,
+    w: w * zoom,
+    h: h * zoom
+  };
+}
+
 function renderEdges() {
-  // 부모별로 자식들 그룹핑
+  // 부모별 자식 그룹핑
   const byParent = {};
   for (const e of edges) {
     if (!nodes[e.from] || !nodes[e.to]) continue;
@@ -631,68 +641,68 @@ function renderEdges() {
     const children = byParent[parentId].map(id => nodes[id]).filter(Boolean);
     if (!children.length) continue;
 
-    const px = parent.x, py = parent.y;
+    const p = screenPos(parent);
     const lineStyle = parent.lineStyle || 'curve';
 
     if (lineStyle === 'straight') {
-      // 직선: 그냥 각자 직선
       children.forEach(c => {
-        paths += `<path d="M${px},${py} L${c.x},${c.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round"/>`;
+        const cs = screenPos(c);
+        paths += `<path d="M${p.x},${p.y} L${cs.x},${cs.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.6" stroke-linecap="round"/>`;
       });
 
     } else if (lineStyle === 'elbow') {
-      // 꺾임: 부모→공유수직선→각 자식
       if (children.length === 1) {
-        const c = children[0];
-        const mx = (px + c.x) / 2;
-        paths += `<path d="M${px},${py} L${mx},${py} L${mx},${c.y} L${c.x},${c.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round"/>`;
+        const cs = screenPos(children[0]);
+        // 부모 오른쪽 엣지 → 자식 왼쪽 엣지 (또는 방향에 따라)
+        const px2 = p.x + (cs.x > p.x ? p.w/2 : -p.w/2);
+        const cx2 = cs.x + (cs.x > p.x ? -cs.w/2 : cs.w/2);
+        const mx = (px2 + cx2) / 2;
+        paths += `<path d="M${px2},${p.y} L${mx},${p.y} L${mx},${cs.y} L${cx2},${cs.y}" fill="none" stroke="${children[0].color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.6" stroke-linecap="round"/>`;
       } else {
-        const minY = Math.min(...children.map(c => c.y));
-        const maxY = Math.max(...children.map(c => c.y));
-        // 수평 분기점: 부모와 자식들 x 중간쯤
-        const avgX = children.reduce((s,c) => s + c.x, 0) / children.length;
-        const mx = (px + avgX) / 2;
-        // 부모→mx 수평 줄기 (자식 색 혼합 대신 첫 자식 색)
+        const childScreens = children.map(c => ({ c, cs: screenPos(c) }));
+        const ys = childScreens.map(({ cs }) => cs.y);
+        const minY = Math.min(...ys), maxY = Math.max(...ys);
+        // 부모 기준 평균 x
+        const avgCX = childScreens.reduce((s, { cs }) => s + cs.x, 0) / childScreens.length;
+        const goRight = avgCX >= p.x;
+        const px2 = p.x + (goRight ? p.w/2 : -p.w/2);
+        const mx = px2 + (goRight ? 60*zoom : -60*zoom);
         const trunkCol = children[0].color || '#7c6af7';
-        paths += `<path d="M${px},${py} L${mx},${py}" fill="none" stroke="${trunkCol}" stroke-width="2.5" stroke-opacity="0.45" stroke-linecap="round"/>`;
-        // mx에서 수직 줄기 (minY~maxY)
-        paths += `<path d="M${mx},${minY} L${mx},${maxY}" fill="none" stroke="${trunkCol}" stroke-width="2.5" stroke-opacity="0.45" stroke-linecap="round"/>`;
-        // 각 자식으로 수평 가지
-        children.forEach(c => {
-          paths += `<path d="M${mx},${c.y} L${c.x},${c.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round"/>`;
+        // 부모→수직줄기
+        paths += `<path d="M${px2},${p.y} L${mx},${p.y}" fill="none" stroke="${trunkCol}" stroke-width="2.5" stroke-opacity="0.4" stroke-linecap="round"/>`;
+        paths += `<path d="M${mx},${minY} L${mx},${maxY}" fill="none" stroke="${trunkCol}" stroke-width="2.5" stroke-opacity="0.4" stroke-linecap="round"/>`;
+        childScreens.forEach(({ c, cs }) => {
+          const cx2 = cs.x + (goRight ? -cs.w/2 : cs.w/2);
+          paths += `<path d="M${mx},${cs.y} L${cx2},${cs.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.6" stroke-linecap="round"/>`;
         });
       }
 
     } else {
-      // curve / bezier-h / 기본: XMind 스타일 공유 줄기
+      // curve / bezier-h: XMind 스타일 공유 줄기
+      const childScreens = children.map(c => ({ c, cs: screenPos(c) }));
+      const avgCX = childScreens.reduce((s, { cs }) => s + cs.x, 0) / childScreens.length;
+      const goRight = avgCX >= p.x;
+      const px2 = p.x + (goRight ? p.w/2 : -p.w/2);
+      const dash = lineStyle === 'bezier-h' ? 'stroke-dasharray="6,3"' : '';
+
       if (children.length === 1) {
-        const c = children[0];
-        const mx = (px + c.x) / 2;
-        const dash = lineStyle === 'bezier-h' ? 'stroke-dasharray="6,3"' : '';
-        paths += `<path d="M${px},${py} C${mx},${py} ${mx},${c.y} ${c.x},${c.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round" ${dash}/>`;
+        const { c, cs } = childScreens[0];
+        const cx2 = cs.x + (goRight ? -cs.w/2 : cs.w/2);
+        const mx = (px2 + cx2) / 2;
+        paths += `<path d="M${px2},${p.y} C${mx},${p.y} ${mx},${cs.y} ${cx2},${cs.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.6" stroke-linecap="round" ${dash}/>`;
       } else {
-        // 자식들 y 범위
-        const minY = Math.min(...children.map(c => c.y));
-        const maxY = Math.max(...children.map(c => c.y));
-        const midY = (minY + maxY) / 2;
-
-        // 부모→줄기 끝점(공유 지점): 부모와 자식들 x 사이 40% 지점
-        const avgX = children.reduce((s,c) => s + c.x, 0) / children.length;
-        const trunkEndX = px + (avgX - px) * 0.42;
-
+        const ys = childScreens.map(({ cs }) => cs.y);
+        const midY = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const trunkLen = 55 * zoom;
+        const trunkEndX = px2 + (goRight ? trunkLen : -trunkLen);
         const trunkCol = children[0].color || '#7c6af7';
-        const dash = lineStyle === 'bezier-h' ? 'stroke-dasharray="6,3"' : '';
-
-        // 공유 줄기: 부모 → trunkEndX (중간 y)
-        paths += `<path d="M${px},${py} C${px + (trunkEndX-px)*0.6},${py} ${trunkEndX},${midY} ${trunkEndX},${midY}" fill="none" stroke="${trunkCol}" stroke-width="3" stroke-opacity="0.35" stroke-linecap="round" ${dash}/>`;
-
-        // 각 자식으로 갈라지는 가지
-        children.forEach(c => {
-          const cx = c.x, cy = c.y;
-          const col = c.color || '#7c6af7';
-          // trunkEndX에서 자식까지 곡선
-          const cpx = trunkEndX + (cx - trunkEndX) * 0.5;
-          paths += `<path d="M${trunkEndX},${midY} C${cpx},${midY} ${cpx},${cy} ${cx},${cy}" fill="none" stroke="${col}" stroke-width="2" stroke-opacity="0.6" stroke-linecap="round" ${dash}/>`;
+        // 공유 줄기
+        paths += `<path d="M${px2},${p.y} C${px2 + (trunkEndX-px2)*0.7},${p.y} ${trunkEndX},${midY} ${trunkEndX},${midY}" fill="none" stroke="${trunkCol}" stroke-width="3" stroke-opacity="0.3" stroke-linecap="round" ${dash}/>`;
+        // 각 자식 가지
+        childScreens.forEach(({ c, cs }) => {
+          const cx2 = cs.x + (goRight ? -cs.w/2 : cs.w/2);
+          const cpx = trunkEndX + (cx2 - trunkEndX) * 0.5;
+          paths += `<path d="M${trunkEndX},${midY} C${cpx},${midY} ${cpx},${cs.y} ${cx2},${cs.y}" fill="none" stroke="${c.color||'#7c6af7'}" stroke-width="2" stroke-opacity="0.65" stroke-linecap="round" ${dash}/>`;
         });
       }
     }
@@ -704,6 +714,7 @@ function renderEdges() {
 function applyTransform() {
   canvas.style.transform = `translate(${pan.x}px,${pan.y}px) scale(${zoom})`;
   canvas.style.transformOrigin = '0 0';
+  renderEdges();
 }
 
 function fitToScreen() {
