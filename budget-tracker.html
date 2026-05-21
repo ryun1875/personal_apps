@@ -695,8 +695,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     <div class="form-card">
       <h3>정기 지출 추가</h3>
       <div class="form-row">
-        <div class="form-group"><label>카테고리</label><select id="rec-cat"></select></div>
+        <div class="form-group"><label>카테고리</label><select id="rec-cat" onchange="rebuildSubCatSelect('rec-subcat',this.value)"></select></div>
         <div class="form-group"><label>매월 몇 일</label><input type="number" id="rec-day" placeholder="1~31" min="1" max="31"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>세부 카테고리</label><select id="rec-subcat"><option value="">선택 안 함</option></select></div>
       </div>
       <div class="form-row">
         <div class="form-group" style="flex:2"><label>내용</label><input type="text" id="rec-desc" placeholder="예: 월세, 넷플릭스"></div>
@@ -1915,7 +1918,9 @@ function renderBudget(){
   const le=document.getElementById('budget-list');le.innerHTML='';
   CATS.forEach(cat=>{
     const b=Number(budgets[cat.id])||0;
-    const spent=expenses.filter(e=>e.cat===cat.id).reduce((s,e)=>s+e.amount,0);
+    const spent=expenses.filter(e=>e.cat===cat.id&&e.month===curMonth).reduce((s,e)=>s+e.amount,0);
+    // 정기지출 합산
+    const recurTotal=recurring.filter(r=>r.cat===cat.id).reduce((s,r)=>s+(Number(r.amount)||0),0);
     const pct=b>0?Math.min(Math.round(spent/b*100),100):0;
     const bc=pct>=100?'#ff6b6b':pct>=80?'#ffb347':cat.color;
     const meta=budgetMeta[cat.id]||{fixedItems:[],memo:''};
@@ -1955,7 +1960,7 @@ function renderBudget(){
         <div class="cat-dot" style="background:${cat.color}22;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">${cat.emoji}</div>
         <div class="budget-info" style="flex:1">
           <div class="budget-name">${cat.name}${pct>=80&&b>0?`<span style="font-size:9px;background:${bc}22;color:${bc};padding:1px 5px;border-radius:99px">${pct}%</span>`:''}</div>
-          <div class="budget-spent">${fmt(spent)} 지출${fixedTotal>0?` · 고정 ${fmt(fixedTotal)}`:''}${meta.memo?` · 📝`:''}</div>
+          <div class="budget-spent">${fmt(spent)} 지출${recurTotal>0?` · 🔄 정기 ${fmt(recurTotal)}`:''}${fixedTotal>0?` · 📋 예상 ${fmt(fixedTotal)}`:''}${meta.memo?` · 📝`:''}</div>
           ${b>0?`<div class="mini-bar"><div class="mini-bar-fill" style="width:${pct}%;background:${bc}"></div></div>`:''}
         </div>
         <div style="display:flex;align-items:center;gap:5px">
@@ -1969,6 +1974,17 @@ function renderBudget(){
         ${cat.subs?.length?`<div style="margin-bottom:10px">
           <div style="font-size:10px;color:var(--text3);margin-bottom:6px">📊 세부 카테고리 예산</div>
           ${subRows}
+        </div>`:''}
+        ${recurTotal>0?`<div style="margin-bottom:10px">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:6px">🔄 정기 지출</div>
+          ${recurring.filter(r=>r.cat===cat.id).map(r=>`
+            <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">
+              <span style="color:var(--text2)">${r.desc||'정기지출'}</span>
+              <span style="color:var(--accent3);font-family:'Gmarket Sans',sans-serif">${fmt(r.amount)}</span>
+            </div>`).join('')}
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);padding-top:5px">
+            <span>정기 합계</span><span>${fmt(recurTotal)}</span>
+          </div>
         </div>`:''}
         <div style="font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:.3px">📋 예상 지출</div>
         <div class="fixed-items" id="fi-${cat.id}">${fiRows}</div>
@@ -2070,10 +2086,11 @@ function renderRecurring(){
     const cat=CATS.find(c=>c.id===r.cat)||CATS[CATS.length-1];
     const pay=payMethods.find(p=>p.id===r.payId);
     const pb=pay?`<span style="font-size:9px;background:${pay.color||'#6bb5ff'}22;color:${pay.color||'#6bb5ff'};padding:2px 5px;border-radius:99px;border:1px solid ${pay.color||'#6bb5ff'}44">${pay.emoji||'💳'} ${pay.name}</span>`:'';
+    const subCatObj=r.subCat?findSubCat(r.cat,r.subCat):null;
     const div=document.createElement('div');div.className='recurring-item';
     div.innerHTML=`
       <div class="cat-dot" style="background:${cat.color}22">${cat.emoji}</div>
-      <div class="rec-info"><div class="rec-name">${r.desc||cat.name} ${pb}</div><div class="rec-meta">매월 ${r.day}일 · ${cat.name}</div></div>
+      <div class="rec-info"><div class="rec-name">${r.desc||cat.name} ${pb}</div><div class="rec-meta">매월 ${r.day}일 · ${cat.name}${subCatObj?` > ${subCatObj.name}`:''}</div></div>
       <div class="rec-amt">-${fmt(r.amount)}</div>
       <button class="act-btn del" onclick="deleteRecurring('${r.id}')">✕</button>`;
     le.appendChild(div);
@@ -2483,6 +2500,7 @@ window.openColorPicker=function(i){
 // ── 고정 지출 ─────────────────────────────────────────────
 window.addRecurring=async function(){
   const cat=document.getElementById('rec-cat').value;
+  const subCat=document.getElementById('rec-subcat')?.value||'';
   const day=parseInt(document.getElementById('rec-day').value)||0;
   const desc=document.getElementById('rec-desc').value.trim();
   const amount=parseInt(document.getElementById('rec-amount').value)||0;
@@ -2490,8 +2508,10 @@ window.addRecurring=async function(){
   if(!day||day<1||day>31){showToast('날짜를 확인해주세요','warning');return;}
   if(!amount){showToast('금액을 입력해주세요','warning');return;}
   try{
-    await setDoc(doc(db,up('recurring'),uid()),{cat,day,desc,amount,payId});
-    document.getElementById('rec-day').value='';document.getElementById('rec-desc').value='';document.getElementById('rec-amount').value='';
+    await setDoc(doc(db,up('recurring'),uid()),{cat,subCat,day,desc,amount,payId});
+    document.getElementById('rec-day').value='';
+    document.getElementById('rec-desc').value='';
+    document.getElementById('rec-amount').value='';
     showToast('정기 지출이 추가됐어요 ✓','success');
   }catch(e){showToast('저장 실패','error');}
 };
@@ -2511,7 +2531,7 @@ window.applyRecurring=async function(){
     const day=Math.min(r.day,maxDay);
     const ds=`${curMonth}-${String(day).padStart(2,'0')}`;
     const exists=expenses.some(e=>e.recurringId===r.id&&e.month===curMonth);
-    if(!exists){batch.set(doc(db,up('expenses'),uid()),{date:ds,cat:r.cat,desc:r.desc,amount:r.amount,month:curMonth,isRecurring:true,recurringId:r.id,payId:r.payId||''});count++;}
+    if(!exists){batch.set(doc(db,up('expenses'),uid()),{date:ds,cat:r.cat,subCat:r.subCat||'',desc:r.desc,amount:r.amount,month:curMonth,isRecurring:true,recurringId:r.id,payId:r.payId||''});count++;}
   });
   if(!count){showToast('이미 이번 달 정기 지출이 적용됐어요','warning');return;}
   try{await batch.commit();showToast(`${count}개 정기 지출이 추가됐어요 ✓`,'success');}catch(e){showToast('적용 실패','error');}
@@ -4020,7 +4040,11 @@ window.switchSettings=function(name,btn){
   btn.classList.add('active');
   document.getElementById('panel-'+name).classList.add('active');
   if(name==='cats')renderCatManage();
-  if(name==='recurring')renderRecurring();
+  if(name==='recurring'){
+    renderRecurring();
+    const curCat=document.getElementById('rec-cat')?.value;
+    if(curCat)rebuildSubCatSelect('rec-subcat',curCat);
+  }
   if(name==='payment')renderPayment();
   if(name==='list')renderList();
   if(name==='backup')renderBackup();
