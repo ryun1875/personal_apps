@@ -1241,7 +1241,7 @@ window.addLoanPaymentFromInput=async function(){
   const loanId=document.getElementById('loan-pay-loan-inp').value;
   const date=document.getElementById('loan-pay-date-inp').value;
   const desc=document.getElementById('loan-pay-desc-inp').value.trim();
-  const amount=parseInt(document.getElementById('loan-pay-amount-inp').value)||0;
+  const amount=Math.round(Number(document.getElementById('loan-pay-amount-inp').value))||0;
   const broker=document.getElementById('loan-pay-broker-inp').value.trim();
   const payType=loanPayType||'principal';
   const typeLabel=payType==='principal'?'원금':'이자';
@@ -1292,7 +1292,7 @@ window.addInvestmentFromInput=async function(){
   const date=document.getElementById('inv-date-inp').value;
   const type=document.getElementById('inv-type-inp').value;
   const name=document.getElementById('inv-name-inp').value.trim();
-  const amount=parseInt(document.getElementById('inv-amount-inp').value)||0;
+  const amount=Math.round(Number(document.getElementById('inv-amount-inp').value))||0;
   const broker=document.getElementById('inv-broker-inp').value.trim();
   if(!name){showToast('이름을 입력해주세요','warning');return;}
   if(!amount){showToast('금액을 입력해주세요','warning');return;}
@@ -1331,7 +1331,7 @@ window.setInstMonths=function(n){
   updateInstPreview();
 };
 window.updateInstPreview=function(){
-  const a=parseInt(document.getElementById('inp-amount')?.value)||0;
+  const a=Math.round(Number(document.getElementById('inp-amount')?.value))||0;
   const n=instMonths||3;
   if(!a){const el=document.getElementById('inst-preview');if(el)el.textContent='금액을 입력하면 미리보기가 표시돼요';return;}
   const base=Math.floor(a/n);
@@ -2561,7 +2561,7 @@ window.saveEdit=async function(){
   const cat=document.getElementById('edit-cat').value;
   const subCat=document.getElementById('edit-subcat')?.value||'';
   const desc=document.getElementById('edit-desc').value.trim();
-  const amount=parseInt(document.getElementById('edit-amount').value)||0;
+  const amount=Math.round(Number(document.getElementById('edit-amount').value))||0;
   const payId=document.getElementById('edit-pay').value||'';
   const tag=editExpenseTag||'personal';
   if(!amount){showToast('금액을 입력해주세요','warning');return;}
@@ -2577,7 +2577,7 @@ window.addExpense=async function(){
   const cat=document.getElementById('inp-cat').value;
   const subCat=document.getElementById('inp-subcat')?.value||'';
   const desc=document.getElementById('inp-desc').value.trim();
-  const total=parseInt(document.getElementById('inp-amount').value)||0;
+  const total=Math.round(Number(document.getElementById('inp-amount').value))||0;
   const payId=document.getElementById('inp-pay')?.value||'';
   const loanId=document.getElementById('inp-loan')?.value||'';
   if(!date){showToast('날짜를 선택해주세요','warning');return;}
@@ -3266,7 +3266,7 @@ window.deleteInvestment=async function(id){
 window.addLoan=async function(){
   const name=document.getElementById('loan-name').value.trim();
   const rate=parseFloat(document.getElementById('loan-rate').value)||0;
-  const principal=parseInt(document.getElementById('loan-principal').value)||0;
+  const principal=Math.round(Number(document.getElementById('loan-principal').value))||0;
   const start=document.getElementById('loan-start').value;
   const maturity=document.getElementById('loan-maturity').value;
   if(!name){showToast('대출명을 입력해주세요','warning');return;}
@@ -3298,7 +3298,7 @@ window.deleteLoan=async function(id){
   });
 };
 window.addLoanPayment=async function(loanId){
-  const amount=parseInt(document.getElementById(`lp-amount-${loanId}`).value)||0;
+  const amount=Math.round(Number(document.getElementById(`lp-amount-${loanId}`).value))||0;
   const date=document.getElementById(`lp-date-${loanId}`).value;
   const broker=document.getElementById(`lp-broker-${loanId}`)?.value.trim()||'';
   if(!amount){showToast('납입금액을 입력해주세요','warning');return;}
@@ -3372,7 +3372,7 @@ window.saveInvEdit=async function(){
   if(!editInvId)return;
   const name=document.getElementById('ie-name').value.trim();
   const type=document.getElementById('ie-type').value;
-  const amount=parseInt(document.getElementById('ie-amount').value)||0;
+  const amount=Math.round(Number(document.getElementById('ie-amount').value))||0;
   const date=document.getElementById('ie-date').value;
   const broker=document.getElementById('ie-broker').value.trim();
   if(!name){showToast('이름을 입력해주세요','warning');return;}
@@ -3429,8 +3429,8 @@ window.savePortEdit=async function(){
 window.addMinusAccount=async function(){
   const name=document.getElementById('minus-name').value.trim();
   const rate=parseFloat(document.getElementById('minus-rate').value)||0;
-  const limit=parseInt(document.getElementById('minus-limit').value)||0;
-  const used=parseInt(document.getElementById('minus-used').value)||0;
+  const limit=Math.round(Number(document.getElementById('minus-limit').value))||0;
+  const used=Math.round(Number(document.getElementById('minus-used').value))||0;
   const bank=document.getElementById('minus-bank').value.trim();
   if(!name){showToast('통장명을 입력해주세요','warning');return;}
   if(!limit){showToast('한도를 입력해주세요','warning');return;}
@@ -3483,7 +3483,17 @@ async function renderBackup(){
 
   wrap.innerHTML='';
 
-  // 수동 백업 카드
+  // 데이터 정리 카드
+  const cleanCard=document.createElement('div');
+  cleanCard.className='form-card';
+  cleanCard.style.marginBottom='14px';
+  cleanCard.innerHTML=`
+    <div style="margin-bottom:12px">
+      <h3 style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">🔧 데이터 정리</h3>
+      <div style="font-size:11px;color:var(--text3)">소수점 오류가 있는 금액을 자동으로 정수로 정리해요</div>
+    </div>
+    <button class="btn-primary" onclick="cleanupAmounts()" style="background:var(--accent3)">🔧 금액 오류 일괄 정리</button>`;
+  wrap.appendChild(cleanCard);
   const manualCard=document.createElement('div');
   manualCard.className='form-card';
   manualCard.style.marginBottom='14px';
@@ -3523,6 +3533,57 @@ async function renderBackup(){
   wrap.appendChild(listCard);
 }
 
+window.cleanupAmounts=async function(){
+  showConfirm('소수점 오류가 있는 금액을 모두 정수로 정리할까요?',async()=>{
+    setSyncStatus('syncing');
+    let fixed=0;
+    try{
+      // 지출
+      const expSnap=await getDocs(collection(db,up('expenses')));
+      const expBatch=writeBatch(db);
+      expSnap.docs.forEach(d=>{
+        const data=d.data();
+        const rounded=Math.round(data.amount||0);
+        if(data.amount!==rounded){expBatch.update(d.ref,{amount:rounded});fixed++;}
+      });
+      await expBatch.commit();
+
+      // 투자
+      const invSnap=await getDocs(collection(db,up('investments')));
+      const invBatch=writeBatch(db);
+      invSnap.docs.forEach(d=>{
+        const data=d.data();
+        const rounded=Math.round(data.amount||0);
+        if(data.amount!==rounded){invBatch.update(d.ref,{amount:rounded});fixed++;}
+      });
+      await invBatch.commit();
+
+      // 대출납입
+      const lpSnap=await getDocs(collection(db,up('loanPayments')));
+      const lpBatch=writeBatch(db);
+      lpSnap.docs.forEach(d=>{
+        const data=d.data();
+        const rounded=Math.round(data.amount||0);
+        if(data.amount!==rounded){lpBatch.update(d.ref,{amount:rounded});fixed++;}
+      });
+      await lpBatch.commit();
+
+      // 정기지출
+      const recSnap=await getDocs(collection(db,up('recurring')));
+      const recBatch=writeBatch(db);
+      recSnap.docs.forEach(d=>{
+        const data=d.data();
+        const rounded=Math.round(data.amount||0);
+        if(data.amount!==rounded){recBatch.update(d.ref,{amount:rounded});fixed++;}
+      });
+      await recBatch.commit();
+
+      setSyncStatus('online');
+      showToast(fixed>0?`${fixed}개 항목이 정리됐어요 ✓`:'오류 항목이 없어요 ✅','success');
+      renderBackup();
+    }catch(e){setSyncStatus('offline');showToast('정리 실패: '+e.message,'error');}
+  });
+};
 window.createBackup=async function(isAuto=false){
   setSyncStatus('syncing');
   try{
