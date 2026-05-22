@@ -1100,7 +1100,7 @@ function subscribeMonth(){
   unsubExp=onSnapshot(query(collection(db,up('expenses')),where('month','==',curMonth)),snap=>{
     expenses=snap.docs.map(d=>({id:d.id,...d.data()}));
     renderAll();setSyncStatus('online');
-    if(first){hideLoading();first=false;setTimeout(checkBudgetAlert,800);setTimeout(checkAutoBackup,2000);}
+    if(first){hideLoading();first=false;setTimeout(checkBudgetAlert,800);setTimeout(checkAutoBackup,2000);setTimeout(checkAutoRecurring,3000);}
   },()=>{setSyncStatus('offline');hideLoading();});
   unsubBudget=onSnapshot(doc(db,up('budgets'),curMonth),snap=>{
     budgets=snap.exists()?snap.data():{};renderAll();
@@ -2503,7 +2503,7 @@ window.addRecurring=async function(){
   const subCat=document.getElementById('rec-subcat')?.value||'';
   const day=parseInt(document.getElementById('rec-day').value)||0;
   const desc=document.getElementById('rec-desc').value.trim();
-  const amount=parseInt(document.getElementById('rec-amount').value)||0;
+  const amount=Math.round(Number(document.getElementById('rec-amount').value))||0;
   const payId=document.getElementById('rec-pay').value||'';
   if(!day||day<1||day>31){showToast('날짜를 확인해주세요','warning');return;}
   if(!amount){showToast('금액을 입력해주세요','warning');return;}
@@ -2522,8 +2522,8 @@ window.deleteRecurring=async function(id){
     catch(e){showToast('삭제 실패','error');}
   });
 };
-window.applyRecurring=async function(){
-  if(!recurring.length){showToast('정기 지출이 없어요','warning');return;}
+window.applyRecurring=async function(silent=false){
+  if(!recurring.length){if(!silent)showToast('정기 지출이 없어요','warning');return;}
   const[y,m]=curMonth.split('-').map(Number);
   const batch=writeBatch(db);let count=0;
   recurring.forEach(r=>{
@@ -2533,8 +2533,12 @@ window.applyRecurring=async function(){
     const exists=expenses.some(e=>e.recurringId===r.id&&e.month===curMonth);
     if(!exists){batch.set(doc(db,up('expenses'),uid()),{date:ds,cat:r.cat,subCat:r.subCat||'',desc:r.desc,amount:r.amount,month:curMonth,isRecurring:true,recurringId:r.id,payId:r.payId||''});count++;}
   });
-  if(!count){showToast('이미 이번 달 정기 지출이 적용됐어요','warning');return;}
-  try{await batch.commit();showToast(`${count}개 정기 지출이 추가됐어요 ✓`,'success');}catch(e){showToast('적용 실패','error');}
+  if(!count){if(!silent)showToast('이미 이번 달 정기 지출이 적용됐어요','warning');return;}
+  try{
+    await batch.commit();
+    if(!silent)showToast(`${count}개 정기 지출이 추가됐어요 ✓`,'success');
+    else showToast(`🔄 ${count}개 정기 지출이 자동 적용됐어요`,'success');
+  }catch(e){showToast('적용 실패','error');}
 };
 
 // ── 지출 수정 ─────────────────────────────────────────────
@@ -3626,7 +3630,21 @@ window.deleteBackup=async function(id){
   });
 };
 
-// 자동 백업 체크 (매월 1일)
+// 정기지출 자동 적용 체크 (매월 1일)
+async function checkAutoRecurring(){
+  if(!recurring.length)return;
+  const key=`autoRecurring_${curUser?.uid}_${curMonth}`;
+  if(localStorage.getItem(key))return;
+  // 이미 이번 달에 적용된 게 있는지 확인
+  const alreadyApplied=expenses.some(e=>e.isRecurring&&e.month===curMonth);
+  if(alreadyApplied){localStorage.setItem(key,'1');return;}
+  // 오늘이 1일이거나 이번 달에 아직 적용 안 됐으면 자동 적용
+  const today=new Date();
+  if(today.getDate()===1||!alreadyApplied){
+    await applyRecurring(true);
+    localStorage.setItem(key,'1');
+  }
+}
 function checkAutoBackup(){
   const today=new Date();
   if(today.getDate()!==1)return;
