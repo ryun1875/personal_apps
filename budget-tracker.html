@@ -2636,7 +2636,7 @@ window.addExpense=async function(){
       await batch.commit();showToast(`${n}개월 할부로 추가됐어요 ✓ (1회차 ${fmt(first)})` ,'success');
       instOn=false;window.toggleInstallment();
     } else {
-      await setDoc(doc(db,up('expenses'),uid()),{date,cat,subCat,desc,amount:total,month:curMonth,payId,loanId,tag:expenseTag,excludeStats});
+      await setDoc(doc(db,up('expenses'),uid()),{date,cat,subCat,desc,amount:total,month:date.slice(0,7),payId,loanId,tag:expenseTag,excludeStats});
       const b=Number(budgets[cat])||0;
       if(b>0){
         const spent=expenses.filter(e=>e.cat===cat).reduce((s,e)=>s+e.amount,0)+total;
@@ -3572,8 +3572,12 @@ window.cleanupAmounts=async function(){
       const expBatch=writeBatch(db);
       expSnap.docs.forEach(d=>{
         const data=d.data();
+        const updates={};
         const rounded=Math.round(data.amount||0);
-        if(data.amount!==rounded){expBatch.update(d.ref,{amount:rounded});fixed++;}
+        if(data.amount!==rounded)updates.amount=rounded;
+        if(data.date&&data.month&&data.month!==data.date.slice(0,7))
+          updates.month=data.date.slice(0,7);
+        if(Object.keys(updates).length){expBatch.update(d.ref,updates);fixed++;}
       });
       await expBatch.commit();
 
