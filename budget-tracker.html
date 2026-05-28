@@ -528,6 +528,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     </div>
     <div class="form-row">
       <div class="form-group"><label>내용</label><input type="text" id="inst-edit-desc" placeholder="예: 갤럭시탭 구매"></div>
+      <div class="form-group"><label>시작일</label><input type="date" id="inst-edit-startdate"></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label>결제수단</label><select id="inst-edit-pay"></select></div>
@@ -1804,7 +1805,8 @@ let listType='expense';
 let allInstallments=[]; // 할부 전체 데이터 (월 구독과 별개)
 
 async function loadAllInstallments(){
-  const snap=await getDocs(query(collection(db,up('expenses')),where('installmentTotal','>',0)));
+  // installmentTotal이 있는 지출 전체 로드
+  const snap=await getDocs(query(collection(db,up('expenses')),where('installmentGroupId','!=','')));
   allInstallments=snap.docs.map(d=>({id:d.id,...d.data()}));
 }
 
@@ -3596,25 +3598,47 @@ window.openInstEdit=function(gid){
 
   const descEl=document.getElementById('inst-edit-desc');
   if(descEl)descEl.value=first.desc||'';
+  const startEl=document.getElementById('inst-edit-startdate');
+  if(startEl)startEl.value=first.date||'';
   const exclEl=document.getElementById('inst-edit-exclude');
   if(exclEl)exclEl.checked=first.excludeStats||false;
   document.getElementById('inst-edit-modal').classList.add('open');
 };
+
 window.saveInstEdit=async function(){
   if(!editInstGid)return;
   const cat=document.getElementById('inst-edit-cat').value;
   const subCat=document.getElementById('inst-edit-subcat')?.value||'';
   const desc=document.getElementById('inst-edit-desc').value.trim();
+  const startDate=document.getElementById('inst-edit-startdate').value;
   const payId=document.getElementById('inst-edit-pay').value||'';
   const excludeStats=document.getElementById('inst-edit-exclude')?.checked||false;
   setSyncStatus('syncing');
   try{
-    const group=allInstallments.filter(e=>(e.installmentGroupId===editInstGid||e.id===editInstGid)&&e.installmentTotal);
+    const group=allInstallments.filter(e=>(e.installmentGroupId===editInstGid||e.id===editInstGid)&&e.installmentTotal)
+      .sort((a,b)=>a.installmentCurrent-b.installmentCurrent);
     const batch=writeBatch(db);
-    group.forEach(e=>batch.update(doc(db,up('expenses'),e.id),{cat,subCat,desc,payId,excludeStats}));
+    group.forEach((e,idx)=>{
+      const updates={cat,subCat,desc,payId,excludeStats};
+      // 시작일이 바뀌었으면 날짜 재계산
+      if(startDate&&startDate!==group[0].date){
+        const[sy,sm,sd]=startDate.split('-').map(Number);
+        const nd=new Date(sy,sm-1+idx,1);
+        const mo=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,'0')}`;
+        const md=new Date(nd.getFullYear(),nd.getMonth()+1,0).getDate();
+        const dd=Math.min(sd,md);
+        updates.date=`${mo}-${String(dd).padStart(2,'0')}`;
+        updates.month=mo;
+      }
+      batch.update(doc(db,up('expenses'),e.id),updates);
+    });
     await batch.commit();
     closeModal('inst-edit-modal');editInstGid=null;
-    setSyncStatus('online');showToast('할부 전체가 수정됐어요 ✓','success');
+    // allInstallments 갱신
+    await loadAllInstallments();
+    setSyncStatus('online');
+    showToast('할부 전체가 수정됐어요 ✓','success');
+    renderList();
   }catch(e){setSyncStatus('offline');showToast('수정 실패','error');}
 };
 
