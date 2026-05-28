@@ -517,6 +517,31 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   </div>
 </div>
 
+<!-- 할부 그룹 수정 모달 -->
+<div class="modal-bg" id="inst-edit-modal">
+  <div class="modal">
+    <div class="modal-title">💳 할부 수정 <button class="modal-close" onclick="closeModal('inst-edit-modal')">×</button></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px">전체 회차에 동일하게 적용돼요</div>
+    <div class="form-row">
+      <div class="form-group"><label>카테고리</label><select id="inst-edit-cat" onchange="rebuildSubCatSelect('inst-edit-subcat',this.value)"></select></div>
+      <div class="form-group"><label>세부 카테고리</label><select id="inst-edit-subcat"><option value="">선택 안 함</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>내용</label><input type="text" id="inst-edit-desc" placeholder="예: 갤럭시탭 구매"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>결제수단</label><select id="inst-edit-pay"></select></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);cursor:pointer">
+        <input type="checkbox" id="inst-edit-exclude" style="width:13px;height:13px;cursor:pointer;accent-color:var(--accent2)">
+        실적 제외
+      </label>
+    </div>
+    <button class="btn-primary" onclick="saveInstEdit()">수정 완료</button>
+  </div>
+</div>
+
 <!-- 삭제 확인 모달 -->
 <div class="modal-bg" id="confirm-modal">
   <div class="modal" style="max-width:320px;text-align:center">
@@ -679,8 +704,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <!-- 목록 -->
   <div class="panel" id="panel-list">
     <!-- 지출 유형 필터 -->
-    <div style="display:flex;gap:4px;margin-bottom:10px" id="list-type-tabs">
+    <div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap" id="list-type-tabs">
       <button class="range-tab active" onclick="setListType('expense',this)">💸 지출</button>
+      <button class="range-tab" onclick="setListType('installment',this)">💳 할부</button>
       <button class="range-tab" onclick="setListType('loan',this)">🏦 대출상환</button>
       <button class="range-tab" onclick="setListType('invest',this)">📈 투자</button>
     </div>
@@ -1810,6 +1836,66 @@ function renderList(){
     return;
   }
 
+  // 할부 목록
+  if(listType==='installment'){
+    fe.style.display='none';
+    // 그룹별로 묶기
+    const groups={};
+    expenses.filter(e=>e.installmentTotal).forEach(e=>{
+      const gid=e.installmentGroupId||e.id;
+      if(!groups[gid])groups[gid]=[];
+      groups[gid].push(e);
+    });
+    const groupList=Object.values(groups).sort((a,b)=>{
+      const aFirst=a.sort((x,y)=>x.installmentCurrent-y.installmentCurrent)[0];
+      const bFirst=b.sort((x,y)=>x.installmentCurrent-y.installmentCurrent)[0];
+      return (bFirst?.date||'').localeCompare(aFirst?.date||'');
+    });
+    if(!groupList.length){le.innerHTML=`<div class="empty-state"><div class="ic">💳</div>할부 내역이 없어요</div>`;return;}
+    groupList.forEach(group=>{
+      group.sort((a,b)=>a.installmentCurrent-b.installmentCurrent);
+      const first=group[0];
+      const last=group[group.length-1];
+      const cat=CATS.find(c=>c.id===first.cat)||CATS[CATS.length-1];
+      const subCatObj=first.subCat?findSubCat(first.cat,first.subCat):null;
+      const pay=payMethods.find(p=>p.id===first.payId);
+      const total=first.installmentTotal;
+      const paid=group.length;
+      const pct=Math.round(paid/total*100);
+      const gid=first.installmentGroupId||first.id;
+      // 완납 여부
+      const isDone=paid>=total;
+      const div=document.createElement('div');
+      div.className='expense-item';
+      div.style.cssText='flex-direction:column;align-items:stretch;gap:8px;padding:12px';
+      div.innerHTML=`
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="cat-dot" style="background:${cat.color}22">${cat.emoji}</div>
+          <div style="flex:1">
+            <div class="exp-desc">${first.desc||cat.name}
+              ${subCatObj?`<span style="font-size:9px;color:var(--text3);background:var(--surface2);padding:1px 5px;border-radius:99px">${subCatObj.name}</span>`:''}
+              ${isDone?'<span style="font-size:9px;background:rgba(200,240,74,.15);color:var(--accent);padding:2px 5px;border-radius:99px">완납</span>':''}
+              ${first.excludeStats?'<span style="font-size:9px;background:rgba(148,163,184,.15);color:var(--text3);padding:2px 5px;border-radius:99px;border:1px solid var(--border)">실적제외</span>':''}
+            </div>
+            <div class="exp-meta">${first.date} ~ ${last.date}${pay?` · ${pay.emoji||'💳'} ${pay.name}`:''}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:'Gmarket Sans',sans-serif;font-size:13px;font-weight:700;color:var(--text)">월 ${fmt(first.amount)}</div>
+            <div style="font-size:10px;color:var(--text3)">${paid}/${total}회 완료</div>
+          </div>
+        </div>
+        <div style="height:4px;background:var(--surface2);border-radius:99px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${isDone?'var(--accent)':cat.color};border-radius:99px"></div>
+        </div>
+        <div style="display:flex;gap:6px;justify-content:flex-end">
+          <button onclick="openInstEdit('${gid}')" style="background:none;border:1px solid var(--border);border-radius:7px;padding:4px 10px;color:var(--text2);font-size:11px;cursor:pointer">✏️ 수정</button>
+          <button onclick="deleteGroup('${gid}')" style="background:none;border:1px solid rgba(255,107,107,.4);border-radius:7px;padding:4px 10px;color:var(--accent2);font-size:11px;cursor:pointer">전체 삭제</button>
+        </div>`;
+      le.appendChild(div);
+    });
+    return;
+  }
+
   // 투자 목록
   if(listType==='invest'){
     fe.style.display='none';
@@ -1847,7 +1933,7 @@ function renderList(){
     chip.onclick=()=>{filterCat=c.id;renderList();};
     fe.appendChild(chip);
   });
-  let items=expenses.filter(e=>!e.isLoanPayment&&!e.isInvestment).sort((a,b)=>b.date.localeCompare(a.date));
+  let items=expenses.filter(e=>!e.isLoanPayment&&!e.isInvestment&&!e.installmentTotal).sort((a,b)=>b.date.localeCompare(a.date));
   if(filterCat!=='all')items=items.filter(e=>e.cat===filterCat);
   if(!items.length){le.innerHTML=`<div class="empty-state"><div class="ic">🗒️</div>지출 내역이 없어요</div>`;return;}
   items.forEach(e=>{
@@ -2515,7 +2601,7 @@ window.openColorPicker=function(i){
   COLORS.forEach(c=>{const d=document.createElement('div');d.className='color-opt'+(CATS[i].color===c?' sel':'');d.style.background=c;d.onclick=()=>{CATS[i].color=c;closeModal('color-modal');renderCatManage();};p.appendChild(d);});
   document.getElementById('color-modal').classList.add('open');
 };
-['emoji-modal','color-modal','edit-modal','cal-modal','confirm-modal','loan-edit-modal','inv-edit-modal','port-edit-modal','minus-edit-modal'].forEach(id=>{
+['emoji-modal','color-modal','edit-modal','cal-modal','confirm-modal','loan-edit-modal','inv-edit-modal','port-edit-modal','minus-edit-modal','inst-edit-modal'].forEach(id=>{
   document.getElementById(id).addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal(id);});
 });
 
@@ -3499,6 +3585,40 @@ window.deleteMinusAccount=async function(id){
     catch(e){showToast('삭제 실패','error');}
   });
 };
+// 할부 그룹 수정
+let editInstGid=null;
+window.openInstEdit=function(gid){
+  editInstGid=gid;
+  const group=expenses.filter(e=>(e.installmentGroupId===gid||e.id===gid)&&e.installmentTotal);
+  if(!group.length)return;
+  const first=group.sort((a,b)=>a.installmentCurrent-b.installmentCurrent)[0];
+  rebuildCatSelects();rebuildPaySelects();
+  const catSel=document.getElementById('inst-edit-cat');if(catSel)catSel.value=first.cat||'';
+  rebuildSubCatSelect('inst-edit-subcat',first.cat||'');
+  const subSel=document.getElementById('inst-edit-subcat');if(subSel)subSel.value=first.subCat||'';
+  const descEl=document.getElementById('inst-edit-desc');if(descEl)descEl.value=first.desc||'';
+  const paySel=document.getElementById('inst-edit-pay');if(paySel)paySel.value=first.payId||'';
+  const exclEl=document.getElementById('inst-edit-exclude');if(exclEl)exclEl.checked=first.excludeStats||false;
+  document.getElementById('inst-edit-modal').classList.add('open');
+};
+window.saveInstEdit=async function(){
+  if(!editInstGid)return;
+  const cat=document.getElementById('inst-edit-cat').value;
+  const subCat=document.getElementById('inst-edit-subcat')?.value||'';
+  const desc=document.getElementById('inst-edit-desc').value.trim();
+  const payId=document.getElementById('inst-edit-pay').value||'';
+  const excludeStats=document.getElementById('inst-edit-exclude')?.checked||false;
+  setSyncStatus('syncing');
+  try{
+    const group=expenses.filter(e=>(e.installmentGroupId===editInstGid||e.id===editInstGid)&&e.installmentTotal);
+    const batch=writeBatch(db);
+    group.forEach(e=>batch.update(doc(db,up('expenses'),e.id),{cat,subCat,desc,payId,excludeStats}));
+    await batch.commit();
+    closeModal('inst-edit-modal');editInstGid=null;
+    setSyncStatus('online');showToast('할부 전체가 수정됐어요 ✓','success');
+  }catch(e){setSyncStatus('offline');showToast('수정 실패','error');}
+};
+
 async function renderBackup(){
   const wrap=document.getElementById('backup-wrap');
   if(!wrap)return;
