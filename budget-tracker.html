@@ -2536,12 +2536,6 @@ function renderCatManage(){
     });
   });
 }
-window.addSubCat=function(i){
-  if(!CATS[i].subs)CATS[i].subs=[];
-  const newId=CATS[i].id+'_'+uid().slice(0,6);
-  CATS[i].subs.push({id:newId,name:'새 세부 카테고리'});
-  renderCatManage();
-};
 window.deleteSubCat=function(i,j){
   CATS[i].subs.splice(j,1);
   renderCatManage();
@@ -2944,40 +2938,6 @@ window.savePayMethods=async function(){
     setSyncStatus('online');
     showToast('결제수단이 저장됐어요 ✓','success');
   }catch(e){setSyncStatus('offline');showToast('저장 실패: '+e.message,'error');}
-};
-
-window.deletePayMethod=async function(id){
-  const p=payMethods.find(x=>x.id===id);
-  showConfirm(`"${p?.name||'결제수단'}"을 삭제할까요?`,async()=>{
-    try{await deleteDoc(doc(db,up('payMethods'),id));showToast('삭제됐어요','');}
-    catch(e){showToast('삭제 실패','error');}
-  });
-};
-
-window.updatePayMethod=async function(id,field,val){
-  try{
-    await updateDoc(doc(db,up('payMethods'),id),{[field]:field==='goal'?(parseInt(val)||0):val});
-  }catch(e){showToast('저장 실패','error');}
-};
-
-// 결제수단 이모지/색상 피커
-window.openPayEmojiPicker=function(id){
-  const p=document.getElementById('emoji-picker');p.innerHTML='';
-  PAY_EMOJIS.concat(['💳','🏦','💵','📱','🪙','💴','🏧','💰','🎴','🔖','⭐','🌟']).forEach(e=>{
-    const s=document.createElement('span');s.className='emoji-opt';s.textContent=e;
-    s.onclick=()=>{updatePayMethod(id,'emoji',e);closeModal('emoji-modal');};
-    p.appendChild(s);
-  });
-  document.getElementById('emoji-modal').classList.add('open');
-};
-window.openPayColorPicker=function(id){
-  const p=document.getElementById('color-picker');p.innerHTML='';
-  COLORS.forEach(c=>{
-    const d=document.createElement('div');d.className='color-opt';d.style.background=c;
-    d.onclick=()=>{updatePayMethod(id,'color',c);closeModal('color-modal');};
-    p.appendChild(d);
-  });
-  document.getElementById('color-modal').classList.add('open');
 };
 
 // ── 자산 탭 ───────────────────────────────────────────────
@@ -3592,13 +3552,38 @@ window.openInstEdit=function(gid){
   const group=expenses.filter(e=>(e.installmentGroupId===gid||e.id===gid)&&e.installmentTotal);
   if(!group.length)return;
   const first=group.sort((a,b)=>a.installmentCurrent-b.installmentCurrent)[0];
-  rebuildCatSelects();rebuildPaySelects();
-  const catSel=document.getElementById('inst-edit-cat');if(catSel)catSel.value=first.cat||'';
+
+  // 카테고리 직접 채우기
+  const catSel=document.getElementById('inst-edit-cat');
+  if(catSel){
+    catSel.innerHTML='';
+    CATS.forEach(c=>{
+      const o=document.createElement('option');
+      o.value=c.id;o.textContent=`${c.emoji} ${c.name}`;
+      catSel.appendChild(o);
+    });
+    catSel.value=first.cat||'';
+  }
   rebuildSubCatSelect('inst-edit-subcat',first.cat||'');
-  const subSel=document.getElementById('inst-edit-subcat');if(subSel)subSel.value=first.subCat||'';
-  const descEl=document.getElementById('inst-edit-desc');if(descEl)descEl.value=first.desc||'';
-  const paySel=document.getElementById('inst-edit-pay');if(paySel)paySel.value=first.payId||'';
-  const exclEl=document.getElementById('inst-edit-exclude');if(exclEl)exclEl.checked=first.excludeStats||false;
+  const subSel=document.getElementById('inst-edit-subcat');
+  if(subSel)subSel.value=first.subCat||'';
+
+  // 결제수단 직접 채우기
+  const paySel=document.getElementById('inst-edit-pay');
+  if(paySel){
+    paySel.innerHTML='<option value="">선택 안 함</option>';
+    payMethods.forEach(p=>{
+      const o=document.createElement('option');
+      o.value=p.id;o.textContent=`${p.emoji||'💳'} ${p.name}`;
+      paySel.appendChild(o);
+    });
+    paySel.value=first.payId||'';
+  }
+
+  const descEl=document.getElementById('inst-edit-desc');
+  if(descEl)descEl.value=first.desc||'';
+  const exclEl=document.getElementById('inst-edit-exclude');
+  if(exclEl)exclEl.checked=first.excludeStats||false;
   document.getElementById('inst-edit-modal').classList.add('open');
 };
 window.saveInstEdit=async function(){
@@ -4199,16 +4184,6 @@ window.addPortItem=async function(){
     showToast(`${name} 종목이 추가됐어요 ✓`,'success');
     setSyncStatus('online');
   }catch(e){showToast('저장 실패','error');setSyncStatus('offline');}
-};
-
-window.openPortEdit=async function(id){
-  const p=portfolio.find(x=>x.id===id);if(!p)return;
-  const price=prompt(`${p.name} 현재가 입력 (원):`,p.currentPrice||'');
-  if(price===null)return;
-  try{
-    await updateDoc(doc(db,up('portfolio'),id),{currentPrice:parseFloat(price)||0});
-    showToast('현재가가 업데이트됐어요 ✓','success');
-  }catch(e){showToast('저장 실패','error');}
 };
 
 window.deletePortItem=async function(id){
