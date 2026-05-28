@@ -1801,12 +1801,23 @@ function renderAll(){
 }
 
 let listType='expense';
+let allInstallments=[]; // 할부 전체 데이터 (월 구독과 별개)
+
+async function loadAllInstallments(){
+  const snap=await getDocs(query(collection(db,up('expenses')),where('installmentTotal','>',0)));
+  allInstallments=snap.docs.map(d=>({id:d.id,...d.data()}));
+}
+
 window.setListType=function(type,btn){
   listType=type;
   document.querySelectorAll('#list-type-tabs .range-tab').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   filterCat='all';
-  renderList();
+  if(type==='installment'){
+    loadAllInstallments().then(()=>renderList());
+  } else {
+    renderList();
+  }
 };
 function renderList(){
   if(isEditing())return;
@@ -1839,16 +1850,16 @@ function renderList(){
   // 할부 목록
   if(listType==='installment'){
     fe.style.display='none';
-    // 그룹별로 묶기
+    // 그룹별로 묶기 (allInstallments 사용)
     const groups={};
-    expenses.filter(e=>e.installmentTotal).forEach(e=>{
+    allInstallments.forEach(e=>{
       const gid=e.installmentGroupId||e.id;
       if(!groups[gid])groups[gid]=[];
       groups[gid].push(e);
     });
     const groupList=Object.values(groups).sort((a,b)=>{
-      const aFirst=a.sort((x,y)=>x.installmentCurrent-y.installmentCurrent)[0];
-      const bFirst=b.sort((x,y)=>x.installmentCurrent-y.installmentCurrent)[0];
+      const aFirst=a.slice().sort((x,y)=>x.installmentCurrent-y.installmentCurrent)[0];
+      const bFirst=b.slice().sort((x,y)=>x.installmentCurrent-y.installmentCurrent)[0];
       return (bFirst?.date||'').localeCompare(aFirst?.date||'');
     });
     if(!groupList.length){le.innerHTML=`<div class="empty-state"><div class="ic">💳</div>할부 내역이 없어요</div>`;return;}
@@ -1863,14 +1874,16 @@ function renderList(){
       const paid=group.length;
       const pct=Math.round(paid/total*100);
       const gid=first.installmentGroupId||first.id;
-      // 완납 여부
       const isDone=paid>=total;
+      // 이번 달 해당 회차
+      const thisMonthItem=group.find(e=>e.month===curMonth);
+      const currentNum=thisMonthItem?.installmentCurrent||paid;
       const div=document.createElement('div');
       div.className='expense-item';
       div.style.cssText='flex-direction:column;align-items:stretch;gap:8px;padding:12px';
       div.innerHTML=`
         <div style="display:flex;align-items:center;gap:10px">
-          <div class="cat-dot" style="background:${cat.color}22">${cat.emoji}</div>
+          <div class="cat-dot" style="background:${cat.color}22;font-size:18px">${cat.emoji}</div>
           <div style="flex:1">
             <div class="exp-desc">${first.desc||cat.name}
               ${subCatObj?`<span style="font-size:9px;color:var(--text3);background:var(--surface2);padding:1px 5px;border-radius:99px">${subCatObj.name}</span>`:''}
@@ -1878,10 +1891,11 @@ function renderList(){
               ${first.excludeStats?'<span style="font-size:9px;background:rgba(148,163,184,.15);color:var(--text3);padding:2px 5px;border-radius:99px;border:1px solid var(--border)">실적제외</span>':''}
             </div>
             <div class="exp-meta">${first.date} ~ ${last.date}${pay?` · ${pay.emoji||'💳'} ${pay.name}`:''}</div>
+            <div class="exp-meta" style="color:var(--accent3)">${cat.name}${subCatObj?` > ${subCatObj.name}`:''}</div>
           </div>
           <div style="text-align:right">
             <div style="font-family:'Gmarket Sans',sans-serif;font-size:13px;font-weight:700;color:var(--text)">월 ${fmt(first.amount)}</div>
-            <div style="font-size:10px;color:var(--text3)">${paid}/${total}회 완료</div>
+            <div style="font-size:10px;color:var(--text3)">${currentNum}/${total}회 · 총 ${fmt(first.amount*total)}</div>
           </div>
         </div>
         <div style="height:4px;background:var(--surface2);border-radius:99px;overflow:hidden">
@@ -3549,7 +3563,7 @@ window.deleteMinusAccount=async function(id){
 let editInstGid=null;
 window.openInstEdit=function(gid){
   editInstGid=gid;
-  const group=expenses.filter(e=>(e.installmentGroupId===gid||e.id===gid)&&e.installmentTotal);
+  const group=allInstallments.filter(e=>(e.installmentGroupId===gid||e.id===gid)&&e.installmentTotal);
   if(!group.length)return;
   const first=group.sort((a,b)=>a.installmentCurrent-b.installmentCurrent)[0];
 
@@ -3595,7 +3609,7 @@ window.saveInstEdit=async function(){
   const excludeStats=document.getElementById('inst-edit-exclude')?.checked||false;
   setSyncStatus('syncing');
   try{
-    const group=expenses.filter(e=>(e.installmentGroupId===editInstGid||e.id===editInstGid)&&e.installmentTotal);
+    const group=allInstallments.filter(e=>(e.installmentGroupId===editInstGid||e.id===editInstGid)&&e.installmentTotal);
     const batch=writeBatch(db);
     group.forEach(e=>batch.update(doc(db,up('expenses'),e.id),{cat,subCat,desc,payId,excludeStats}));
     await batch.commit();
