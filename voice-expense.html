@@ -442,6 +442,7 @@
     <div class="header-title">🎙️ 가계부 음성입력</div>
     <div class="header-user">
       <span id="user-name"></span>
+      <button class="logout-btn" onclick="showApiKeyModal()" style="margin-right:4px">🔑</button>
       <button class="logout-btn" onclick="doLogout()">로그아웃</button>
     </div>
   </div>
@@ -507,6 +508,24 @@
   </div>
 </div>
 
+<!-- API KEY MODAL -->
+<div id="apikey-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:200;align-items:center;justify-content:center;padding:24px;">
+  <div style="background:#13131a;border:1px solid rgba(255,255,255,0.07);border-radius:20px;padding:28px;width:100%;max-width:380px;">
+    <div style="font-size:16px;font-weight:700;margin-bottom:8px;">🔑 API 키 설정</div>
+    <div style="font-size:13px;color:#8888aa;margin-bottom:20px;line-height:1.6;">
+      console.anthropic.com에서 발급받은 키를 입력하세요.<br>키는 이 기기에만 저장되고 외부로 전송되지 않아요.
+    </div>
+    <input id="apikey-input" type="password"
+      placeholder="sk-ant-..."
+      style="width:100%;background:#1c1c28;border:1px solid rgba(255,255,255,0.1);border-radius:10px;padding:12px 14px;color:#e8e8f0;font-size:14px;font-family:'JetBrains Mono',monospace;outline:none;margin-bottom:16px;">
+    <div style="display:flex;gap:10px;">
+      <button onclick="closeApiKeyModal()" style="flex:1;padding:12px;background:#1c1c28;border:1px solid rgba(255,255,255,0.07);border-radius:10px;color:#8888aa;font-size:14px;font-family:'Noto Sans KR',sans-serif;cursor:pointer;">취소</button>
+      <button onclick="saveApiKey()" style="flex:2;padding:12px;background:#6c6fff;border:none;border-radius:10px;color:#fff;font-size:14px;font-weight:700;font-family:'Noto Sans KR',sans-serif;cursor:pointer;">저장</button>
+    </div>
+    <div id="apikey-status" style="font-size:12px;color:#8888aa;margin-top:12px;text-align:center;"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -538,6 +557,29 @@ let recognition = null;
 let isListening = false;
 let parsedData = null;
 
+// ─── API KEY MODAL ───────────────────────────────────
+window.showApiKeyModal = () => {
+  const modal = document.getElementById('apikey-modal');
+  modal.style.display = 'flex';
+  const existing = localStorage.getItem('anthropic_api_key');
+  const input = document.getElementById('apikey-input');
+  input.value = existing || '';
+  const status = document.getElementById('apikey-status');
+  status.textContent = existing ? '✓ 저장된 키 있음' : '키가 없어요';
+  status.style.color = existing ? '#34d399' : '#8888aa';
+  setTimeout(() => input.focus(), 100);
+};
+window.closeApiKeyModal = () => {
+  document.getElementById('apikey-modal').style.display = 'none';
+};
+window.saveApiKey = () => {
+  const key = document.getElementById('apikey-input').value.trim();
+  if (!key.startsWith('sk-ant-')) { showToast('올바른 키 형식이 아니에요 (sk-ant-로 시작해야 해요)', 'error'); return; }
+  localStorage.setItem('anthropic_api_key', key);
+  closeApiKeyModal();
+  showToast('✓ API 키 저장됨', 'success');
+};
+
 // ─── AUTH ───────────────────────────────────────────
 window.doLogin = async () => {
   try { await signInWithPopup(auth, provider); }
@@ -557,6 +599,7 @@ onAuthStateChanged(auth, async user => {
     await loadUserData();
     initSpeech();
     loadHistory();
+    if (!localStorage.getItem('anthropic_api_key')) setTimeout(showApiKeyModal, 600);
   } else {
     document.getElementById('login-screen').style.display = 'flex';
     document.getElementById('main-screen').style.display = 'none';
@@ -747,9 +790,11 @@ async function processText(text) {
 - 날짜 언급 없으면 오늘 날짜`;
 
   try {
+    const apiKey = localStorage.getItem('anthropic_api_key');
+    if (!apiKey) { showApiKeyModal(); setUIState('idle'); document.getElementById('hint-text').style.display=''; return; }
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 500,
