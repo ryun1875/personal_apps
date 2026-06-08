@@ -802,12 +802,16 @@ async function processText(text) {
       })
     });
     const data = await res.json();
+    if (!res.ok) {
+      showToast('API 오류: ' + (data.error?.message || res.status), 'error');
+      setUIState('idle'); document.getElementById('hint-text').style.display=''; return;
+    }
     const raw = data.content?.[0]?.text || '';
     const cleaned = raw.replace(/```json|```/g, '').trim();
     parsedData = JSON.parse(cleaned);
     showResult(parsedData);
   } catch(e) {
-    showToast('파싱 실패, 직접 입력해주세요', 'error');
+    showToast('오류: ' + e.message, 'error');
     setUIState('idle');
     document.getElementById('hint-text').style.display = '';
   }
