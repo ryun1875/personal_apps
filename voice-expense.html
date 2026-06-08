@@ -442,7 +442,6 @@
     <div class="header-title">🎙️ 가계부 음성입력</div>
     <div class="header-user">
       <span id="user-name"></span>
-      <button class="logout-btn" onclick="showApiKeyModal()" style="margin-right:4px">🔑</button>
       <button class="logout-btn" onclick="doLogout()">로그아웃</button>
     </div>
   </div>
@@ -755,66 +754,81 @@ function setUIState(state) {
   }
 }
 
-// ─── CLAUDE API PARSE ────────────────────────────────
-async function processText(text) {
+// ─── LOCAL PARSE (API 없이) ───────────────────────────
+function processText(text) {
   setUIState('processing');
   document.getElementById('hint-text').style.display = 'none';
 
-  const catList = categories.map(c => `${c.name}(${(c.subs||[]).join('/')})`).join(', ');
-  const methodList = paymentMethods.map(m => m.name).join(', ');
-  const today = new Date().toISOString().slice(0, 10);
-
-  const prompt = `사용자의 음성 지출 입력을 파싱해주세요.
-
-입력: "${text}"
-
-사용 가능한 카테고리(세부분류): ${catList || '정보없음'}
-사용 가능한 결제수단: ${methodList || '정보없음'}
-오늘 날짜: ${today}
-
-다음 JSON 형식으로만 응답하세요 (마크다운 없이 순수 JSON):
-{
-  "amount": 숫자(원 단위, 인식 못하면 0),
-  "category": "가장 적합한 카테고리명",
-  "subCategory": "세부분류명 또는 빈문자열",
-  "paymentMethod": "결제수단명 또는 빈문자열",
-  "memo": "메모 또는 빈문자열",
-  "date": "YYYY-MM-DD",
-  "warnings": ["주의사항 배열, 없으면 빈배열"]
-}
-
-규칙:
-- amount는 반드시 숫자만
-- 카테고리는 목록에서 가장 유사한 것으로
-- 결제수단은 목록에서 유사한 것으로, 없으면 빈문자열
-- 날짜 언급 없으면 오늘 날짜`;
-
   try {
-    const apiKey = localStorage.getItem('anthropic_api_key');
-    if (!apiKey) { showApiKeyModal(); setUIState('idle'); document.getElementById('hint-text').style.display=''; return; }
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      showToast('API 오류: ' + (data.error?.message || res.status), 'error');
-      setUIState('idle'); document.getElementById('hint-text').style.display=''; return;
+    const today = new Date().toISOString().slice(0, 10);
+
+    // 금액 파싱: 1만3천, 13000원, 1.3만 등
+    let amount = 0;
+    const amtText = text.replace(/,/g, '');
+    const manMatch = amtText.match(/(\d+\.?\d*)\s*만\s*(\d+)?\s*천?/);
+    const manOnly = amtText.match(/(\d+\.?\d*)\s*만/);
+    const cheonMatch = amtText.match(/(\d+)\s*천/);
+    const numMatch = amtText.match(/(\d+)/g);
+
+    if (manMatch) {
+      amount = Math.round(parseFloat(manMatch[1]) * 10000 + (parseInt(manMatch[2] || 0) * 1000));
+    } else if (manOnly) {
+      amount = Math.round(parseFloat(manOnly[1]) * 10000);
+    } else if (cheonMatch) {
+      amount = parseInt(cheonMatch[1]) * 1000;
+    } else if (numMatch) {
+      // 숫자 중 가장 큰 것을 금액으로
+      amount = Math.max(...numMatch.map(Number));
     }
-    const raw = data.content?.[0]?.text || '';
-    const cleaned = raw.replace(/```json|```/g, '').trim();
-    parsedData = JSON.parse(cleaned);
+
+    // 카테고리 매칭: 카테고리명과 텍스트 유사도 비교
+    let category = categories[0]?.name || '';
+    let subCategory = '';
+    let bestScore = 0;
+    for (const cat of categories) {
+      const score = fuzzyScore(text, cat.name);
+      if (score > bestScore) { bestScore = score; category = cat.name; subCategory = ''; }
+      for (const sub of (cat.subs || [])) {
+        const subScore = fuzzyScore(text, sub);
+        if (subScore > bestScore) { bestScore = subScore; category = cat.name; subCategory = sub; }
+      }
+    }
+
+    // 결제수단 매칭
+    let paymentMethod = '';
+    let pmBest = 0;
+    for (const pm of paymentMethods) {
+      const score = fuzzyScore(text, pm.name);
+      if (score > pmBest) { pmBest = score; paymentMethod = pm.name; }
+    }
+    // 현금 키워드
+    if (/현금|cash/i.test(text)) paymentMethod = '';
+
+    const warnings = [];
+    if (amount === 0) warnings.push('금액을 인식하지 못했어요. 직접 수정해주세요.');
+    if (bestScore < 2) warnings.push('카테고리가 불확실해요. 확인해주세요.');
+
+    parsedData = { amount, category, subCategory, paymentMethod, memo: '', date: today, warnings };
     showResult(parsedData);
+
   } catch(e) {
     showToast('오류: ' + e.message, 'error');
     setUIState('idle');
     document.getElementById('hint-text').style.display = '';
   }
+}
+
+// 단어 포함 여부로 점수 계산
+function fuzzyScore(text, keyword) {
+  if (!keyword) return 0;
+  let score = 0;
+  // 전체 포함
+  if (text.includes(keyword)) return keyword.length * 3;
+  // 글자 단위 부분 매칭
+  for (let i = 0; i < keyword.length; i++) {
+    if (text.includes(keyword[i])) score++;
+  }
+  return score;
 }
 
 function showResult(data) {
