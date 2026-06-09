@@ -497,26 +497,6 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   </div>
 </div>
 
-<!-- 대출 납입 수정 모달 -->
-<div class="modal-bg" id="lp-edit-modal">
-  <div class="modal">
-    <div class="modal-title">납입 기록 수정 <button class="modal-close" onclick="closeModal('lp-edit-modal')">×</button></div>
-    <div style="display:flex;gap:6px;margin-bottom:12px">
-      <button id="lpe-type-principal" onclick="setLpEditType('principal')" style="flex:1;padding:7px;border-radius:9px;border:1px solid var(--accent3);background:rgba(107,181,255,.15);color:var(--accent3);font-size:12px;font-weight:700;cursor:pointer;font-family:'Noto Sans KR',sans-serif">🏦 원금</button>
-      <button id="lpe-type-interest" onclick="setLpEditType('interest')" style="flex:1;padding:7px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer;font-family:'Noto Sans KR',sans-serif">💸 이자</button>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>날짜</label><input type="date" id="lpe-date"></div>
-      <div class="form-group"><label>금액 (원)</label><input type="number" id="lpe-amount"></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>내용</label><input type="text" id="lpe-desc" placeholder="예: 주담대 6월 납입"></div>
-      <div class="form-group"><label>거래처</label><input type="text" id="lpe-broker"></div>
-    </div>
-    <button class="btn-primary" onclick="saveLpEdit()">수정 완료</button>
-  </div>
-</div>
-
 <!-- 할부 그룹 수정 모달 -->
 <div class="modal-bg" id="inst-edit-modal">
   <div class="modal">
@@ -1432,7 +1412,7 @@ function isEditing(){
 function getCalcSettings(){return JSON.parse(localStorage.getItem('calc_settings')||'{}');}
 function saveCalcSettings(){
   const cs=getCalcSettings();
-  cs.manualAmt=parseInt(document.getElementById('calc-amount')?.value)||0;
+  cs.manualAmt=Math.round(Number(document.getElementById('calc-amount')?.value))||0;
   cs.rate=parseFloat(document.getElementById('calc-rate')?.value)||0;
   cs.period=parseInt(document.getElementById('calc-period')?.value)||12;
   cs.loanAmt=parseInt(document.getElementById('calc-loan-amt')?.value)||0;
@@ -1469,7 +1449,7 @@ function getCalcAmount(){
   const tS=expenses.reduce((s,e)=>s+e.amount,0);
   const tB=Object.values(budgets).reduce((s,v)=>s+(Number(v)||0),0);
   const savedAmt=tB>tS?tB-tS:0;
-  if(cs.src==='manual')return parseInt(document.getElementById('calc-amount')?.value)||cs.manualAmt||0;
+  if(cs.src==='manual')return Math.round(Number(document.getElementById('calc-amount')?.value))||cs.manualAmt||0;
   return savedAmt;
 }
 
@@ -1814,11 +1794,10 @@ function renderAll(){
   if(isEditing())return;
   const[y,m]=curMonth.split('-').map(Number);
   document.getElementById('month-label').textContent=`${y}년 ${m}월`;
-  updateSummary();
+  updateSummary(); // 내부에서 renderHome 호출됨
   renderList();renderBudget();renderCalendar();
   if(document.getElementById('panel-chart').classList.contains('active'))renderChart();
   if(document.getElementById('panel-payment').classList.contains('active'))renderPayment();
-  if(document.getElementById('panel-home').classList.contains('active'))renderHome();
 }
 
 let listType='expense';
@@ -2840,7 +2819,7 @@ window.deleteGroup=async function(gid){
 };
 
 window.setBudget=function(catId,val){
-  budgets[catId]=parseInt(val)||0;
+  budgets[catId]=Math.round(Number(val))||0;
   // 게이지/요약만 업데이트 (renderBudget 전체 재렌더 안 함)
   updateSummary();
   clearTimeout(budgetTimer);
@@ -3406,7 +3385,7 @@ window.toggleAssetForm=function(id,btn){
 window.addInvestment=async function(){
   const name=document.getElementById('inv-name').value.trim();
   const type=document.getElementById('inv-type').value;
-  const amount=parseInt(document.getElementById('inv-amount').value)||0;
+  const amount=Math.round(Number(document.getElementById('inv-amount').value))||0;
   const date=document.getElementById('inv-date').value;
   const broker=document.getElementById('inv-broker-asset')?.value.trim()||'';
   if(!name){showToast('이름을 입력해주세요','warning');return;}
@@ -3506,7 +3485,7 @@ window.saveLoanEdit=async function(){
   if(!editLoanId)return;
   const name=document.getElementById('le-name').value.trim();
   const rate=parseFloat(document.getElementById('le-rate').value)||0;
-  const principal=parseInt(document.getElementById('le-principal').value)||0;
+  const principal=Math.round(Number(document.getElementById('le-principal').value))||0;
   const start=document.getElementById('le-start').value;
   const maturity=document.getElementById('le-maturity').value;
   if(!name){showToast('대출명을 입력해주세요','warning');return;}
@@ -3621,8 +3600,8 @@ window.saveMinusEdit=async function(){
   if(!editMinusId)return;
   const name=document.getElementById('me-name').value.trim();
   const rate=parseFloat(document.getElementById('me-rate').value)||0;
-  const limit=parseInt(document.getElementById('me-limit').value)||0;
-  const used=parseInt(document.getElementById('me-used').value)||0;
+  const limit=Math.round(Number(document.getElementById('me-limit').value))||0;
+  const used=Math.round(Number(document.getElementById('me-used').value))||0;
   const bank=document.getElementById('me-bank').value.trim();
   try{
     await updateDoc(doc(db,up('minusAccounts'),editMinusId),{name,rate,limit,used,bank});
