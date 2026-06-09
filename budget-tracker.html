@@ -580,9 +580,25 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     </div>
   </div>
 
-  <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 16px;margin-bottom:8px">
-    <span style="font-size:12px;color:var(--text2)">이번 달 지출</span>
-    <span style="font-family:'Gmarket Sans',sans-serif;font-weight:700;font-size:18px;color:var(--accent2)" id="total-spent">0원</span>
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 16px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <span style="font-size:12px;color:var(--text2)">이번 달 지출</span>
+      <span style="font-family:'Gmarket Sans',sans-serif;font-weight:700;font-size:18px;color:var(--accent2)" id="total-spent">0원</span>
+    </div>
+    <div id="spend-breakdown" style="display:none;border-top:1px solid var(--border);padding-top:6px;margin-top:2px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+        <span style="color:var(--text3)">🔒 고정비</span>
+        <span id="spent-fixed" style="color:var(--text2)">0원</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+        <span style="color:var(--text3)">💸 변동비</span>
+        <span id="spent-variable" style="color:var(--accent2);font-weight:700">0원</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px">
+        <span style="color:var(--text3)">🏪 매장 지출</span>
+        <span id="spent-store" style="color:#fb923c">0원</span>
+      </div>
+    </div>
   </div>
   <div class="alert-banner" id="alert-banner">⚠️ 예산의 80%를 초과했어요! 소비를 줄여보세요.</div>
 
@@ -1417,8 +1433,43 @@ window.toggleInstallment=function(){
 
 // ── 렌더 ──────────────────────────────────────────────────
 function updateSummary(){
-  const tS=expenses.reduce((s,e)=>s+e.amount,0);
+  const normalExp=expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment);
+  const tS=normalExp.reduce((s,e)=>s+e.amount,0);
   document.getElementById('total-spent').textContent=fmt(tS);
+
+  // 매장 카테고리 ID 확인
+  const storeCatId=CATS.find(c=>c.id==='store')?.id||'store';
+
+  // 매장 지출
+  const storeExp=normalExp.filter(e=>e.cat===storeCatId);
+  // 매장 외 지출
+  const nonStoreExp=normalExp.filter(e=>e.cat!==storeCatId);
+
+  // 고정비 판단 (매장 제외)
+  const isFixed=e=>{
+    if(e.isRecurring)return true;
+    const cat=CATS.find(c=>c.id===e.cat);
+    if(cat?.isFixed)return true;
+    const sub=cat?.subs?.find(s=>s.id===e.subCat);
+    return sub?.isFixed||false;
+  };
+
+  const fixedExp=nonStoreExp.filter(isFixed);
+  const variableExp=nonStoreExp.filter(e=>!isFixed(e));
+  const storeTotal=storeExp.reduce((s,e)=>s+e.amount,0);
+  const fixedTotal=fixedExp.reduce((s,e)=>s+e.amount,0);
+  const variableTotal=variableExp.reduce((s,e)=>s+e.amount,0);
+
+  const breakdown=document.getElementById('spend-breakdown');
+  const hasBreakdown=storeTotal>0||fixedTotal>0;
+  if(breakdown)breakdown.style.display=hasBreakdown?'block':'none';
+  const spentFixed=document.getElementById('spent-fixed');
+  const spentVar=document.getElementById('spent-variable');
+  const spentStore=document.getElementById('spent-store');
+  if(spentFixed)spentFixed.textContent=fmt(fixedTotal);
+  if(spentVar)spentVar.textContent=fmt(variableTotal);
+  if(spentStore)spentStore.textContent=fmt(storeTotal);
+
   const tB=Object.values(budgets).reduce((s,v)=>s+(Number(v)||0),0);
   const pct=tB>0?Math.min(Math.round(tS/tB*100),100):0;
   document.getElementById('alert-banner').classList.toggle('show',pct>=80&&tB>0);
@@ -1804,6 +1855,12 @@ function renderAll(){
 let listType='expense';
 let allInstallments=[]; // 할부 전체 데이터 (월 구독과 별개)
 
+window.toggleDoneInst=function(){
+  const le=document.getElementById('expense-list');
+  le.dataset.showDone=le.dataset.showDone==='true'?'false':'true';
+  renderList();
+};
+
 async function loadAllInstallments(){
   // installmentTotal이 있는 지출 전체 로드
   const snap=await getDocs(query(collection(db,up('expenses')),where('installmentGroupId','!=','')));
@@ -1852,7 +1909,7 @@ function renderList(){
   // 할부 목록
   if(listType==='installment'){
     fe.style.display='none';
-    // 그룹별로 묶기 (allInstallments 사용)
+    // 그룹별로 묶기
     const groups={};
     allInstallments.forEach(e=>{
       const gid=e.installmentGroupId||e.id;
@@ -1865,7 +1922,40 @@ function renderList(){
       return (bFirst?.date||'').localeCompare(aFirst?.date||'');
     });
     if(!groupList.length){le.innerHTML=`<div class="empty-state"><div class="ic">💳</div>할부 내역이 없어요</div>`;return;}
+
+    // 완납 여부 판단: 마지막 회차 month가 현재 달 이전이면 완납으로 간주
+    const activeGroups=[];
+    const doneGroups=[];
     groupList.forEach(group=>{
+      group.sort((a,b)=>a.installmentCurrent-b.installmentCurrent);
+      const total=group[0].installmentTotal;
+      const paid=group.length;
+      // 완납: 실제 회차 수가 total과 같고, 마지막 회차 month가 curMonth 이하
+      const last=group[group.length-1];
+      const isDone=paid>=total&&(last.month||'')<curMonth;
+      if(isDone)doneGroups.push(group);
+      else activeGroups.push(group);
+    });
+
+    // 완납 표시 토글
+    const showDone=le.dataset.showDone==='true';
+    const toggleDiv=document.createElement('div');
+    toggleDiv.style.cssText='display:flex;justify-content:flex-end;margin-bottom:8px';
+    toggleDiv.innerHTML=`<button onclick="toggleDoneInst()" style="background:none;border:1px solid var(--border);border-radius:7px;padding:4px 10px;color:var(--text3);font-size:11px;cursor:pointer">
+      ${showDone?'✅ 완납 숨기기':'완납 포함 보기 ('+doneGroups.length+'개)'}
+    </button>`;
+    le.appendChild(toggleDiv);
+
+    const toShow=showDone?[...activeGroups,...doneGroups]:activeGroups;
+    if(!toShow.length){
+      const empty=document.createElement('div');
+      empty.className='empty-state';
+      empty.innerHTML='<div class="ic">💳</div>진행 중인 할부가 없어요';
+      le.appendChild(empty);
+      return;
+    }
+
+    toShow.forEach(group=>{
       group.sort((a,b)=>a.installmentCurrent-b.installmentCurrent);
       const first=group[0];
       const last=group[group.length-1];
@@ -1874,22 +1964,23 @@ function renderList(){
       const pay=payMethods.find(p=>p.id===first.payId);
       const total=first.installmentTotal;
       const paid=group.length;
-      const pct=Math.round(paid/total*100);
+      const pct=Math.min(Math.round(paid/total*100),100);
       const gid=first.installmentGroupId||first.id;
-      const isDone=paid>=total;
-      // 이번 달 해당 회차
+      const isDone=paid>=total&&(last.month||'')<curMonth;
       const thisMonthItem=group.find(e=>e.month===curMonth);
       const currentNum=thisMonthItem?.installmentCurrent||paid;
+      // 총액: 모든 회차 금액 합산
+      const totalAmt=group.reduce((s,e)=>s+(Number(e.amount)||0),0);
       const div=document.createElement('div');
       div.className='expense-item';
-      div.style.cssText='flex-direction:column;align-items:stretch;gap:8px;padding:12px';
+      div.style.cssText=`flex-direction:column;align-items:stretch;gap:8px;padding:12px${isDone?';opacity:0.6':''}`;
       div.innerHTML=`
         <div style="display:flex;align-items:center;gap:10px">
           <div class="cat-dot" style="background:${cat.color}22;font-size:18px">${cat.emoji}</div>
           <div style="flex:1">
             <div class="exp-desc">${first.desc||cat.name}
               ${subCatObj?`<span style="font-size:9px;color:var(--text3);background:var(--surface2);padding:1px 5px;border-radius:99px">${subCatObj.name}</span>`:''}
-              ${isDone?'<span style="font-size:9px;background:rgba(200,240,74,.15);color:var(--accent);padding:2px 5px;border-radius:99px">완납</span>':''}
+              ${isDone?'<span style="font-size:9px;background:rgba(200,240,74,.15);color:var(--accent);padding:2px 5px;border-radius:99px">✅ 완납</span>':''}
               ${first.excludeStats?'<span style="font-size:9px;background:rgba(148,163,184,.15);color:var(--text3);padding:2px 5px;border-radius:99px;border:1px solid var(--border)">실적제외</span>':''}
             </div>
             <div class="exp-meta">${first.date} ~ ${last.date}${pay?` · ${pay.emoji||'💳'} ${pay.name}`:''}</div>
@@ -1897,7 +1988,7 @@ function renderList(){
           </div>
           <div style="text-align:right">
             <div style="font-family:'Gmarket Sans',sans-serif;font-size:13px;font-weight:700;color:var(--text)">월 ${fmt(first.amount)}</div>
-            <div style="font-size:10px;color:var(--text3)">${currentNum}/${total}회 · 총 ${fmt(first.amount*total)}</div>
+            <div style="font-size:10px;color:var(--text3)">${currentNum}/${total}회 · 총 ${fmt(totalAmt)}</div>
           </div>
         </div>
         <div style="height:4px;background:var(--surface2);border-radius:99px;overflow:hidden">
@@ -2527,18 +2618,20 @@ function renderCatManage(){
   CATS.forEach((cat,i)=>{
     const div=document.createElement('div');
     div.style.cssText='margin-bottom:10px;background:var(--surface2);border-radius:10px;padding:10px';
-    // 상위 카테고리 행
     div.innerHTML=`
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
         <div class="emoji-box" style="background:${cat.color}22;flex-shrink:0" onclick="openEmojiPicker(${i})">${cat.emoji}</div>
         <input class="cat-name-inp" value="${cat.name}" oninput="CATS[${i}].name=this.value;" style="flex:1">
+        <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--text3);cursor:pointer;white-space:nowrap;flex-shrink:0">
+          <input type="checkbox" ${cat.isFixed?'checked':''} onchange="CATS[${i}].isFixed=this.checked" style="width:11px;height:11px;accent-color:#ffb347">
+          고정비
+        </label>
         <div class="color-dot-btn" style="background:${cat.color}" onclick="openColorPicker(${i})"></div>
         <button class="act-btn del" onclick="deleteCat(${i})">✕</button>
       </div>
       <div id="subs-${i}" style="padding-left:8px;border-left:2px solid ${cat.color}44"></div>
       <button onclick="addSubCat(${i})" style="width:100%;margin-top:6px;padding:5px;background:transparent;border:1px dashed ${cat.color}66;border-radius:7px;color:var(--text3);font-size:11px;cursor:pointer">+ 세부 카테고리 추가</button>`;
     le.appendChild(div);
-    // 하위 카테고리 행들
     const subsEl=document.getElementById(`subs-${i}`);
     (cat.subs||[]).forEach((sub,j)=>{
       const row=document.createElement('div');
@@ -2547,6 +2640,10 @@ function renderCatManage(){
         <span style="font-size:11px;color:var(--text3);width:10px">└</span>
         <input value="${sub.name}" oninput="CATS[${i}].subs[${j}].name=this.value"
           style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-size:11px;outline:none">
+        <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--text3);cursor:pointer;white-space:nowrap;flex-shrink:0">
+          <input type="checkbox" ${sub.isFixed?'checked':''} onchange="CATS[${i}].subs[${j}].isFixed=this.checked" style="width:11px;height:11px;accent-color:#ffb347">
+          고정비
+        </label>
         <button onclick="deleteSubCat(${i},${j})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px">✕</button>`;
       subsEl.appendChild(row);
     });
@@ -2568,6 +2665,15 @@ function syncCatInputs(){
       const i=parseInt(m[1]),j=parseInt(m[2]);
       if(CATS[i]?.subs?.[j])CATS[i].subs[j].name=inp.value.trim()||CATS[i].subs[j].name;
     }
+  });
+  // isFixed 체크박스도 반영
+  document.querySelectorAll('#cat-manage-list input[type="checkbox"]').forEach(cb=>{
+    const attr=cb.getAttribute('onchange')||'';
+    const m1=attr.match(/CATS\[(\d+)\]\.isFixed=this\.checked/);
+    const m2=attr.match(/CATS\[(\d+)\]\.subs\[(\d+)\]\.isFixed=this\.checked/);
+    if(m1)CATS[parseInt(m1[1])].isFixed=cb.checked;
+    if(m2&&CATS[parseInt(m2[1])]?.subs?.[parseInt(m2[2])])
+      CATS[parseInt(m2[1])].subs[parseInt(m2[2])].isFixed=cb.checked;
   });
 }
 window.addCategory=function(){
