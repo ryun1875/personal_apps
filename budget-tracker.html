@@ -580,26 +580,6 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     </div>
   </div>
 
-  <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 16px;margin-bottom:8px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <span style="font-size:12px;color:var(--text2)">이번 달 지출</span>
-      <span style="font-family:'Gmarket Sans',sans-serif;font-weight:700;font-size:18px;color:var(--accent2)" id="total-spent">0원</span>
-    </div>
-    <div id="spend-breakdown" style="display:none;border-top:1px solid var(--border);padding-top:6px;margin-top:2px">
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
-        <span style="color:var(--text3)">🔒 고정비</span>
-        <span id="spent-fixed" style="color:var(--text2)">0원</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
-        <span style="color:var(--text3)">💸 변동비</span>
-        <span id="spent-variable" style="color:var(--accent2);font-weight:700">0원</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px">
-        <span style="color:var(--text3)">🏪 매장 지출</span>
-        <span id="spent-store" style="color:#fb923c">0원</span>
-      </div>
-    </div>
-  </div>
   <div class="alert-banner" id="alert-banner">⚠️ 예산의 80%를 초과했어요! 소비를 줄여보세요.</div>
 
   <!-- 설정 패널 서브탭 -->
@@ -1433,43 +1413,8 @@ window.toggleInstallment=function(){
 
 // ── 렌더 ──────────────────────────────────────────────────
 function updateSummary(){
-  const normalExp=expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment);
-  const tS=normalExp.reduce((s,e)=>s+e.amount,0);
-  document.getElementById('total-spent').textContent=fmt(tS);
-
-  // 매장 카테고리 ID 확인
-  const storeCatId=CATS.find(c=>c.id==='store')?.id||'store';
-
-  // 매장 지출
-  const storeExp=normalExp.filter(e=>e.cat===storeCatId);
-  // 매장 외 지출
-  const nonStoreExp=normalExp.filter(e=>e.cat!==storeCatId);
-
-  // 고정비 판단 (매장 제외)
-  const isFixed=e=>{
-    if(e.isRecurring)return true;
-    const cat=CATS.find(c=>c.id===e.cat);
-    if(cat?.isFixed)return true;
-    const sub=cat?.subs?.find(s=>s.id===e.subCat);
-    return sub?.isFixed||false;
-  };
-
-  const fixedExp=nonStoreExp.filter(isFixed);
-  const variableExp=nonStoreExp.filter(e=>!isFixed(e));
-  const storeTotal=storeExp.reduce((s,e)=>s+e.amount,0);
-  const fixedTotal=fixedExp.reduce((s,e)=>s+e.amount,0);
-  const variableTotal=variableExp.reduce((s,e)=>s+e.amount,0);
-
-  const breakdown=document.getElementById('spend-breakdown');
-  const hasBreakdown=storeTotal>0||fixedTotal>0;
-  if(breakdown)breakdown.style.display=hasBreakdown?'block':'none';
-  const spentFixed=document.getElementById('spent-fixed');
-  const spentVar=document.getElementById('spent-variable');
-  const spentStore=document.getElementById('spent-store');
-  if(spentFixed)spentFixed.textContent=fmt(fixedTotal);
-  if(spentVar)spentVar.textContent=fmt(variableTotal);
-  if(spentStore)spentStore.textContent=fmt(storeTotal);
-
+  renderHome();
+  const tS=expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment).reduce((s,e)=>s+e.amount,0);
   const tB=Object.values(budgets).reduce((s,v)=>s+(Number(v)||0),0);
   const pct=tB>0?Math.min(Math.round(tS/tB*100),100):0;
   document.getElementById('alert-banner').classList.toggle('show',pct>=80&&tB>0);
@@ -1672,8 +1617,25 @@ function renderHome(){
   const dim=new Date(y,m,0).getDate();
   const isThis=today.getFullYear()===y&&today.getMonth()+1===m;
   const dp=isThis?today.getDate():dim;
-  const tS=expenses.reduce((s,e)=>s+e.amount,0);
   const remainDays=isThis?dim-today.getDate():0;
+
+  // 고정비/변동비/매장 분류
+  const normalExp=expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment);
+  const tS=normalExp.reduce((s,e)=>s+e.amount,0);
+  const storeCatId='store';
+  const storeExp=normalExp.filter(e=>e.cat===storeCatId);
+  const nonStoreExp=normalExp.filter(e=>e.cat!==storeCatId);
+  const isFixedExp=e=>{
+    if(e.isRecurring)return true;
+    const cat=CATS.find(c=>c.id===e.cat);
+    if(cat?.isFixed)return true;
+    return cat?.subs?.find(s=>s.id===e.subCat)?.isFixed||false;
+  };
+  const fixedTotal=nonStoreExp.filter(isFixedExp).reduce((s,e)=>s+e.amount,0);
+  const variableTotal=nonStoreExp.filter(e=>!isFixedExp(e)).reduce((s,e)=>s+e.amount,0);
+  const storeFixedTotal=storeExp.filter(isFixedExp).reduce((s,e)=>s+e.amount,0);
+  const storeVarTotal=storeExp.filter(e=>!isFixedExp(e)).reduce((s,e)=>s+e.amount,0);
+  const hasBreakdown=fixedTotal>0||storeFixedTotal>0||storeVarTotal>0;
 
   // 카테고리별 집계
   const catData=CATS.map(c=>{
@@ -1703,8 +1665,15 @@ function renderHome(){
     <div style="display:flex;flex-direction:column;gap:9px">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:12px;color:var(--text2)">이번 달 지출</span>
-        <span style="font-family:'Gmarket Sans',sans-serif;font-weight:700;font-size:18px;color:var(--accent2)">${fmt(tS)}</span>
+        <span style="font-family:'Gmarket Sans',sans-serif;font-weight:700;font-size:18px;color:var(--accent2)" id="total-spent">${fmt(tS)}</span>
       </div>
+      ${hasBreakdown?`
+      <div style="border-top:1px solid var(--border);padding-top:6px;display:flex;flex-direction:column;gap:3px">
+        ${fixedTotal>0?`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">🔒 고정비</span><span style="color:var(--text2)">${fmt(fixedTotal)}</span></div>`:''}
+        ${variableTotal>0?`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">💸 변동비</span><span style="color:var(--accent2);font-weight:700">${fmt(variableTotal)}</span></div>`:''}
+        ${storeFixedTotal>0?`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">🏪 매장 고정</span><span style="color:#fb923c">${fmt(storeFixedTotal)}</span></div>`:''}
+        ${storeVarTotal>0?`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">🏪 매장 변동</span><span style="color:#fb923c">${fmt(storeVarTotal)}</span></div>`:''}
+      </div>`:''}
       ${tB>0?`
       <div style="display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:12px;color:var(--text2)">예산 대비 남은 금액</span>
