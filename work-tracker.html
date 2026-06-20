@@ -977,21 +977,6 @@ body {
   <button class="tab admin-only" data-page="manage" style="display:none"><div class="icon">👥</div><div class="label">직원관리</div><div id="disputeBadge" style="display:none;background:var(--accent2);color:#fff;font-size:9px;border-radius:10px;padding:1px 5px;margin-top:-2px"></div></button>
 </div>
 
-<!-- 휴무 등록 모달 -->
-<div class="modal-overlay" id="dayoffModal">
-  <div class="modal">
-    <div class="modal-handle"></div>
-    <h3>🏖️ 휴무 등록</h3>
-    <div class="form-group"><label>날짜</label><input type="date" id="dayoffDate"></div>
-    <div class="form-group"><label>메모 (선택)</label><input type="text" id="dayoffMemo" placeholder="예: 개인 사유, 공휴일 등"></div>
-    <div style="font-size:12px;color:var(--text3);margin-top:-6px;margin-bottom:4px">달력과 기록에 휴무로 표시돼요</div>
-    <div class="modal-btns">
-      <button class="btn-cancel" id="dayoffCancel">취소</button>
-      <button class="btn-confirm" id="dayoffConfirm">등록</button>
-    </div>
-  </div>
-</div>
-
 <!-- 목표 급여 모달 -->
 <div class="modal-overlay" id="goalModal">
   <div class="modal">
@@ -1219,6 +1204,12 @@ let rejectingDisputeId = null;
 const DAYS = ['일','월','화','수','목','금','토'];
 const HOLIDAYS = ['일','토'];
 
+// HTML 이스케이프 (사용자 입력이 마크업/속성으로 해석되는 것 방지)
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
 // ── 테마 ──
 function applyTheme() {
   document.body.classList.toggle('light', lightMode);
@@ -1375,7 +1366,7 @@ function renderStaffTabs() {
   </div>` + approved.map(s => `
     <div class="staff-tab ${selectedStaffUid === s.uid ? 'active' : ''}" data-uid="${s.uid}">
       ${s.photo ? `<img src="${s.photo}">` : ''}
-      ${s.name}${s.preRegistered ? ' ⏳' : ''}
+      ${escapeHtml(s.name)}${s.preRegistered ? ' ⏳' : ''}
     </div>
   `).join('');
   tabs.querySelectorAll('.staff-tab').forEach(tab => {
@@ -1399,20 +1390,20 @@ function renderStaffManage() {
     <div class="staff-list-item">
       ${s.photo ? `<img src="${s.photo}">` : '<div style="width:36px;height:36px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center">👤</div>'}
       <div class="info">
-        <div class="name">${s.name}</div>
-        <div class="email">${s.email}</div>
+        <div class="name">${escapeHtml(s.name)}</div>
+        <div class="email">${escapeHtml(s.email)}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
         ${s.preRegistered
           ? `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
                <span style="font-size:11px;color:var(--accent4);padding:3px 8px;border-radius:8px;background:rgba(255,179,71,.1);border:1px solid rgba(255,179,71,.3)">⏳ 로그인 대기</span>
-               <button class="btn-link-staff" onclick="openLinkStaffModal('${s.uid}','${s.name}')">🔗 계정 연결</button>
+               <button class="btn-link-staff" onclick="openLinkStaffModal('${s.uid}')">🔗 계정 연결</button>
              </div>`
           : s.status === 'approved'
             ? `<button class="btn-revoke" onclick="revokeStaff('${s.uid}')">승인 취소</button>`
             : `<button class="btn-approve" onclick="approveStaff('${s.uid}')">승인</button>`
         }
-        <button style="padding:4px 10px;border-radius:6px;font-size:11px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer" onclick="openEditStaffModal('${s.uid}','${s.name}','${s.email}','${s.preRegistered?'true':'false'}')">수정</button>
+        <button style="padding:4px 10px;border-radius:6px;font-size:11px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer" onclick="openEditStaffModal('${s.uid}')">수정</button>
       </div>
     </div>
   `).join('');
@@ -1527,9 +1518,9 @@ function renderMyDisputeList() {
         <div class="d-date">${d.createdAt?.slice(0,10).replace(/-/g,'.')}</div>
       </div>
       <div class="d-body">
-        <b>요청 내용:</b> ${d.content}<br>
-        <b>사유:</b> ${d.reason}
-        ${d.status==='rejected' ? `<br><b style="color:var(--accent2)">반려 사유:</b> ${d.rejectReason}` : ''}
+        <b>요청 내용:</b> ${escapeHtml(d.content)}<br>
+        <b>사유:</b> ${escapeHtml(d.reason)}
+        ${d.status==='rejected' ? `<br><b style="color:var(--accent2)">반려 사유:</b> ${escapeHtml(d.rejectReason)}` : ''}
       </div>
       <div class="dispute-status ${d.status}">
         ${d.status==='pending'?'⏳ 검토중':d.status==='approved'?'✅ 승인됨':'❌ 반려됨'}
@@ -1549,12 +1540,12 @@ function renderDisputeList() {
   container.innerHTML = pending.map(d => `
     <div class="dispute-item">
       <div class="d-header">
-        <div class="d-name">👤 ${d.staffName}</div>
+        <div class="d-name">👤 ${escapeHtml(d.staffName)}</div>
         <div class="d-date">${d.createdAt?.slice(0,10).replace(/-/g,'.')}</div>
       </div>
       <div class="d-body">
-        <b>요청 내용:</b> ${d.content}<br>
-        <b>사유:</b> ${d.reason}
+        <b>요청 내용:</b> ${escapeHtml(d.content)}<br>
+        <b>사유:</b> ${escapeHtml(d.reason)}
       </div>
       <div class="d-actions">
         <button class="btn-approve-d" onclick="approveDispute('${d.id}','${d.ownerUid}','${d.recordId}')">✅ 승인</button>
@@ -1582,10 +1573,12 @@ window.openRejectModal = (disputeId) => {
 
 // ── 직원 정보 수정 ──
 let editingStaff = null;
-window.openEditStaffModal = (uid, name, email, isPreRegistered) => {
-  editingStaff = { uid, isPreRegistered: isPreRegistered === 'true' };
-  document.getElementById('editStaffName').value = name;
-  document.getElementById('editStaffEmail').value = email;
+window.openEditStaffModal = (uid) => {
+  const s = allStaff.find(x => x.uid === uid);
+  if (!s) return;
+  editingStaff = { uid, isPreRegistered: !!s.preRegistered };
+  document.getElementById('editStaffName').value = s.name || '';
+  document.getElementById('editStaffEmail').value = s.email || '';
   document.getElementById('editStaffModal').classList.add('show');
 };
 document.getElementById('editStaffCancel').addEventListener('click', () => document.getElementById('editStaffModal').classList.remove('show'));
@@ -1627,7 +1620,9 @@ document.getElementById('editStaffConfirm').addEventListener('click', async () =
 
 // ── 수동 계정 연결 ──
 let linkingStaff = null;
-window.openLinkStaffModal = (preUid, name) => {
+window.openLinkStaffModal = (preUid) => {
+  const s = allStaff.find(x => x.uid === preUid);
+  const name = s?.name || '';
   linkingStaff = { preUid, name };
   document.getElementById('linkStaffName').value = name;
   document.getElementById('linkStaffUid').value = '';
@@ -1749,8 +1744,7 @@ document.getElementById('goalConfirm').addEventListener('click', async () => {
   // staff 문서에 목표 저장 (관리자가 직원별로 설정)
   const targetUid = (isAdmin && selectedStaffUid) ? selectedStaffUid : currentUser.uid;
   try {
-    await setDoc(doc(db, 'staff', targetUid === currentUser.uid ? currentUser.uid : selectedStaffUid), 
-      { monthlyGoal: v }, { merge: true });
+    await setDoc(doc(db, 'staff', targetUid), { monthlyGoal: v }, { merge: true });
   } catch(e) {}
   document.getElementById('goalModal').classList.remove('show');
   renderGoalCard();
@@ -1889,18 +1883,23 @@ function renderBreaks() {
 window.updateBreak = (i, key, val) => { breaks[i][key] = val; updateBreakTotal(); updatePreview(); };
 window.removeBreak = (i) => { if (!confirm('이 휴식 기록을 삭제할까요?')) return; breaks.splice(i, 1); renderBreaks(); };
 
-function calcBreakTotal() {
-  if (breakMode === 'duration') {
-    return parseInt(document.getElementById('breakDurInput')?.value) || 0;
-  }
-  return breaks.reduce((sum, b) => {
-    if (!b.start || !b.end) return sum;
-    const [sh,sm] = b.start.split(':').map(Number);
-    const [eh,em] = b.end.split(':').map(Number);
+// 시간대 배열의 총 분 계산 (자정 넘김 보정)
+function sumTimeRanges(ranges) {
+  return ranges.reduce((sum, r) => {
+    if (!r.start || !r.end) return sum;
+    const [sh,sm] = r.start.split(':').map(Number);
+    const [eh,em] = r.end.split(':').map(Number);
     let d = (eh*60+em)-(sh*60+sm);
     if (d < 0) d += 24*60;
     return sum + d;
   }, 0);
+}
+
+function calcBreakTotal() {
+  if (breakMode === 'duration') {
+    return parseInt(document.getElementById('breakDurInput')?.value) || 0;
+  }
+  return sumTimeRanges(breaks);
 }
 
 function updateBreakTotal() {
@@ -1939,14 +1938,7 @@ window.updateExtra = (i, key, val) => { extras[i][key] = val; updateExtraTotal()
 window.removeExtra = (i) => { if (!confirm('이 추가근무 기록을 삭제할까요?')) return; extras.splice(i, 1); renderExtras(); };
 
 function calcExtraTotal() {
-  return extras.reduce((sum, e) => {
-    if (!e.start || !e.end) return sum;
-    const [sh,sm] = e.start.split(':').map(Number);
-    const [eh,em] = e.end.split(':').map(Number);
-    let d = (eh*60+em)-(sh*60+sm);
-    if (d < 0) d += 24*60;
-    return sum + d;
-  }, 0);
+  return sumTimeRanges(extras);
 }
 
 function updateExtraTotal() {
@@ -2034,13 +2026,6 @@ function updatePreview() {
 document.getElementById('startTime').addEventListener('input', updatePreview);
 document.getElementById('endTime').addEventListener('input', updatePreview);
 
-// ── 휴무 모달 버튼 ──
-document.getElementById('dayoffCancel').addEventListener('click', () => document.getElementById('dayoffModal').classList.remove('show'));
-document.getElementById('dayoffConfirm').addEventListener('click', async () => {
-  alert('휴무 모달은 토글 방식으로 변경됐어요. 폼에서 휴무 토글을 사용해주세요.');
-  document.getElementById('dayoffModal').classList.remove('show');
-});
-
 // ── 기록 추가 폼 토글 ──
 let addFormOpen = false;
 function setAddFormOpen(open) {
@@ -2087,6 +2072,7 @@ dayoffToggleWrap.addEventListener('click', () => {
 async function loadRecords() {
   setSyncStatus('syncing', '동기화 중...');
   records = [];
+  let loadFailed = false;
   try {
     if (isAdmin && selectedStaffUid) {
       // 특정 직원 기록
@@ -2095,10 +2081,13 @@ async function loadRecords() {
     } else if (isAdmin && !selectedStaffUid) {
       // 전체 직원 기록
       const approved = allStaff.filter(s => s.status === 'approved');
-      for (const s of approved) {
-        const snap = await getDocs(query(collection(db, `users/${s.uid}/workRecords`), orderBy('date','desc')));
+      const snaps = await Promise.all(approved.map(s =>
+        getDocs(query(collection(db, `users/${s.uid}/workRecords`), orderBy('date','desc')))
+      ));
+      snaps.forEach((snap, i) => {
+        const s = approved[i];
         snap.docs.forEach(d => records.push({ id: d.id, ownerUid: s.uid, ownerName: s.name, ...d.data() }));
-      }
+      });
       records.sort((a,b) => b.date.localeCompare(a.date));
     } else {
       // 직원 본인 기록
@@ -2106,8 +2095,8 @@ async function loadRecords() {
       const myInfo = allStaff.find(s => s.uid === currentUser.uid);
       records = snap.docs.map(d => ({ id: d.id, ownerUid: currentUser.uid, ownerName: myInfo?.name || '', ...d.data() }));
     }
-  } catch(e) { setSyncStatus('offline', '연결 끊김'); }
-  setSyncStatus('online', '실시간 연동 중');
+  } catch(e) { loadFailed = true; setSyncStatus('offline', '연결 끊김'); }
+  if (!loadFailed) setSyncStatus('online', '실시간 연동 중');
   renderRecords();
   renderStats();
   renderWeekSummary();
@@ -2203,13 +2192,7 @@ function calcEditBreakTotal() {
   if (editBreakMode2 === 'duration') {
     return parseInt(document.getElementById('editBreakDurInput')?.value) || 0;
   }
-  return editBreaks.reduce((sum,b) => {
-    if (!b.start||!b.end) return sum;
-    const [sh,sm]=b.start.split(':').map(Number);
-    const [eh,em]=b.end.split(':').map(Number);
-    let d=(eh*60+em)-(sh*60+sm); if(d<0)d+=24*60;
-    return sum+d;
-  },0);
+  return sumTimeRanges(editBreaks);
 }
 function updateEditBreakTotal() {
   const t=calcEditBreakTotal(), el=document.getElementById('editBreakTotal');
@@ -2234,13 +2217,7 @@ window.updateEditExtra = (i,k,v) => { editExtras[i][k]=v; updateEditExtraTotal()
 window.removeEditExtra = (i) => { if(!confirm('이 추가근무 기록을 삭제할까요?')) return; editExtras.splice(i,1); renderEditExtras(); };
 
 function calcEditExtraTotal() {
-  return editExtras.reduce((sum,e) => {
-    if (!e.start||!e.end) return sum;
-    const [sh,sm]=e.start.split(':').map(Number);
-    const [eh,em]=e.end.split(':').map(Number);
-    let d=(eh*60+em)-(sh*60+sm); if(d<0)d+=24*60;
-    return sum+d;
-  },0);
+  return sumTimeRanges(editExtras);
 }
 function updateEditExtraTotal() {
   const t=calcEditExtraTotal(), el=document.getElementById('editExtraTotal');
@@ -2322,7 +2299,7 @@ document.getElementById('editConfirm').addEventListener('click', async () => {
 // ── 렌더 ──
 function getMonthRecords() {
   return records.filter(r => {
-    const d = new Date(r.date);
+    const d = parseLocalDate(r.date);
     return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
   }).sort((a, b) => b.date.localeCompare(a.date));
 }
@@ -2334,6 +2311,12 @@ function toLocalDateStr(d) {
     String(d.getMonth()+1).padStart(2,'0'),
     String(d.getDate()).padStart(2,'0')
   ].join('-');
+}
+
+// 'YYYY-MM-DD' → 로컬 기준 Date (toISOString/UTC 파싱 회피)
+function parseLocalDate(dateStr) {
+  const [y,m,d] = dateStr.split('-').map(Number);
+  return new Date(y, m-1, d);
 }
 
 // 날짜가 속한 주의 월요일 날짜 문자열 반환 (로컬 기준)
@@ -2348,8 +2331,8 @@ function getMondayKey(dateStr) {
 
 // 월요일 키로부터 표시용 범위 문자열 반환
 function getWeekLabel(mondayKey, year, month) {
-  const mon = new Date(mondayKey);
-  const sun = new Date(mondayKey);
+  const mon = parseLocalDate(mondayKey);
+  const sun = parseLocalDate(mondayKey);
   sun.setDate(mon.getDate() + 6);
   const fmt = d => `${d.getMonth()+1}/${d.getDate()}`;
   return `${fmt(mon)}~${fmt(sun)}`;
@@ -2362,7 +2345,7 @@ function getWeekNumFromMonday(mondayKey, year, month) {
   const firstMonDiff = firstDow === 0 ? -6 : 1 - firstDow;
   const firstMon = new Date(firstDay);
   firstMon.setDate(firstDay.getDate() + firstMonDiff);
-  const mon = new Date(mondayKey);
+  const mon = parseLocalDate(mondayKey);
   const diff = Math.round((mon - firstMon) / (7 * 24 * 60 * 60 * 1000));
   return diff + 1;
 }
@@ -2373,7 +2356,6 @@ function renderRecords() {
   const workList = list.filter(r => !r.isDayoff);
   const totalPay = workList.reduce((s,r) => s + (taxEnabled ? r.net : r.gross), 0);
   const totalMin = workList.reduce((s,r) => s + r.workMin, 0);
-  const totalBreakMin = workList.reduce((s,r) => s + r.breakMin, 0);
   const days = workList.length;
   const h = Math.floor(totalMin/60), m = totalMin%60;
   const avgMin = days ? Math.round(totalMin/days) : 0;
@@ -2383,18 +2365,6 @@ function renderRecords() {
   document.getElementById('totalPaySub').textContent = `${days}일 근무`;
   document.getElementById('totalHours').textContent = `${h}시간${m?' '+m+'분':''}`;
   document.getElementById('avgHours').textContent = `${ah}시간${am?' '+am+'분':''}`;
-  const tbEl = document.getElementById('totalBreak');
-  if (tbEl) tbEl.textContent = `${totalBreakMin}분`;
-  // 홈 요약 카드 휴식시간
-  const bh = document.getElementById('totalBreakHome');
-  const bhs = document.getElementById('totalBreakHomeSub');
-  if (bh) {
-    const bHour = Math.floor(totalBreakMin/60), bMin = totalBreakMin%60;
-    bh.textContent = totalBreakMin >= 60
-      ? `${bHour}시간${bMin ? ' '+bMin+'분' : ''}`
-      : `${totalBreakMin}분`;
-    if (bhs) bhs.textContent = `하루 평균 ${days ? Math.round(totalBreakMin/days) : 0}분`;
-  }
   document.getElementById('recordCount').textContent = `${days}건`;
 
   // 휴무 카운트
@@ -2477,7 +2447,7 @@ function renderRecordItem(r) {
 }
 
 function renderSingleRecord(r) {
-  const d = new Date(r.date);
+  const d = parseLocalDate(r.date);
   const dayName = DAYS[d.getDay()];
   const isHoliday = HOLIDAYS.includes(dayName);
   const wh = Math.floor(r.workMin/60), wm = r.workMin%60;
@@ -2487,10 +2457,10 @@ function renderSingleRecord(r) {
   if (r.isDayoff) {
     return `<div class="record-item dayoff-item">
       <div class="left">
-        ${r.ownerName ? `<div class="staff-name">👤 ${r.ownerName}</div>` : ''}
+        ${r.ownerName ? `<div class="staff-name">👤 ${escapeHtml(r.ownerName)}</div>` : ''}
         <div class="date">${r.date.replace(/-/g,'.')}<span class="day-name ${isHoliday?'holiday':''}">${dayName}</span></div>
         <div style="margin-top:4px"><span class="dayoff-badge">🏖️ 휴무</span></div>
-        ${r.memo ? `<div class="detail" style="margin-top:4px">${r.memo}</div>` : ''}
+        ${r.memo ? `<div class="detail" style="margin-top:4px">${escapeHtml(r.memo)}</div>` : ''}
       </div>
       <div class="right">
         <div class="actions">
@@ -2502,12 +2472,12 @@ function renderSingleRecord(r) {
 
   return `<div class="record-item">
     <div class="left">
-      ${r.ownerName ? `<div class="staff-name">👤 ${r.ownerName}</div>` : ''}
+      ${r.ownerName ? `<div class="staff-name">👤 ${escapeHtml(r.ownerName)}</div>` : ''}
       <div class="date">${r.date.replace(/-/g,'.')}<span class="day-name ${isHoliday?'holiday':''}">${dayName}</span></div>
       <div class="times">${r.start}<span>→</span>${r.end}</div>
-      <div class="detail">${r.breaks&&r.breaks.length ? r.breaks.map(b=>b.start+'~'+b.end).join(', ') : (r.breakMin ? '휴식 '+r.breakMin+'분' : '휴식없음')}${r.memo?' · '+r.memo:''}</div>
-      ${r.extras&&r.extras.length ? `<div class="record-extra">➕ ${r.extras.map(e=>(e.reason||'추가근무')+' '+e.start+'~'+e.end).join(' · ')}</div>` : ''}
-      ${myDispute ? `<div class="dispute-status ${myDispute.status}">${myDispute.status==='pending'?'⏳ 이의제기 검토중':myDispute.status==='approved'?'✅ 승인됨':'❌ 반려: '+myDispute.rejectReason}</div>` : ''}
+      <div class="detail">${r.breaks&&r.breaks.length ? r.breaks.map(b=>b.start+'~'+b.end).join(', ') : (r.breakMin ? '휴식 '+r.breakMin+'분' : '휴식없음')}${r.memo?' · '+escapeHtml(r.memo):''}</div>
+      ${r.extras&&r.extras.length ? `<div class="record-extra">➕ ${r.extras.map(e=>(escapeHtml(e.reason)||'추가근무')+' '+e.start+'~'+e.end).join(' · ')}</div>` : ''}
+      ${myDispute ? `<div class="dispute-status ${myDispute.status}">${myDispute.status==='pending'?'⏳ 이의제기 검토중':myDispute.status==='approved'?'✅ 승인됨':'❌ 반려: '+escapeHtml(myDispute.rejectReason)}</div>` : ''}
     </div>
     <div class="right">
       <div class="pay">₩${pay.toLocaleString()}</div>
@@ -2588,12 +2558,12 @@ function renderStatsFilter() {
     ${approved.map(s => `
       <div class="staff-tab ${statsFilterUid === s.uid ? 'active' : ''}" onclick="setStatsFilter('${s.uid}')">
         ${s.photo ? `<img src="${s.photo}" style="width:18px;height:18px;border-radius:50%">` : ''}
-        ${s.name}
+        ${escapeHtml(s.name)}
       </div>
     `).join('')}
     ${allStaff.filter(s => s.preRegistered && s.status === 'approved').map(s => `
       <div class="staff-tab ${statsFilterUid === s.uid ? 'active' : ''}" onclick="setStatsFilter('${s.uid}')">
-        ${s.name} ⏳
+        ${escapeHtml(s.name)} ⏳
       </div>
     `).join('')}
   `;
@@ -2620,7 +2590,7 @@ function renderStatsStaffSummary() {
       <div class="ssc-left">
         ${s.photo ? `<img src="${s.photo}">` : `<div style="width:28px;height:28px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:12px">👤</div>`}
         <div>
-          <div class="ssc-name">${s.name}${s.preRegistered ? ' ⏳' : ''}</div>
+          <div class="ssc-name">${escapeHtml(s.name)}${s.preRegistered ? ' ⏳' : ''}</div>
           <div class="ssc-days">${days}일 · ${h}시간${m?m+'분':''}</div>
         </div>
       </div>
@@ -2700,7 +2670,7 @@ function showCalDetail(dateStr, cellEl) {
     return;
   }
 
-  const d = new Date(dateStr);
+  const d = parseLocalDate(dateStr);
   const dayName = DAYS[d.getDay()];
   detailDate.textContent = `${dateStr.replace(/-/g,'.')} (${dayName})`;
 
