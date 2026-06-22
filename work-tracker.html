@@ -1286,7 +1286,7 @@ onAuthStateChanged(auth, async user => {
   document.getElementById('tabBar').style.display = 'flex';
 
   const av = document.getElementById('userAvatar');
-  if (user.photoURL) av.innerHTML = `<img src="${user.photoURL}">`;
+  if (user.photoURL) av.innerHTML = `<img src="${escapeHtml(user.photoURL)}">`;
   document.getElementById('settingsEmail').textContent = user.email;
 
   // 역할 표시
@@ -1318,15 +1318,21 @@ onAuthStateChanged(auth, async user => {
       const preDoc = await getDoc(doc(db, 'preregistered', emailKey));
       if (preDoc.exists() && !preDoc.data().linkedUid) {
         const preUid = 'pre_' + emailKey;
+        // 사전등록 staff 문서에 설정돼 있던 시급/목표 가져오기 (연결 후에도 유지)
+        let preStaffData = null;
+        try { const ps = await getDoc(doc(db, 'staff', preUid)); if (ps.exists()) preStaffData = ps.data(); } catch(e) {}
         // 1. preregistered에 실제 uid 연결 표시
         await setDoc(doc(db, 'preregistered', emailKey), { linkedUid: user.uid }, { merge: true });
         // 2. 실제 uid로 staff 문서 생성
-        await setDoc(doc(db, 'staff', user.uid), {
+        const linkedStaff = {
           uid: user.uid, email: user.email,
           name: preDoc.data().name || user.displayName || '이름없음',
           photo: user.photoURL || '', status: 'approved',
           linkedAt: new Date().toISOString()
-        }, { merge: true });
+        };
+        if (preStaffData?.hourlyWage) linkedStaff.hourlyWage = preStaffData.hourlyWage;
+        if (preStaffData?.monthlyGoal) linkedStaff.monthlyGoal = preStaffData.monthlyGoal;
+        await setDoc(doc(db, 'staff', user.uid), linkedStaff, { merge: true });
         // 3. 임시 uid(pre_)로 저장된 기록을 실제 uid로 이전
         try {
           const oldSnap = await getDocs(collection(db, `users/${preUid}/workRecords`));
@@ -1365,7 +1371,7 @@ function renderStaffTabs() {
     전체 보기
   </div>` + approved.map(s => `
     <div class="staff-tab ${selectedStaffUid === s.uid ? 'active' : ''}" data-uid="${s.uid}">
-      ${s.photo ? `<img src="${s.photo}">` : ''}
+      ${s.photo ? `<img src="${escapeHtml(s.photo)}">` : ''}
       ${escapeHtml(s.name)}${s.preRegistered ? ' ⏳' : ''}
     </div>
   `).join('');
@@ -1388,10 +1394,11 @@ function renderStaffManage() {
   }
   container.innerHTML = allStaff.map(s => `
     <div class="staff-list-item">
-      ${s.photo ? `<img src="${s.photo}">` : '<div style="width:36px;height:36px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center">👤</div>'}
+      ${s.photo ? `<img src="${escapeHtml(s.photo)}">` : '<div style="width:36px;height:36px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center">👤</div>'}
       <div class="info">
         <div class="name">${escapeHtml(s.name)}</div>
         <div class="email">${escapeHtml(s.email)}</div>
+        <div class="email" style="color:var(--accent);margin-top:2px">시급 ${s.hourlyWage ? '₩'+Number(s.hourlyWage).toLocaleString() : '미설정 (기본 ₩10,030)'}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
         ${s.preRegistered
@@ -1660,14 +1667,17 @@ document.getElementById('linkStaffConfirm').addEventListener('click', async () =
 
     // 4. staff 문서 업데이트 (preRegistered 해제, 실제 uid로 교체)
     const oldStaff = allStaff.find(s => s.uid === linkingStaff.preUid);
-    await setDoc(doc(db, 'staff', realUid), {
+    const newStaffDoc = {
       uid: realUid,
       email: oldStaff?.email || '',
       name: linkingStaff.name,
       photo: '',
       status: 'approved',
       linkedAt: new Date().toISOString()
-    });
+    };
+    if (oldStaff?.hourlyWage) newStaffDoc.hourlyWage = oldStaff.hourlyWage;
+    if (oldStaff?.monthlyGoal) newStaffDoc.monthlyGoal = oldStaff.monthlyGoal;
+    await setDoc(doc(db, 'staff', realUid), newStaffDoc);
     await deleteDoc(doc(db, 'staff', linkingStaff.preUid));
 
     // 5. preregistered 문서도 linkedUid 업데이트
@@ -1751,13 +1761,22 @@ document.getElementById('goalConfirm').addEventListener('click', async () => {
 });
 
 async function loadGoal() {
+  const targetUid = (isAdmin && selectedStaffUid) ? selectedStaffUid : currentUser.uid;
+  let data = null;
   try {
-    const targetUid = (isAdmin && selectedStaffUid) ? selectedStaffUid : currentUser.uid;
     const snap = await getDoc(doc(db, 'staff', targetUid));
-    if (snap.exists() && snap.data().monthlyGoal) {
-      monthlyGoal = snap.data().monthlyGoal;
-    } else { monthlyGoal = 0; }
-  } catch(e) { monthlyGoal = 0; }
+    if (snap.exists()) data = snap.data();
+  } catch(e) {}
+  monthlyGoal = (data && data.monthlyGoal) ? data.monthlyGoal : 0;
+  // ── 직원별 시급 ──
+  // staff 문서에 시급이 설정돼 있으면 그 직원의 시급을 사용.
+  // 없을 때: 직원을 보고 있으면 기본 최저시급, 본인을 보고 있으면 개인설정(loadSettings) 값 유지.
+  if (data && data.hourlyWage) {
+    hourlyWage = data.hourlyWage;
+  } else if (isAdmin && selectedStaffUid) {
+    hourlyWage = 10030;
+  }
+  applySettings();
   renderGoalCard();
 }
 
@@ -1769,7 +1788,7 @@ function renderGoalCard() {
   card.style.display = 'block';
 
   const list = getMonthRecords().filter(r => !r.isDayoff);
-  const earned = list.reduce((s,r) => s + (taxEnabled ? r.net : r.gross), 0);
+  const earned = list.reduce((s,r) => s + displayPay(r), 0);
   const remain = Math.max(0, monthlyGoal - earned);
   const pct = monthlyGoal > 0 ? Math.min(100, Math.round(earned / monthlyGoal * 100)) : 0;
 
@@ -1798,17 +1817,35 @@ function renderGoalCard() {
 // ── Wage modal ──
 function openWageModal() {
   if (!isAdmin) return;
+  // 어떤 직원의 시급을 수정하는지 표시
+  const who = (isAdmin && selectedStaffUid)
+    ? (allStaff.find(s => s.uid === selectedStaffUid)?.name || '직원') + '님 '
+    : '';
+  const h3 = document.querySelector('#wageModal h3');
+  if (h3) h3.textContent = `💰 ${who}시급 설정`;
   document.getElementById('wageInput').value = hourlyWage;
   document.getElementById('wageModal').classList.add('show');
 }
 document.getElementById('wageBanner').addEventListener('click', openWageModal);
 document.getElementById('settingsWage').addEventListener('click', openWageModal);
 document.getElementById('wageCancel').addEventListener('click', () => document.getElementById('wageModal').classList.remove('show'));
-document.getElementById('wageConfirm').addEventListener('click', () => {
+document.getElementById('wageConfirm').addEventListener('click', async () => {
   const v = parseInt(document.getElementById('wageInput').value);
   if (!v || v < 0) return alert('올바른 시급을 입력해주세요');
   hourlyWage = v;
-  saveSettings(); applySettings();
+  try {
+    if (isAdmin && selectedStaffUid) {
+      // 선택한 직원의 시급을 staff 문서에 저장 (직원별 시급)
+      await setDoc(doc(db, 'staff', selectedStaffUid), { hourlyWage: v }, { merge: true });
+      const s = allStaff.find(x => x.uid === selectedStaffUid);
+      if (s) s.hourlyWage = v; // 로컬 캐시 동기화
+      renderStaffManage();
+    } else {
+      // 본인(관리자) 시급은 개인 설정에 저장
+      await saveSettings();
+    }
+  } catch(e) {}
+  applySettings();
   document.getElementById('wageModal').classList.remove('show');
 });
 
@@ -2005,8 +2042,15 @@ function calcPay(startTime, endTime, breakMin, extraMin=0) {
   if (totalMin <= 0) totalMin += 24 * 60;
   const workMin = Math.max(0, totalMin - breakMin + extraMin);
   const gross = Math.round(workMin / 60 * hourlyWage);
-  return { workMin, gross, net: taxEnabled ? Math.round(gross * 0.967) : gross };
+  return { workMin, gross, net: taxEnabled ? netOf(gross) : gross };
 }
+
+// 세금(3.3%) 공제 헬퍼 — 저장된 net에 의존하지 않고 gross에서 항상 동적으로 계산.
+// (기록 생성 당시의 taxEnabled 값으로 net이 고정되어, 이후 세금 토글이
+//  과거 기록에 소급 적용되지 않던 버그 방지)
+const TAX_RATE = 0.033;
+function netOf(gross) { return Math.round((gross || 0) * (1 - TAX_RATE)); }
+function displayPay(r) { return taxEnabled ? netOf(r.gross) : (r.gross || 0); }
 
 function updatePreview() {
   const s = document.getElementById('startTime').value;
@@ -2354,7 +2398,7 @@ function renderRecords() {
   const list = getMonthRecords();
   const container = document.getElementById('recordList');
   const workList = list.filter(r => !r.isDayoff);
-  const totalPay = workList.reduce((s,r) => s + (taxEnabled ? r.net : r.gross), 0);
+  const totalPay = workList.reduce((s,r) => s + displayPay(r), 0);
   const totalMin = workList.reduce((s,r) => s + r.workMin, 0);
   const days = workList.length;
   const h = Math.floor(totalMin/60), m = totalMin%60;
@@ -2384,10 +2428,10 @@ function renderRecords() {
   }
 
   // 이번 주 자동 열기 (월요일 기준)
-  const todayStr = toLocalDateStr(new Date());
+  const today = new Date();
+  const todayStr = toLocalDateStr(today);
   const todayMonKey = getMondayKey(todayStr);
-  const todayMonth = new Date().getMonth();
-  if (currentMonth === todayMonth && openWeekGroups.size === 0) {
+  if (currentMonth === today.getMonth() && currentYear === today.getFullYear() && openWeekGroups.size === 0) {
     openWeekGroups.add(todayMonKey);
   }
 
@@ -2404,7 +2448,7 @@ function renderRecords() {
     const wk = getWeekNumFromMonday(monKey, currentYear, currentMonth);
     const wkList = weekGroups[monKey].sort((a,b) => a.date.localeCompare(b.date));
     const wkWork = wkList.filter(r => !r.isDayoff);
-    const wkPay = wkWork.reduce((s,r) => s+(taxEnabled?r.net:r.gross), 0);
+    const wkPay = wkWork.reduce((s,r) => s+displayPay(r), 0);
     const wkMin = wkWork.reduce((s,r) => s+r.workMin, 0);
     const wkH = Math.floor(wkMin/60), wkM = wkMin%60;
     const wkDays = wkWork.length;
@@ -2451,7 +2495,7 @@ function renderSingleRecord(r) {
   const dayName = DAYS[d.getDay()];
   const isHoliday = HOLIDAYS.includes(dayName);
   const wh = Math.floor(r.workMin/60), wm = r.workMin%60;
-  const pay = taxEnabled ? r.net : r.gross;
+  const pay = displayPay(r);
   const myDispute = myDisputes.find(dd => dd.recordId === r.id);
 
   if (r.isDayoff) {
@@ -2529,8 +2573,8 @@ function renderStats() {
   }
 
   const workOnly = list.filter(r => !r.isDayoff);
-  const totalGross = workOnly.reduce((s,r) => s+r.gross, 0);
-  const totalNet = workOnly.reduce((s,r) => s+r.net, 0);
+  const totalGross = workOnly.reduce((s,r) => s+(r.gross||0), 0);
+  const totalNet = workOnly.reduce((s,r) => s+netOf(r.gross), 0);
   document.getElementById('statsTotalPay').textContent = `₩${totalGross.toLocaleString()}`;
   document.getElementById('statsWorkDays').textContent = `${workOnly.length}일`;
   document.getElementById('statsGross').textContent = `₩${totalGross.toLocaleString()}`;
@@ -2557,7 +2601,7 @@ function renderStatsFilter() {
     <div class="staff-tab ${!statsFilterUid ? 'active' : ''}" onclick="setStatsFilter(null)">전체 보기</div>
     ${approved.map(s => `
       <div class="staff-tab ${statsFilterUid === s.uid ? 'active' : ''}" onclick="setStatsFilter('${s.uid}')">
-        ${s.photo ? `<img src="${s.photo}" style="width:18px;height:18px;border-radius:50%">` : ''}
+        ${s.photo ? `<img src="${escapeHtml(s.photo)}" style="width:18px;height:18px;border-radius:50%">` : ''}
         ${escapeHtml(s.name)}
       </div>
     `).join('')}
@@ -2582,13 +2626,13 @@ function renderStatsStaffSummary() {
 
   el.innerHTML = approved.map(s => {
     const sRecs = allRecords.filter(r => r.ownerUid === s.uid && !r.isDayoff);
-    const pay = sRecs.reduce((sum,r) => sum + (taxEnabled ? r.net : r.gross), 0);
+    const pay = sRecs.reduce((sum,r) => sum + displayPay(r), 0);
     const days = sRecs.length;
     const mins = sRecs.reduce((sum,r) => sum + r.workMin, 0);
     const h = Math.floor(mins/60), m = mins%60;
     return `<div class="stats-staff-card ${statsFilterUid === s.uid ? 'active' : ''}" onclick="setStatsFilter('${s.uid}')">
       <div class="ssc-left">
-        ${s.photo ? `<img src="${s.photo}">` : `<div style="width:28px;height:28px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:12px">👤</div>`}
+        ${s.photo ? `<img src="${escapeHtml(s.photo)}">` : `<div style="width:28px;height:28px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:12px">👤</div>`}
         <div>
           <div class="ssc-name">${escapeHtml(s.name)}${s.preRegistered ? ' ⏳' : ''}</div>
           <div class="ssc-days">${days}일 · ${h}시간${m?m+'분':''}</div>
@@ -2635,7 +2679,7 @@ function renderCalendar(list) {
     ].filter(Boolean).join(' ');
     const h = rec ? Math.floor(rec.workMin/60) : 0;
     const m = rec ? rec.workMin%60 : 0;
-    const pay = rec ? (taxEnabled ? rec.net : rec.gross) : 0;
+    const pay = rec ? (taxEnabled ? netOf(rec.gross) : rec.gross) : 0;
     html += `<div class="${classes}">
       <div class="c-date">${d}</div>
       ${rec&&rec.isDayoff ? `<div class="c-dayoff">휴무</div>` :
@@ -2660,7 +2704,9 @@ function showCalDetail(dateStr, cellEl) {
   document.querySelectorAll('.cal-cell.selected').forEach(c => c.classList.remove('selected'));
   if (cellEl) cellEl.classList.add('selected');
 
-  const dayRecords = records.filter(r => r.date === dateStr);
+  let dayRecords = records.filter(r => r.date === dateStr);
+  // 달력 직원 필터가 켜져 있으면 상세도 동일하게 필터 (다른 직원 기록 노출 방지)
+  if (isAdmin && statsFilterUid) dayRecords = dayRecords.filter(r => r.ownerUid === statsFilterUid);
   const detail = document.getElementById('calDetail');
   const detailDate = document.getElementById('calDetailDate');
   const detailBody = document.getElementById('calDetailBody');
@@ -2707,7 +2753,7 @@ function renderWeekSummary() {
     const isToday = dateStr === todayStr;
     const isDayoff = rec?.isDayoff;
     const h = rec && !isDayoff ? Math.floor(rec.workMin/60) : 0;
-    const pay = rec && !isDayoff ? (taxEnabled ? rec.net : rec.gross) : 0;
+    const pay = rec && !isDayoff ? displayPay(rec) : 0;
     html += `<div class="ws-day ${rec&&!isDayoff?'worked':''} ${isDayoff?'dayoff-day':''} ${isToday?'today':''}">
       <div class="d-name" style="${i===6?'color:var(--accent2)':''}">${dayNames[i]}</div>
       <div class="d-dot" style="${isDayoff?'background:rgba(255,107,107,.15);border-color:rgba(255,107,107,.3);font-size:8px;color:var(--accent2)':''}">${isDayoff?'휴무':rec&&!isDayoff?h+'h':''}</div>

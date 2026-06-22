@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ───────────────────────────────────────────────────────────
+    // 공통 헬퍼 — 관리자 이메일을 한 곳에서 관리
+    // (관리자 추가/변경 시 여기만 고치면 됨)
+    // ───────────────────────────────────────────────────────────
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin()    { return isSignedIn() && request.auth.token.email == 'ryun1875@gmail.com'; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+
+    // ───────────────────────────────────────────────────────────
+    // [기반 1] 모든 앱의 개인 데이터
+    //   work-tracker / budget-tracker / mindmap / ww-matrix 등
+    //   모든 앱이 users/{uid}/... 아래에 저장하므로 이 한 규칙이 전부 보호.
+    //   새 HTML 앱을 만들 때도 users/{uid}/... 규칙만 따르면 추가 작업 불필요.
+    // ───────────────────────────────────────────────────────────
+    match /users/{userId}/{document=**} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // [기반 2] 앱별 "공유" 데이터 컨벤션 (여러 사용자가 함께 보는 데이터)
+    //   앞으로 공유가 필요한 앱은 shared/{appId}/... 경로를 사용.
+    //   기본 정책: 로그인 유저는 읽기, 관리자만 쓰기.
+    //   앱마다 정책이 다르면 이 블록을 복제해 appId별로 분기하면 됨.
+    // ───────────────────────────────────────────────────────────
+    match /shared/{appId}/{document=**} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ───────────────────────────────────────────────────────────
+    // work-tracker 전용 컬렉션
+    // ───────────────────────────────────────────────────────────
+
+    // 직원 명단: 본인/관리자만 읽기.
+    //   본인은 '대기(pending)'로만 가입 가능, 승인(status)·시급(hourlyWage) 변경은 관리자만.
+    //   → 직원이 스스로 승인하거나 시급을 올리는 우회를 차단.
+    match /staff/{staffId} {
+      allow read:   if isAdmin() || isOwner(staffId);
+      allow create: if isAdmin()
+                    || (isOwner(staffId) && request.resource.data.status == 'pending');
+      allow update: if isAdmin()
+                    || (isOwner(staffId)
+                        && request.resource.data.status == resource.data.status
+                        && request.resource.data.get('hourlyWage', 0) == resource.data.get('hourlyWage', 0));
+      allow delete: if isAdmin();
+    }
+
+    // 이의제기: 본인 것만 읽기/생성, 처리(승인·반려)는 관리자만.
+    //   → 다른 직원의 이의제기 열람·조작 차단.
+    match /disputes/{disputeId} {
+      allow read:   if isAdmin() || (isSignedIn() && resource.data.staffUid == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.staffUid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // 사전등록: 관리자 전용.
+    match /preregistered/{docId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
