@@ -875,8 +875,13 @@ function renderLinks() {
 }
 
 // ── View transform ─────────────────────────────────────
+const GRID = 26;   // world-units between dots
 function applyView() {
   world.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.z})`;
+  // grid is anchored to the world: pans with view, scales with zoom → acts as a coordinate plane
+  const g = GRID * view.z;
+  viewport.style.backgroundSize = `${g}px ${g}px`;
+  viewport.style.backgroundPosition = `${view.x}px ${view.y}px`;
 }
 function fitToScreen() {
   const ids = Object.keys(nodes).filter(id => !isHidden(id));
