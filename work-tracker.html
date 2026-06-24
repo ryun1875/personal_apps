@@ -1066,7 +1066,20 @@ body {
   <h2>⚙️ 설정</h2>
   <div class="settings-section">
     <h3>급여 설정</h3>
-    <div class="settings-row"><span class="lbl">현재 시급</span><span class="val" id="settingsWage">₩0</span></div>
+    <div class="settings-row" id="settingsWageRow" style="cursor:pointer"><span class="lbl">현재 시급 <span style="font-size:11px;color:var(--text3)">✎</span></span><span class="val" id="settingsWage">₩0</span></div>
+    <div id="wageInlineEditor" style="display:none;padding:6px 0 12px;border-bottom:1px solid var(--border)">
+      <div id="wageInlineWho" style="font-size:11px;color:var(--text3);margin-bottom:8px"></div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:15px;color:var(--text2)">₩</span>
+        <input type="number" id="settingsWageInput" min="0" step="10" placeholder="예: 10030"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);padding:10px 12px;font-size:15px;font-family:'Gmarket Sans',sans-serif;outline:none">
+      </div>
+      <button id="settingsWageApplyAll" style="width:100%;margin-bottom:8px;padding:11px;border-radius:10px;border:1px dashed var(--accent3);background:rgba(107,181,255,.12);color:var(--accent3);font-size:13px;font-weight:600;cursor:pointer">👥 모든 직원에게 적용</button>
+      <div style="display:flex;gap:8px">
+        <button id="settingsWageCancel" style="flex:1;padding:11px;border-radius:10px;border:none;background:var(--surface2);color:var(--text2);font-size:13px;font-weight:600;cursor:pointer">취소</button>
+        <button id="settingsWageSave" style="flex:1;display:none;padding:11px;border-radius:10px;border:none;background:var(--accent);color:#0f0f13;font-size:13px;font-weight:700;cursor:pointer">저장</button>
+      </div>
+    </div>
     <div class="settings-row"><span class="lbl">세금 공제 (3.3%)</span><div class="toggle" id="taxToggle"></div></div>
   </div>
 
@@ -1832,11 +1845,11 @@ function openWageModal() {
   document.getElementById('wageModal').classList.add('show');
 }
 document.getElementById('wageBanner').addEventListener('click', openWageModal);
-document.getElementById('settingsWage').addEventListener('click', openWageModal);
 document.getElementById('wageCancel').addEventListener('click', () => document.getElementById('wageModal').classList.remove('show'));
-document.getElementById('wageConfirm').addEventListener('click', async () => {
-  const v = parseInt(document.getElementById('wageInput').value);
-  if (!v || v < 0) return alert('올바른 시급을 입력해주세요');
+
+// ── 시급 저장 공통 로직 (모달 / 설정패널 인라인 공용) ──
+async function runSaveSelectedFlow(v) {
+  if (!v || v < 0) { alert('올바른 시급을 입력해주세요'); return false; }
   hourlyWage = v;
   try {
     if (isAdmin && selectedStaffUid) {
@@ -1845,7 +1858,6 @@ document.getElementById('wageConfirm').addEventListener('click', async () => {
       const s = allStaff.find(x => x.uid === selectedStaffUid);
       if (s) s.hourlyWage = v; // 로컬 캐시 동기화
       renderStaffManage();
-      // 기존 기록도 새 시급으로 재계산할지 확인
       if (confirm('기존 기록도 새 시급으로 다시 계산할까요?\n(과거 급여 금액이 바뀝니다)')) {
         const n = await recalcRecordsForStaff(selectedStaffUid, v);
         await loadRecords();
@@ -1857,16 +1869,14 @@ document.getElementById('wageConfirm').addEventListener('click', async () => {
     }
   } catch(e) {}
   applySettings();
-  document.getElementById('wageModal').classList.remove('show');
-});
+  return true;
+}
 
-// 모든 직원에게 시급 일괄 적용
-document.getElementById('wageApplyAll').addEventListener('click', async () => {
-  const v = parseInt(document.getElementById('wageInput').value);
-  if (!v || v < 0) return alert('올바른 시급을 입력해주세요');
+async function runApplyAllFlow(v) {
+  if (!v || v < 0) { alert('올바른 시급을 입력해주세요'); return false; }
   const approved = allStaff.filter(s => s.status === 'approved');
-  if (!approved.length) return alert('적용할 직원이 없어요');
-  if (!confirm(`승인된 직원 ${approved.length}명 모두의 시급을 ₩${v.toLocaleString()}로 통일할까요?`)) return;
+  if (!approved.length) { alert('적용할 직원이 없어요'); return false; }
+  if (!confirm(`승인된 직원 ${approved.length}명 모두의 시급을 ₩${v.toLocaleString()}로 통일할까요?`)) return false;
   const recalc = confirm('기존 기록도 새 시급으로 다시 계산할까요?\n(모든 직원의 과거 급여 금액이 바뀝니다)');
   try {
     await Promise.all(approved.map(s =>
@@ -1882,9 +1892,53 @@ document.getElementById('wageApplyAll').addEventListener('click', async () => {
     applySettings();
     renderStaffManage();
     await loadRecords();
-    document.getElementById('wageModal').classList.remove('show');
     alert(`✅ 직원 ${approved.length}명의 시급을 ₩${v.toLocaleString()}로 통일했어요.${extra}`);
-  } catch(e) { alert('일괄 적용 실패: ' + e.message); }
+    return true;
+  } catch(e) { alert('일괄 적용 실패: ' + e.message); return false; }
+}
+
+// 모달 버튼 (홈 화면 시급 배너 경로)
+document.getElementById('wageConfirm').addEventListener('click', async () => {
+  const v = parseInt(document.getElementById('wageInput').value);
+  if (await runSaveSelectedFlow(v)) document.getElementById('wageModal').classList.remove('show');
+});
+document.getElementById('wageApplyAll').addEventListener('click', async () => {
+  const v = parseInt(document.getElementById('wageInput').value);
+  if (await runApplyAllFlow(v)) document.getElementById('wageModal').classList.remove('show');
+});
+
+// ── 설정 패널 인라인 시급 편집 (모달 대신 패널 안에서 바로) ──
+const wageInlineEditor = document.getElementById('wageInlineEditor');
+function openWageInline() {
+  if (!isAdmin) return;
+  const opening = wageInlineEditor.style.display === 'none';
+  wageInlineEditor.style.display = opening ? 'block' : 'none';
+  if (!opening) return;
+  document.getElementById('settingsWageInput').value = hourlyWage;
+  const sel = (isAdmin && selectedStaffUid) ? allStaff.find(s => s.uid === selectedStaffUid) : null;
+  const saveBtn = document.getElementById('settingsWageSave');
+  const who = document.getElementById('wageInlineWho');
+  if (sel) {
+    saveBtn.style.display = 'block';
+    saveBtn.textContent = `${sel.name}님만 저장`;
+    who.textContent = `선택된 직원: ${sel.name}`;
+  } else {
+    saveBtn.style.display = 'none';
+    who.textContent = '입력 후 "모든 직원에게 적용"을 누르면 전 직원이 통일돼요';
+  }
+  document.getElementById('settingsWageInput').focus();
+}
+document.getElementById('settingsWageRow').addEventListener('click', openWageInline);
+document.getElementById('settingsWageApplyAll').addEventListener('click', async () => {
+  const v = parseInt(document.getElementById('settingsWageInput').value);
+  if (await runApplyAllFlow(v)) wageInlineEditor.style.display = 'none';
+});
+document.getElementById('settingsWageSave').addEventListener('click', async () => {
+  const v = parseInt(document.getElementById('settingsWageInput').value);
+  if (await runSaveSelectedFlow(v)) wageInlineEditor.style.display = 'none';
+});
+document.getElementById('settingsWageCancel').addEventListener('click', () => {
+  wageInlineEditor.style.display = 'none';
 });
 
 // ── Settings panel ──
