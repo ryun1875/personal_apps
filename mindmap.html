@@ -185,6 +185,14 @@
   .pop-opt:hover { border-color: var(--accent); }
   .pop-opt.active { border-color: var(--accent); background: var(--accent-glow); color: var(--accent2); }
   .pop-opt svg { width: 26px; height: 15px; }
+  .trunk-row { display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px; }
+  .trunk-end { font-size: 11px; font-weight: 600; color: var(--text2); flex-shrink: 0; }
+  #trunk-range { flex: 1; -webkit-appearance: none; appearance: none; height: 4px; border-radius: 3px;
+    background: var(--border); outline: none; cursor: pointer; }
+  #trunk-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px;
+    border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); cursor: pointer; }
+  #trunk-range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent);
+    border: 2px solid var(--surface); cursor: pointer; }
 
   /* layout/style anchored popovers */
   #layout-pop { top: calc(60px + env(safe-area-inset-top)); right: 8px; min-width: 150px; }
@@ -387,6 +395,12 @@
     <div class="pop-opt" data-shape="rect">■ 사각</div>
     <div class="pop-opt" data-shape="underline">▬ 밑줄</div>
     <div class="pop-opt" data-shape="none">○ 텍스트</div>
+  </div>
+  <div class="pop-label" id="trunk-label">트렁크 위치 (꺾임)</div>
+  <div class="trunk-row">
+    <span class="trunk-end">부모</span>
+    <input type="range" id="trunk-range" min="0" max="100" value="50">
+    <span class="trunk-end">자식</span>
   </div>
 </div>
 
@@ -653,6 +667,7 @@ function stripNode(n) {
   if (n.fixed) { o.fixed = true; if (n.w) o.w = r2(n.w); if (n.h) o.h = r2(n.h); }
   if (n.shape) o.shape = n.shape;
   if (n.lineStyle) o.lineStyle = n.lineStyle;
+  if (typeof n.trunk === 'number') o.trunk = n.trunk;
   if (n.note) o.note = n.note;
   if (n.markers && n.markers.length) o.markers = n.markers;
   if (n.tags && n.tags.length) o.tags = n.tags;
@@ -806,7 +821,8 @@ function renderLinks() {
     pa.setAttribute('stroke-linecap', 'round'); pa.setAttribute('stroke-linejoin', 'round');
     frag.appendChild(pa);
   };
-  const clampOff = v => Math.max(8, Math.min(34, v * 0.5));
+  // place trunk between parent edge (0) and nearest child edge (1) by `ratio`
+  const trunkOff = (nearest, ratio) => Math.max(4, Math.min(Math.max(nearest - 4, 4), nearest * ratio));
 
   // boundaries (back layer)
   boundaries.forEach(b => {
@@ -837,6 +853,7 @@ function renderLinks() {
     if (!kids.length) return;
     const style = p.lineStyle || 'curve';
     const pcol = p.color || '#7c6af7';
+    const ratio = (typeof p.trunk === 'number') ? p.trunk : 0.5;   // 0=부모쪽, 1=자식쪽
     const { w: pw, h: ph } = nodeSize(p.id);
 
     // split children into the two sides of the parent (along the layout axis)
@@ -853,7 +870,7 @@ function renderLinks() {
           const pEx = p.x + dir * pw / 2, pEy = p.y;
           const edges = group.map(c => ({ c, ex: c.x - dir * nodeSize(c.id).w / 2, ey: c.y }));
           const nearest = Math.min(...edges.map(e => Math.abs(e.ex - pEx)));
-          const trunkX = pEx + dir * clampOff(nearest);
+          const trunkX = pEx + dir * trunkOff(nearest, ratio);
           mkPath(`M${pEx},${pEy} L${trunkX},${pEy}`, pcol, 0.55, 2.4);
           const ys = [pEy, ...edges.map(e => e.ey)];
           const minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -864,7 +881,7 @@ function renderLinks() {
           const pEy = p.y + dir * ph / 2, pEx = p.x;
           const edges = group.map(c => ({ c, ey: c.y - dir * nodeSize(c.id).h / 2, ex: c.x }));
           const nearest = Math.min(...edges.map(e => Math.abs(e.ey - pEy)));
-          const trunkY = pEy + dir * clampOff(nearest);
+          const trunkY = pEy + dir * trunkOff(nearest, ratio);
           mkPath(`M${pEx},${pEy} L${pEx},${trunkY}`, pcol, 0.55, 2.4);
           const xs = [pEx, ...edges.map(e => e.ex)];
           const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -1116,6 +1133,11 @@ function updateToolbar() {
     const n = nodes[id];
     document.querySelectorAll('#line-row .pop-opt').forEach(o => o.classList.toggle('active', o.dataset.line === (n.lineStyle || 'curve')));
     document.querySelectorAll('#shape-row .pop-opt').forEach(o => o.classList.toggle('active', o.dataset.shape === (n.shape || 'pill')));
+    $('trunk-range').value = Math.round((typeof n.trunk === 'number' ? n.trunk : 0.5) * 100);
+    const isElbow = (n.lineStyle || 'curve') === 'elbow';
+    $('trunk-range').disabled = !isElbow;
+    $('trunk-label').style.opacity = isElbow ? '1' : '.4';
+    $('trunk-range').parentElement.style.opacity = isElbow ? '1' : '.4';
   }
 }
 
@@ -1299,7 +1321,7 @@ document.querySelectorAll('#line-row .pop-opt').forEach(o => o.addEventListener(
   const id = primaryId(); if (!id) return;
   nodes[id].lineStyle = o.dataset.line;
   document.querySelectorAll('#line-row .pop-opt').forEach(x => x.classList.toggle('active', x === o));
-  renderLinks(); scheduleSave();
+  renderLinks(); updateToolbar(); scheduleSave();
 }));
 document.querySelectorAll('#shape-row .pop-opt').forEach(o => o.addEventListener('click', () => {
   const id = primaryId(); if (!id) return;
@@ -1307,6 +1329,12 @@ document.querySelectorAll('#shape-row .pop-opt').forEach(o => o.addEventListener
   document.querySelectorAll('#shape-row .pop-opt').forEach(x => x.classList.toggle('active', x === o));
   rerenderStructure(); Object.keys(nodes).forEach(k => { if (!isHidden(k)) positionNode(k); }); renderLinks(); scheduleSave();
 }));
+$('trunk-range').addEventListener('input', () => {
+  const id = primaryId(); if (!id) return;
+  nodes[id].trunk = +$('trunk-range').value / 100;
+  renderLinks();
+});
+$('trunk-range').addEventListener('change', () => { if (primaryId()) scheduleSave(); });
 
 // ── Relations ──────────────────────────────────────────
 let relateFrom = null;
