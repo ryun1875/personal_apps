@@ -600,9 +600,11 @@ function applyMapData(data, fit) {
   relations = (data.relations || []).map(r => ({ ...r }));
   boundaries = (data.boundaries || []).map(b => ({ ...b }));
   layoutType = data.layout || 'map';
+  autoArrange = data.autoArrange !== false;   // default on; persisted per map
   selectedIds.clear();
   nodeCounter = Object.keys(nodes).reduce((m, k) => Math.max(m, parseInt(k.replace(/\D/g, '')) || 0), 1);
   updateLayoutUI();
+  updateArrangeUI();
   renderAll(fit);
 }
 
@@ -639,7 +641,7 @@ async function saveMap() {
   const now = Date.now();
   try {
     await setDoc(doc(db, 'users', uid, 'mindmaps', currentMapId),
-      { title, updatedAt: now, clientId: CLIENT_ID, layout: layoutType, nodes: clean, relations, boundaries });
+      { title, updatedAt: now, clientId: CLIENT_ID, layout: layoutType, autoArrange, nodes: clean, relations, boundaries });
     lastSavedAt = now;
     showSave('saved', '✓ 저장됨');
   } catch (e) {
@@ -681,8 +683,9 @@ function renderAll(fit) {
   Object.values(nodes).forEach(n => { if (!isHidden(n.id)) renderNode(n); });
   requestAnimationFrame(() => {
     measureAll();
-    if (autoArrange) runLayout(false);
-    else Object.keys(nodes).forEach(positionNode);
+    // load always uses the saved positions — never re-layout on open/refresh,
+    // so manual drags persist. auto-arrange only runs on add/delete/layout button.
+    Object.keys(nodes).forEach(k => { if (!isHidden(k)) positionNode(k); });
     renderLinks();
     if (fit) fitToScreen(); else applyView();
   });
@@ -1206,7 +1209,7 @@ function startEdit(id) {
     lbl.textContent = n.label;
     lbl.removeEventListener('blur', finish); lbl.removeEventListener('keydown', onKey);
     interacting = false;
-    requestAnimationFrame(() => { n.w = box.offsetWidth; n.h = box.offsetHeight; if (autoArrange) runLayout(true); else { positionNode(id); renderLinks(); scheduleSave(); } });
+    requestAnimationFrame(() => { n.w = box.offsetWidth; n.h = box.offsetHeight; positionNode(id); renderLinks(); scheduleSave(); });
   }
   function onKey(e) {
     e.stopPropagation();
@@ -1413,7 +1416,7 @@ function refreshNode(id) {
   const wasSel = selectedIds.has(id);
   delete n.el; const old = document.getElementById('node-' + id); if (old) old.remove();
   renderNode(n);
-  requestAnimationFrame(() => { measureNode(id); if (autoArrange) runLayout(false); else { positionNode(id); } renderLinks(); });
+  requestAnimationFrame(() => { measureNode(id); positionNode(id); renderLinks(); });
 }
 
 // ── Image upload (downscaled into Firestore asset doc) ──
