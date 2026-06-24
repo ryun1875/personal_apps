@@ -116,6 +116,14 @@
   #links { position: absolute; left: 0; top: 0; width: 10px; height: 10px; overflow: visible; pointer-events: none; }
   #links .hit { pointer-events: stroke; cursor: pointer; }
   #nodes { position: absolute; left: 0; top: 0; }
+  #boundaries { position: absolute; left: 0; top: 0; }
+  .mm-boundary { position: absolute; border: 2px dashed; border-radius: 16px; box-sizing: border-box; pointer-events: none; }
+  .mm-boundary .bnd-label { position: absolute; top: -12px; left: 14px; display: flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 10px; color: #fff;
+    white-space: nowrap; cursor: pointer; max-width: 240px; pointer-events: auto; }
+  .mm-boundary .bnd-label .bnd-name { overflow: hidden; text-overflow: ellipsis; }
+  .mm-boundary .bnd-label .bnd-x { opacity: .8; font-weight: 800; }
+  .mm-boundary .bnd-label .bnd-x:hover { opacity: 1; }
 
   /* ── Node ──────────────────────────────────────────── */
   .mm-node { position: absolute; display: flex; flex-direction: column; align-items: stretch;
@@ -137,6 +145,8 @@
   .node-badges { position: absolute; top: -8px; right: -6px; display: flex; gap: 2px; }
   .node-badge { font-size: 10px; background: var(--surface); border: 1px solid var(--border);
     border-radius: 8px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
+  .node-badge.link { cursor: pointer; }
+  .node-badge.link:hover { border-color: var(--accent); }
   .node-collapse { position: absolute; width: 18px; height: 18px; border-radius: 50%; background: var(--surface);
     border: 1.5px solid currentColor; color: inherit; font-size: 11px; font-weight: 800; cursor: pointer;
     display: none; align-items: center; justify-content: center; z-index: 6; line-height: 1; top: 50%; transform: translateY(-50%); }
@@ -208,9 +218,12 @@
   .marker-btn:hover { border-color: var(--accent); }
   .marker-btn.active { border-color: var(--accent); background: var(--accent-glow); }
   .tag-input-row { display: flex; gap: 6px; }
-  #np-tag-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 9px;
-    padding: 8px 10px; color: var(--text); font-size: 13px; font-family: inherit; }
-  #np-tag-input:focus { outline: none; border-color: var(--accent); }
+  #np-tag-input, #np-link-input { flex: 1; min-width: 0; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 9px; padding: 8px 10px; color: var(--text); font-size: 13px; font-family: inherit; }
+  #np-tag-input:focus, #np-link-input:focus { outline: none; border-color: var(--accent); }
+  .np-link-open { flex-shrink: 0; width: 38px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--accent2); font-size: 16px; cursor: pointer; }
+  .np-link-open:hover { border-color: var(--accent); }
   .tag-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
   .tag-chip { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 12px; background: var(--surface2);
     color: var(--text); display: flex; align-items: center; gap: 5px; }
@@ -301,6 +314,7 @@
 
 <div id="viewport" style="display:none">
   <div id="world">
+    <div id="boundaries"></div>
     <svg id="links">
       <defs>
         <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -347,7 +361,8 @@
         <div class="help-row"><b>⭐ 마커</b><span>노트 패널에서 우선순위·체크·별 등 마커 토글</span></div>
         <div class="help-row"><b># 태그</b><span>노트 패널에서 태그 입력 후 Enter</span></div>
         <div class="help-row"><b>⤳ 관계선</b><span>관계 버튼 → 두 노드를 차례로 탭하면 점선 화살표 연결 (선 탭하면 삭제)</span></div>
-        <div class="help-row"><b>⬚ 경계</b><span>여러 노드 선택 → 경계 버튼으로 묶음 박스 (다시 누르면 해제)</span></div>
+        <div class="help-row"><b>⬚ 경계</b><span>노드 선택(여러 개는 Shift+클릭) → 경계 버튼으로 묶음 박스 · 라벨 클릭=이름변경, ✕=삭제</span></div>
+        <div class="help-row"><b>🔗 링크</b><span>노트 패널의 URL 칸에 입력 → 노드의 🔗 배지(또는 ↗)를 누르면 브라우저로 열림</span></div>
         <div class="help-row"><b>✦ 스타일</b><span>연결선 모양(곡선/꺾임/직선)과 자식 노드 모양 변경</span></div>
       </div>
       <div class="help-sec">
@@ -419,6 +434,13 @@
     <div>
       <div class="np-sec-label">마커</div>
       <div class="marker-grid" id="np-markers"></div>
+    </div>
+    <div>
+      <div class="np-sec-label">링크 (URL)</div>
+      <div class="tag-input-row">
+        <input type="url" id="np-link-input" placeholder="https://example.com" inputmode="url">
+        <button class="np-link-open" id="np-link-open" title="브라우저에서 열기">↗</button>
+      </div>
     </div>
     <div>
       <div class="np-sec-label">태그</div>
@@ -610,6 +632,7 @@ function applyMapData(data, fit) {
 
 function clearCanvas() {
   nodesEl.innerHTML = '';
+  $('boundaries').innerHTML = '';
   while (linksEl.lastChild && linksEl.lastChild.tagName !== 'defs') linksEl.removeChild(linksEl.lastChild);
   nodes = {}; relations = []; boundaries = []; selectedIds.clear();
   view = { x: 0, y: 0, z: 1 }; applyView();
@@ -656,6 +679,7 @@ function stripNode(n) {
   if (n.shape) o.shape = n.shape;
   if (n.lineStyle) o.lineStyle = n.lineStyle;
   if (n.note) o.note = n.note;
+  if (n.link) o.link = n.link;
   if (n.markers && n.markers.length) o.markers = n.markers;
   if (n.tags && n.tags.length) o.tags = n.tags;
   if (n.collapsed) o.collapsed = true;
@@ -729,10 +753,16 @@ function renderNode(n) {
     n.tags.forEach(t => { const s = document.createElement('span'); s.className = 'node-tag'; s.textContent = '#' + t; tg.appendChild(s); });
     box.appendChild(tg);
   }
-  // badges (note indicator)
-  if (n.note) {
+  // badges (note + link indicators)
+  if (n.note || n.link) {
     const bd = document.createElement('div'); bd.className = 'node-badges';
-    bd.innerHTML = '<div class="node-badge" title="노트 있음">📝</div>';
+    if (n.note) { const x = document.createElement('div'); x.className = 'node-badge'; x.title = '노트 있음'; x.textContent = '📝'; bd.appendChild(x); }
+    if (n.link) {
+      const x = document.createElement('div'); x.className = 'node-badge link'; x.title = n.link; x.textContent = '🔗';
+      x.addEventListener('pointerdown', e => e.stopPropagation());
+      x.addEventListener('click', e => { e.stopPropagation(); openLink(n.link); });
+      bd.appendChild(x);
+    }
     box.appendChild(bd);
   }
   div.appendChild(box);
@@ -790,6 +820,49 @@ function positionNode(id) {
   }
 }
 
+// ── Boundaries (labeled group boxes, behind everything) ──
+function renderBoundaries() {
+  const layer = $('boundaries');
+  layer.innerHTML = '';
+  boundaries.forEach(b => {
+    const mem = b.nodeIds.filter(id => nodes[id] && !isHidden(id));
+    if (!mem.length) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    mem.forEach(id => { const n = nodes[id], { w, h } = nodeSize(id);
+      minX = Math.min(minX, n.x - w / 2); maxX = Math.max(maxX, n.x + w / 2);
+      minY = Math.min(minY, n.y - h / 2); maxY = Math.max(maxY, n.y + h / 2); });
+    const pad = 20, col = b.color || '#7c6af7';
+    const box = document.createElement('div');
+    box.className = 'mm-boundary';
+    box.style.left = (minX - pad) + 'px';
+    box.style.top = (minY - pad) + 'px';
+    box.style.width = (maxX - minX + pad * 2) + 'px';
+    box.style.height = (maxY - minY + pad * 2) + 'px';
+    box.style.borderColor = col;
+    box.style.background = col + '1f';
+    const lab = document.createElement('div');
+    lab.className = 'bnd-label';
+    lab.style.background = col;
+    lab.innerHTML = `<span class="bnd-name"></span><span class="bnd-x" title="경계 삭제">✕</span>`;
+    lab.querySelector('.bnd-name').textContent = b.label || '그룹';
+    lab.querySelector('.bnd-name').addEventListener('click', e => { e.stopPropagation(); renameBoundary(b.id); });
+    lab.querySelector('.bnd-x').addEventListener('click', e => { e.stopPropagation(); deleteBoundary(b.id); });
+    box.appendChild(lab);
+    layer.appendChild(box);
+  });
+}
+function renameBoundary(id) {
+  const b = boundaries.find(x => x.id === id); if (!b) return;
+  const v = prompt('경계 이름', b.label || '그룹');
+  if (v === null) return;
+  b.label = v.trim() || '그룹';
+  renderBoundaries(); scheduleSave();
+}
+function deleteBoundary(id) {
+  boundaries = boundaries.filter(b => b.id !== id);
+  renderBoundaries(); scheduleSave(); toastMsg('경계 삭제됨');
+}
+
 // ── Links (edges + relations + boundaries) in world coords ──
 function nodeSize(id) { const n = nodes[id]; return { w: n.w || 100, h: n.h || 34 }; }
 function edgePoint(n, towardX) {
@@ -812,25 +885,7 @@ function renderLinks() {
   // place trunk between parent edge (0) and nearest child edge (1) by `ratio`
   const trunkOff = (nearest, ratio) => Math.max(4, Math.min(Math.max(nearest - 4, 4), nearest * ratio));
 
-  // boundaries (back layer)
-  boundaries.forEach(b => {
-    const mem = b.nodeIds.filter(id => nodes[id] && !isHidden(id));
-    if (mem.length < 1) return;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    mem.forEach(id => { const n = nodes[id], { w, h } = nodeSize(id);
-      minX = Math.min(minX, n.x - w / 2); maxX = Math.max(maxX, n.x + w / 2);
-      minY = Math.min(minY, n.y - h / 2); maxY = Math.max(maxY, n.y + h / 2); });
-    const pad = 18;
-    const rect = document.createElementNS(NS, 'rect');
-    rect.setAttribute('x', minX - pad); rect.setAttribute('y', minY - pad);
-    rect.setAttribute('width', maxX - minX + pad * 2); rect.setAttribute('height', maxY - minY + pad * 2);
-    rect.setAttribute('rx', 16);
-    rect.setAttribute('fill', (b.color || '#7c6af7') + '14');
-    rect.setAttribute('stroke', b.color || '#7c6af7');
-    rect.setAttribute('stroke-width', '1.5');
-    rect.setAttribute('stroke-dasharray', '7 5');
-    frag.appendChild(rect);
-  });
+  renderBoundaries();
 
   // parent→child edges. elbow shares ONE trunk per side (vertical for L/R trees,
   // horizontal for the down/org layout); curve & straight stay per-child.
@@ -1340,7 +1395,7 @@ $('btn-boundary').addEventListener('click', () => {
   // toggle: if an identical boundary exists, remove it
   const same = boundaries.find(b => b.nodeIds.length === ids.length && b.nodeIds.every(x => ids.includes(x)));
   if (same) { boundaries = boundaries.filter(b => b !== same); toastMsg('경계 해제'); }
-  else { boundaries.push({ id: 'b' + Date.now().toString(36), nodeIds: ids, color: nodes[ids[0]].color || '#7c6af7' }); toastMsg('경계 생성'); }
+  else { boundaries.push({ id: 'b' + Date.now().toString(36), nodeIds: ids, color: nodes[ids[0]].color || '#7c6af7', label: '그룹' }); toastMsg('경계 생성 — 이름은 라벨 클릭'); }
   renderLinks(); scheduleSave();
 });
 
@@ -1379,11 +1434,35 @@ function fillNotePanel(id) {
     });
     mg.appendChild(b);
   });
+  // link
+  $('np-link-input').value = n.link || '';
   // tags
   renderTagChips(id);
   // note
   const ta = $('np-note'); ta.value = n.note || '';
 }
+function normalizeUrl(v) {
+  v = (v || '').trim();
+  if (!v) return '';
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(v) && !/^(mailto:|tel:)/i.test(v)) v = 'https://' + v;
+  return v;
+}
+function openLink(url) {
+  const u = normalizeUrl(url); if (!u) return;
+  window.open(u, '_blank', 'noopener,noreferrer');
+}
+function commitLink() {
+  const id = notePanelId; if (!id) return;
+  const v = normalizeUrl($('np-link-input').value);
+  $('np-link-input').value = v;
+  if ((nodes[id].link || '') === v) return;
+  nodes[id].link = v || '';
+  if (!v) delete nodes[id].link;
+  refreshNode(id); scheduleSave();
+}
+$('np-link-input').addEventListener('change', commitLink);
+$('np-link-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); commitLink(); openLink($('np-link-input').value); } });
+$('np-link-open').addEventListener('click', () => { commitLink(); openLink($('np-link-input').value); });
 function renderTagChips(id) {
   const wrap = $('np-tag-chips'); wrap.innerHTML = '';
   (nodes[id].tags || []).forEach(t => {
