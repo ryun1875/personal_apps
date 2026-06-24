@@ -397,6 +397,7 @@ let view = { x: 0, y: 0, z: 1 };
 let nodeCounter = 0;
 let isDark = true;
 let linkMode = null;       // 'relate' | null
+let multiTouch = false;    // 2+ fingers down → pinch wins over node/resize drag
 let mapUnsub = null;       // onSnapshot unsubscribe
 let lastSavedAt = 0;       // updatedAt we last wrote/loaded
 let interacting = false;   // dragging/editing → defer remote sync
@@ -1017,6 +1018,7 @@ function setupNodeEvents(id) {
     el.addEventListener('pointercancel', onUp, { once: true });
   });
   function onMove(e) {
+    if (multiTouch) return;                 // yield to pinch-zoom
     const dx = (e.clientX - sx) / view.z, dy = (e.clientY - sy) / view.z;
     if (Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) > 4) moved = true;
     if (!moved) return;
@@ -1049,6 +1051,7 @@ function setupResize(handle, id, dir) {
     interacting = true;
     handle.setPointerCapture(e.pointerId);
     function mv(e2) {
+      if (multiTouch) return;               // yield to pinch-zoom
       const dx = (e2.clientX - sx) / view.z;
       let nw = dir.includes('e') ? sw + dx : sw - dx;
       nw = Math.max(54, nw);
@@ -1372,13 +1375,14 @@ viewport.addEventListener('click', e => {
   }
 });
 
-// pinch zoom
+// pinch zoom (2-finger). multiTouch flag lets node/resize drags yield to a pinch.
 let pinch = null;
-viewport.addEventListener('touchstart', e => {
+document.addEventListener('touchstart', e => {
+  multiTouch = e.touches.length >= 2;
   if (e.touches.length === 2) {
     const d = dist(e.touches);
     pinch = { d, z: view.z, cx: (e.touches[0].clientX + e.touches[1].clientX) / 2, cy: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
-    panState = null;
+    panState = null;                       // a pinch cancels an in-progress pan
   }
 }, { passive: true });
 viewport.addEventListener('touchmove', e => {
@@ -1392,7 +1396,7 @@ viewport.addEventListener('touchmove', e => {
     view.z = nz; applyView();
   }
 }, { passive: true });
-viewport.addEventListener('touchend', () => { pinch = null; });
+document.addEventListener('touchend', e => { if (e.touches.length < 2) { pinch = null; multiTouch = false; } }, { passive: true });
 function dist(t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY); }
 
 // wheel zoom (cursor-anchored)
