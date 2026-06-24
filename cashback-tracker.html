@@ -358,6 +358,16 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     </div>
 
     <div class="notif-section">
+      <div class="toggle-row" style="padding-top:0">
+        <div>
+          <div class="toggle-label">달성 완료로 표시</div>
+          <div class="toggle-sub">최소금액 없는 이벤트도 수동 달성 처리</div>
+        </div>
+        <button class="toggle" id="t-done" onclick="toggleBtn(this)"></button>
+      </div>
+    </div>
+
+    <div class="notif-section">
       <div class="notif-section-title">🔔 알림 설정</div>
       <div class="toggle-row">
         <div>
@@ -415,6 +425,17 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   </div>
 </div>
 
+<!-- 설정 모달 -->
+<div class="modal-bg" id="settings-modal-bg" onclick="handleModalBgClick(event,'settings-modal-bg')">
+  <div class="modal" id="settings-modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">
+      설정 <button class="modal-close" onclick="closeModal('settings-modal-bg')">✕</button>
+    </div>
+    <div id="settings-content"></div>
+  </div>
+</div>
+
 <!-- 이미지 라이트박스 -->
 <div class="lightbox" id="lightbox" onclick="closeLightbox()">
   <button class="lightbox-close">✕</button>
@@ -433,8 +454,17 @@ let uploadedImages = []; // base64 배열
 let currentFilter = 'all';
 
 function save() {
-  localStorage.setItem('cbEvents', JSON.stringify(events));
-  localStorage.setItem('cbNotifs', JSON.stringify(notifications));
+  try {
+    localStorage.setItem('cbEvents', JSON.stringify(events));
+    localStorage.setItem('cbNotifs', JSON.stringify(notifications));
+    return true;
+  } catch (err) {
+    showToast('저장 공간이 부족해요. 첨부 이미지를 줄여보세요', 'error');
+    return false;
+  }
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
 // ── 날짜 유틸 ──────────────────────────────────
@@ -463,6 +493,7 @@ function getStatus(ev) {
   return 'active';
 }
 function isAchieved(ev) {
+  if (ev.doneManual) return true;
   if (!ev.minAmount) return false;
   return Number(ev.currentAmount || 0) >= Number(ev.minAmount);
 }
@@ -493,8 +524,8 @@ function renderStartBanners() {
     <div class="start-banner" onclick="openDetail('${e.id}')">
       <div class="start-banner-icon">🎉</div>
       <div class="start-banner-text">
-        <strong>${e.bank} ${e.cardName} 이벤트 오늘 시작!</strong>
-        ${e.name} — ${fmtAmt(e.cashbackAmount)}원 캐시백
+        <strong>${esc(e.bank)} ${esc(e.cardName)} 이벤트 오늘 시작!</strong>
+        ${esc(e.name)} — ${fmtAmt(e.cashbackAmount)}원 캐시백
       </div>
     </div>
   `).join('');
@@ -551,7 +582,7 @@ function eventCardHTML(e) {
       ddayBadge = `<span class="badge badge-dday">D-${daysToEnd}</span>`;
     }
   } else if (status === 'upcoming') {
-    ddayBadge = `<span class="badge badge-dday">D+${Math.abs(daysToStart)}</span>`;
+    ddayBadge = `<span class="badge badge-dday">시작 D-${Math.abs(daysToStart)}</span>`;
   } else if (status === 'ended') {
     cardClass = 'done';
     ddayBadge = `<span class="badge badge-dday done-badge">종료</span>`;
@@ -583,7 +614,7 @@ function eventCardHTML(e) {
   }
 
   // 메모 미리보기
-  const memoHTML = e.memo ? `<div class="event-memo-preview">📝 ${e.memo}</div>` : '';
+  const memoHTML = e.memo ? `<div class="event-memo-preview">📝 ${esc(e.memo)}</div>` : '';
 
   // 이미지 썸네일
   let thumbHTML = '';
@@ -599,8 +630,8 @@ function eventCardHTML(e) {
   <div class="event-card ${cardClass}" onclick="openDetail('${e.id}')">
     <div class="event-top">
       <div class="event-left">
-        <div class="event-card-name">${e.name}</div>
-        <div class="event-card-bank">${e.bank} ${e.cardName}</div>
+        <div class="event-card-name">${esc(e.name)}</div>
+        <div class="event-card-bank">${esc(e.bank)} ${esc(e.cardName)}</div>
       </div>
       <div class="event-badges">
         ${ddayBadge}
@@ -632,6 +663,7 @@ function openAddModal() {
   document.getElementById('img-preview-list').innerHTML = '';
   document.getElementById('t-deadline').className = 'toggle on';
   document.getElementById('t-start').className = 'toggle on';
+  document.getElementById('t-done').className = 'toggle';
   openModal('edit-modal-bg');
 }
 
@@ -653,6 +685,7 @@ function openEditModal(id) {
   document.getElementById('f-memo').value = ev.memo || '';
   document.getElementById('t-deadline').className = 'toggle ' + (ev.notifDeadline !== false ? 'on' : '');
   document.getElementById('t-start').className = 'toggle ' + (ev.notifStart !== false ? 'on' : '');
+  document.getElementById('t-done').className = 'toggle ' + (ev.doneManual ? 'on' : '');
   renderImagePreviews();
   closeModal('detail-modal-bg');
   openModal('edit-modal-bg');
@@ -673,8 +706,8 @@ function openDetail(id) {
   const pct = ev.minAmount ? Math.min(100, Math.round((Number(ev.currentAmount || 0) / Number(ev.minAmount)) * 100)) : null;
 
   document.getElementById('detail-content').innerHTML = `
-    <div class="detail-card-name">${ev.name}</div>
-    <div class="detail-card-bank">${ev.bank} ${ev.cardName}</div>
+    <div class="detail-card-name">${esc(ev.name)}</div>
+    <div class="detail-card-bank">${esc(ev.bank)} ${esc(ev.cardName)}</div>
     <div style="margin-bottom:14px">${statusText}</div>
 
     ${pct !== null ? `
@@ -708,10 +741,24 @@ function openDetail(id) {
       </div>
     </div>
 
+    ${status === 'active' && ev.minAmount && !isAchieved(ev) ? `
+    <div class="detail-section">
+      <div class="detail-section-title">달성액 빠른 갱신</div>
+      <div class="form-row" style="align-items:flex-end">
+        <div class="form-group" style="margin-bottom:0;flex:1">
+          <div class="amount-input-wrap">
+            <input id="quick-amt" type="number" value="${Number(ev.currentAmount || 0)}">
+            <span class="amount-unit">원</span>
+          </div>
+        </div>
+        <button class="btn-save" style="width:auto;margin-top:0;padding:11px 18px" onclick="quickUpdateAmount('${ev.id}')">갱신</button>
+      </div>
+    </div>` : ''}
+
     ${ev.memo ? `
     <div class="detail-section">
       <div class="detail-section-title">메모</div>
-      <div class="detail-memo">${ev.memo.replace(/\n/g,'<br>')}</div>
+      <div class="detail-memo">${esc(ev.memo).replace(/\n/g,'<br>')}</div>
     </div>` : ''}
 
     ${ev.images && ev.images.length ? `
@@ -739,31 +786,45 @@ function saveEvent() {
   const memo = document.getElementById('f-memo').value.trim();
   const notifDeadline = document.getElementById('t-deadline').classList.contains('on');
   const notifStart = document.getElementById('t-start').classList.contains('on');
+  const doneManual = document.getElementById('t-done').classList.contains('on');
 
   if (!name) { showToast('이벤트명을 입력해주세요', 'error'); return; }
   if (!start || !end) { showToast('기간을 입력해주세요', 'error'); return; }
   if (end < start) { showToast('종료일이 시작일보다 앞서요', 'error'); return; }
 
-  const ev = { id: editingId || uid(), bank, cardName, name, start, end, minAmount, cashbackAmount, currentAmount, memo, images: [...uploadedImages], notifDeadline, notifStart, createdAt: Date.now() };
+  const existing = editingId ? events.find(e => e.id === editingId) : null;
+  const ev = { id: editingId || uid(), bank, cardName, name, start, end, minAmount, cashbackAmount, currentAmount, memo, images: [...uploadedImages], notifDeadline, notifStart, doneManual, createdAt: existing ? existing.createdAt : Date.now() };
 
   if (editingId) {
     const idx = events.findIndex(e => e.id === editingId);
     if (idx !== -1) events[idx] = ev;
-    showToast('수정됐어요 ✓', 'success');
   } else {
     events.push(ev);
-    showToast('이벤트가 추가됐어요 ✓', 'success');
-    scheduleNotifications(ev);
   }
 
-  save();
+  rebuildNotifications(ev); // 추가·수정 모두 알림 재예약
+  if (!save()) return;      // 저장 실패 시 모달 유지 (이미지 줄이고 재시도)
+  showToast(editingId ? '수정됐어요 ✓' : '이벤트가 추가됐어요 ✓', 'success');
+  checkDueNotifications();
   render();
   closeModal('edit-modal-bg');
+}
+
+function quickUpdateAmount(id) {
+  const ev = events.find(e => e.id === id);
+  if (!ev) return;
+  ev.currentAmount = document.getElementById('quick-amt').value;
+  if (isAchieved(ev)) notifications = notifications.filter(n => !(n.evId === id && n.type === 'deadline' && !n.fired));
+  if (!save()) return;
+  render();
+  openDetail(id);
+  showToast('갱신됐어요 ✓', 'success');
 }
 
 function deleteEvent() {
   if (!editingId) return;
   events = events.filter(e => e.id !== editingId);
+  notifications = notifications.filter(n => n.evId !== editingId);
   save();
   render();
   closeModal('edit-modal-bg');
@@ -773,16 +834,39 @@ function deleteEvent() {
 // ── 이미지 처리 ──────────────────────────────
 function handleImageUpload(e) {
   const files = Array.from(e.target.files);
-  const readers = files.map(file => new Promise(res => {
-    const r = new FileReader();
-    r.onload = ev => res(ev.target.result);
-    r.readAsDataURL(file);
-  }));
-  Promise.all(readers).then(results => {
-    uploadedImages.push(...results);
+  Promise.all(files.map(compressImage)).then(results => {
+    uploadedImages.push(...results.filter(Boolean));
     renderImagePreviews();
   });
   e.target.value = '';
+}
+
+// localStorage 용량 보호: 긴 변을 1280px로 줄이고 JPEG로 재인코딩
+function compressImage(file) {
+  return new Promise(res => {
+    const r = new FileReader();
+    r.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 1280;
+        let { width, height } = img;
+        if (width > max || height > max) {
+          const s = Math.min(max / width, max / height);
+          width = Math.round(width * s);
+          height = Math.round(height * s);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        res(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = () => res(null);
+      img.src = ev.target.result;
+    };
+    r.onerror = () => res(null);
+    r.readAsDataURL(file);
+  });
 }
 
 function renderImagePreviews() {
@@ -817,16 +901,19 @@ async function requestNotifPermission() {
   return perm === 'granted';
 }
 
-function scheduleNotifications(ev) {
-  // 알림 기록 추가 (앱 내)
-  const daysToStart = daysDiff(ev.start);
-  const daysToEnd = daysDiff(ev.end);
+// 이벤트의 알림을 현재 데이터 기준으로 재생성 (추가·수정 공통).
+// 이미 발사(fired)된 기록은 보존하고, 아직 안 울린 예약만 새로 계산한다.
+function rebuildNotifications(ev) {
+  notifications = notifications.filter(n => n.evId !== ev.id || n.fired);
+  const t = today();
 
-  if (ev.notifStart && daysToStart >= 0) {
+  if (ev.notifStart && daysDiff(ev.start) >= 0) {
     addNotifRecord(ev, 'start', `오늘부터 참여 가능: ${ev.name}`, ev.start);
   }
-  if (ev.notifDeadline && daysToEnd >= 3) {
-    addNotifRecord(ev, 'deadline', `마감 3일 전: ${ev.name}`, addDays(ev.end, -3));
+  if (ev.notifDeadline && !isAchieved(ev) && daysDiff(ev.end) >= 0) {
+    // 마감 3일 전. 이미 그 시점이 지났으면 오늘로 당겨서 곧바로 알림.
+    const trig = addDays(ev.end, -3);
+    addNotifRecord(ev, 'deadline', `마감 임박(D-3): ${ev.name}`, trig < t ? t : trig);
   }
 }
 
@@ -837,20 +924,22 @@ function addDays(dateStr, n) {
 }
 
 function addNotifRecord(ev, type, msg, triggerDate) {
-  notifications.push({ id: uid(), evId: ev.id, type, msg, triggerDate, read: false, createdAt: Date.now() });
-  save();
+  // 같은 이벤트·종류가 이미 있으면(이미 발사됐거나 예약 중) 중복 추가 안 함.
+  // rebuildNotifications가 미발사 예약은 먼저 제거하므로, 여기서 막히는 건 "이미 발사된" 1회성 알림뿐.
+  if (notifications.some(n => n.evId === ev.id && n.type === type)) return;
+  notifications.push({ id: uid(), evId: ev.id, type, msg, triggerDate, fired: false, read: false, createdAt: Date.now() });
 }
 
-function checkTodayNotifications() {
+// 트리거일이 오늘이거나 이미 지난(놓친) 알림을 모두 발사 — 앱을 매일 못 열어도 따라잡음
+function checkDueNotifications() {
   const t = today();
-  const toFire = notifications.filter(n => !n.fired && n.triggerDate === t);
+  const toFire = notifications.filter(n => !n.fired && n.triggerDate <= t);
   if (!toFire.length) return;
 
   toFire.forEach(n => {
     n.fired = true;
     n.read = false;
-    // 브라우저 푸시
-    if (Notification.permission === 'granted') {
+    if ('Notification' in window && Notification.permission === 'granted') {
       const ev = events.find(e => e.id === n.evId);
       new Notification('💳 캐시백 트래커', {
         body: n.msg + (ev ? `\n${ev.bank} ${ev.cardName}` : ''),
@@ -907,16 +996,57 @@ function setFilter(f, btn) {
 }
 
 function switchNav(name, btn) {
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  if (name === 'home') {
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    return;
+  }
+  // 알림·설정은 오버레이 모달 → 네비 활성은 홈으로 되돌림
   if (name === 'notif') openNotifPanel();
   else if (name === 'settings') openSettingsModal();
+  const navs = document.querySelectorAll('.nav-btn');
+  navs.forEach(b => b.classList.remove('active'));
+  navs[0].classList.add('active');
 }
 
 function openSettingsModal() {
-  showToast('설정 준비중이에요', 'info');
-  document.querySelectorAll('.nav-btn')[0].classList.add('active');
-  document.querySelectorAll('.nav-btn')[2].classList.remove('active');
+  const perm = ('Notification' in window) ? Notification.permission : 'unsupported';
+  const permText = { granted: '허용됨 ✓', denied: '차단됨 (브라우저 설정에서 변경)', default: '미설정', unsupported: '미지원' }[perm];
+  document.getElementById('settings-content').innerHTML = `
+    <div class="detail-section">
+      <div class="detail-section-title">알림 권한</div>
+      <div class="detail-info-item" style="margin-bottom:8px">현재 상태: <strong>${permText}</strong></div>
+      ${perm === 'default' ? `<button class="btn-save" onclick="requestNotifPermission().then(()=>openSettingsModal())">알림 허용하기</button>` : ''}
+      <div class="form-hint" style="margin-top:8px">정적 웹앱이라 앱이 닫혀 있을 땐 알림이 즉시 오지 않고, 다음에 앱을 열 때 놓친 알림을 모아서 알려줘요.</div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">데이터</div>
+      <button class="btn-save" style="background:var(--surface2);color:var(--text);border:1px solid var(--border)" onclick="exportData()">백업 내보내기 (JSON)</button>
+      <button class="btn-delete" onclick="clearAllData()">전체 데이터 삭제</button>
+    </div>`;
+  openModal('settings-modal-bg');
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify({ events, notifications }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'cashback-backup.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('백업 파일을 내보냈어요 ✓', 'success');
+}
+
+function clearAllData() {
+  if (!confirm('모든 이벤트와 알림이 삭제됩니다. 계속할까요?')) return;
+  events = [];
+  notifications = [];
+  localStorage.removeItem('cbEvents');
+  localStorage.removeItem('cbNotifs');
+  render();
+  closeModal('settings-modal-bg');
+  showToast('전체 삭제됐어요', '');
 }
 
 // ── 모달 유틸 ─────────────────────────────────
@@ -954,9 +1084,6 @@ async function init() {
     await requestNotifPermission();
   }
 
-  // 오늘 발생해야 할 알림 체크
-  checkTodayNotifications();
-
   // 데모 데이터
   if (!events.length) {
     const t = today();
@@ -969,10 +1096,17 @@ async function init() {
     save();
   }
 
+  // 저장된 이벤트들의 미발사 알림을 현재 데이터 기준으로 동기화
+  events.forEach(rebuildNotifications);
+  save();
+
+  // 놓친 것 포함 오늘까지의 알림 발사
+  checkDueNotifications();
+
   render();
 
-  // 매 시간 알림 체크
-  setInterval(checkTodayNotifications, 3600000);
+  // 앱이 열려 있는 동안 매 시간 재확인
+  setInterval(checkDueNotifications, 3600000);
 }
 
 init();
