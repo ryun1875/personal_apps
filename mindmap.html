@@ -799,6 +799,14 @@ function renderLinks() {
   const NS = 'http://www.w3.org/2000/svg';
   while (linksEl.lastChild && linksEl.lastChild.tagName !== 'defs') linksEl.removeChild(linksEl.lastChild);
   const frag = document.createDocumentFragment();
+  const mkPath = (d, col, op, w = 2.2) => {
+    const pa = document.createElementNS(NS, 'path');
+    pa.setAttribute('d', d); pa.setAttribute('fill', 'none'); pa.setAttribute('stroke', col);
+    pa.setAttribute('stroke-width', w); pa.setAttribute('stroke-opacity', op);
+    pa.setAttribute('stroke-linecap', 'round'); pa.setAttribute('stroke-linejoin', 'round');
+    frag.appendChild(pa);
+  };
+  const clampOff = v => Math.max(8, Math.min(34, v * 0.5));
 
   // boundaries (back layer)
   boundaries.forEach(b => {
@@ -820,34 +828,62 @@ function renderLinks() {
     frag.appendChild(rect);
   });
 
-  // parent→child edges, grouped by parent
+  // parent→child edges. elbow shares ONE trunk per side (vertical for L/R trees,
+  // horizontal for the down/org layout); curve & straight stay per-child.
+  const vertical = layoutType === 'down';   // children arranged below parent
   Object.values(nodes).forEach(p => {
     if (isHidden(p.id) || p.collapsed) return;
     const kids = childrenOf(p.id).filter(c => !isHidden(c.id));
     if (!kids.length) return;
     const style = p.lineStyle || 'curve';
-    kids.forEach(c => {
-      const towardC = c.x;
-      const ps = edgePoint(p, towardC);
-      const cs = edgePoint(c, p.x);
-      const col = c.color || '#7c6af7';
-      let d;
-      if (style === 'straight') {
-        d = `M${ps.x},${ps.y} L${cs.x},${cs.y}`;
-      } else if (style === 'elbow') {
-        const mx = (ps.x + cs.x) / 2;
-        d = `M${ps.x},${ps.y} L${mx},${ps.y} L${mx},${cs.y} L${cs.x},${cs.y}`;
+    const pcol = p.color || '#7c6af7';
+    const { w: pw, h: ph } = nodeSize(p.id);
+
+    // split children into the two sides of the parent (along the layout axis)
+    const groups = { pos: [], neg: [] };
+    kids.forEach(c => groups[(vertical ? c.y >= p.y : c.x >= p.x) ? 'pos' : 'neg'].push(c));
+
+    ['pos', 'neg'].forEach(key => {
+      const group = groups[key]; if (!group.length) return;
+      const dir = key === 'pos' ? 1 : -1;
+
+      if (style === 'elbow') {
+        if (!vertical) {
+          // vertical trunk, horizontal branches
+          const pEx = p.x + dir * pw / 2, pEy = p.y;
+          const edges = group.map(c => ({ c, ex: c.x - dir * nodeSize(c.id).w / 2, ey: c.y }));
+          const nearest = Math.min(...edges.map(e => Math.abs(e.ex - pEx)));
+          const trunkX = pEx + dir * clampOff(nearest);
+          mkPath(`M${pEx},${pEy} L${trunkX},${pEy}`, pcol, 0.55, 2.4);
+          const ys = [pEy, ...edges.map(e => e.ey)];
+          const minY = Math.min(...ys), maxY = Math.max(...ys);
+          if (maxY - minY > 0.5) mkPath(`M${trunkX},${minY} L${trunkX},${maxY}`, pcol, 0.55, 2.4);
+          edges.forEach(e => mkPath(`M${trunkX},${e.ey} L${e.ex},${e.ey}`, e.c.color || '#7c6af7', 0.8));
+        } else {
+          // horizontal trunk, vertical branches
+          const pEy = p.y + dir * ph / 2, pEx = p.x;
+          const edges = group.map(c => ({ c, ey: c.y - dir * nodeSize(c.id).h / 2, ex: c.x }));
+          const nearest = Math.min(...edges.map(e => Math.abs(e.ey - pEy)));
+          const trunkY = pEy + dir * clampOff(nearest);
+          mkPath(`M${pEx},${pEy} L${pEx},${trunkY}`, pcol, 0.55, 2.4);
+          const xs = [pEx, ...edges.map(e => e.ex)];
+          const minX = Math.min(...xs), maxX = Math.max(...xs);
+          if (maxX - minX > 0.5) mkPath(`M${minX},${trunkY} L${maxX},${trunkY}`, pcol, 0.55, 2.4);
+          edges.forEach(e => mkPath(`M${e.ex},${trunkY} L${e.ex},${e.ey}`, e.c.color || '#7c6af7', 0.8));
+        }
       } else {
-        const dx = Math.abs(cs.x - ps.x) * 0.5;
-        const c1 = ps.x + (ps.right ? dx : -dx);
-        const c2 = cs.x + (cs.right ? dx : -dx);
-        d = `M${ps.x},${ps.y} C${c1},${ps.y} ${c2},${cs.y} ${cs.x},${cs.y}`;
+        group.forEach(c => {
+          const ps = edgePoint(p, c.x), cs = edgePoint(c, p.x);
+          const col = c.color || '#7c6af7';
+          let d;
+          if (style === 'straight') d = `M${ps.x},${ps.y} L${cs.x},${cs.y}`;
+          else {
+            const dx = Math.abs(cs.x - ps.x) * 0.5;
+            d = `M${ps.x},${ps.y} C${ps.x + (ps.right ? dx : -dx)},${ps.y} ${cs.x + (cs.right ? dx : -dx)},${cs.y} ${cs.x},${cs.y}`;
+          }
+          mkPath(d, col, 0.8);
+        });
       }
-      const path = document.createElementNS(NS, 'path');
-      path.setAttribute('d', d); path.setAttribute('fill', 'none');
-      path.setAttribute('stroke', col); path.setAttribute('stroke-width', '2.2');
-      path.setAttribute('stroke-opacity', '0.75'); path.setAttribute('stroke-linecap', 'round');
-      frag.appendChild(path);
     });
   });
 
