@@ -86,7 +86,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 @media(min-width:901px){
   .mobile-swipe-wrap{display:contents}
   .mobile-dots{display:none!important}
-}}
+}
 .col{display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .col-inner{flex:1;overflow-y:auto;padding-right:2px}
 .col-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 8px;border-bottom:0.5px solid var(--border);flex-shrink:0}
@@ -634,6 +634,21 @@ window.FB = {
     if(!d.exists()) return null;
     return d.data();
   },
+  // 백업 스냅샷으로 모든 시즌을 교체 복원 (원본 시즌 id·순서 유지)
+  async restoreAllSeasons(seasonsArr, allSeasonData){
+    // 기존 시즌 전부 삭제
+    const existing = await getDocs(uColl('seasons'));
+    for(const dref of existing.docs){ await deleteDoc(dref.ref); }
+    // 백업 시즌 복원 — setDoc으로 원래 id를 그대로 사용
+    for(const s of seasonsArr){
+      const {id, ...meta} = s;
+      await setDoc(doc(db,'users',_uid,'ww_seasons',id), {
+        ...meta,
+        ts: serverTimestamp(),
+        seasonData: (allSeasonData && allSeasonData[id]) || null
+      });
+    }
+  },
 };
 
 window.signInGoogle = async () => {
@@ -736,6 +751,38 @@ let curFilter='all';
 let nC=COLS[0],nA='회절',eC=COLS[0],eA='회절',nUp=null,eUp=null;
 let bossC=COLS[0],bossUp=null;
 
+// HTML 이스케이프 — innerHTML/속성에 사용자 입력을 박을 때 항상 사용
+const ESC_MAP={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,m=>ESC_MAP[m]); }
+
+// 이미지 업로드 처리 — 256px로 다운스케일해 base64로 변환.
+// Firestore 문서 1MB 한도를 넘지 않도록 용량을 강제로 제한한다.
+function processImage(file, cb){
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ showToast('이미지 파일만 업로드할 수 있어요'); return; }
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const img=new Image();
+    img.onload=()=>{
+      const MAX=256;
+      let w=img.width, h=img.height;
+      if(w>MAX||h>MAX){ const r=Math.min(MAX/w, MAX/h); w=Math.round(w*r); h=Math.round(h*r); }
+      let out;
+      try{
+        const cv=document.createElement('canvas');
+        cv.width=w; cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        out=cv.toDataURL('image/jpeg',0.82);
+      }catch(_){ out=e.target.result; } // 캔버스 변환 실패 시 원본 사용
+      if(out.length>900000){ showToast('이미지가 너무 큽니다. 더 작은 파일을 사용하세요'); return; }
+      cb(out);
+    };
+    img.onerror=()=>showToast('이미지를 불러올 수 없어요');
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 // ── 초기화 ──
 async function appInit(){
   try {
@@ -773,6 +820,15 @@ async function loadSeasonData(sid){
 async function saveSeason(){ if(curSid) await window.FB.saveSeasonData(curSid,{parties,buffs,bosses}); }
 async function saveChars(){ await window.FB.saveChars(chars); }
 
+// 디바운스 — 텍스트 입력(이름/점수/HP)이 키 입력마다 Firestore에 쓰지 않도록 모아서 저장
+function debounce(fn, ms){
+  let t, lastArgs;
+  const wrapped=(...a)=>{ lastArgs=a; clearTimeout(t); t=setTimeout(()=>{ t=null; fn(...lastArgs); }, ms); };
+  wrapped.flush=()=>{ if(t){ clearTimeout(t); t=null; return fn(...lastArgs); } };
+  return wrapped;
+}
+const saveSeasonDebounced = debounce(()=>saveSeason(), 600);
+
 // ── 렌더 전체 ──
 function renderAll(){
   const has = !!curSid;
@@ -791,13 +847,14 @@ function renderSeasonBar(){
   const bar = document.getElementById('seasonBar');
   const tabs = seasons.map(s=>{
     const period = s.start&&s.end ? ` <span style="font-size:10px;opacity:.65">${s.start.slice(5)}~${s.end.slice(5)}</span>` : '';
-    return `<button class="s-tab${s.id===curSid?' active':''}" onclick="switchSeason('${s.id}')">${s.name}${period}</button>`;
+    return `<button class="s-tab${s.id===curSid?' active':''}" onclick="switchSeason('${s.id}')">${esc(s.name)}${period}</button>`;
   }).join('');
   const mgr = `<button class="s-tab" style="border-style:dashed;color:var(--text3)" onclick="openSeasonMgr()"><i class="ti ti-plus"></i> ${seasons.length?'시즌 관리':'시즌 추가'}</button>`;
   bar.innerHTML = tabs + mgr;
 }
 
 async function switchSeason(sid){
+  await saveSeasonDebounced.flush();  // 입력 중이던 변경을 현재 시즌에 먼저 저장
   curSid = sid;
   await loadSeasonData(sid);
   renderSeasonBar(); renderAll();
@@ -819,7 +876,7 @@ function renderSeasonList(){
     const period = s.start&&s.end ? `<span style="font-size:11px;color:var(--text3);display:block;margin-top:2px">${s.start} ~ ${s.end}</span>` : '';
     return `<div class="season-row">
       <div style="flex:1;min-width:0">
-        <span style="font-size:13px;font-weight:500">${s.name}</span>${period}
+        <span style="font-size:13px;font-weight:500">${esc(s.name)}</span>${period}
       </div>
       <button class="btn btn-sm btn-icon" onclick="openSeasonEdit('${s.id}')" title="편집"><i class="ti ti-edit"></i></button>
       <button class="btn btn-sm btn-icon" onclick="deleteSeason('${s.id}')" title="삭제"><i class="ti ti-trash"></i></button>
@@ -895,9 +952,10 @@ function cc(c){ return (c.attr&&ATTRS[c.attr])?ATTRS[c.attr]:COLS[c.color%COLS.l
 function mkBg(c,w,h){
   const col=cc(c);
   const badge=c.attr&&ATTRS[c.attr]?`<span class="attr-badge" style="background:${ATTRS[c.attr].bg};color:${ATTRS[c.attr].text}">${c.attr}</span>`:'';
-  const fb=`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:${Math.floor(w*.28)}px;font-weight:500;background:${col.bg};color:${col.text}">${c.name.slice(0,2)}</div>`;
-  if(c.img) return `<div style="width:${w}px;height:${h}px;position:relative;overflow:hidden;background:${col.bg}">${fb}<img src="${c.img}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;z-index:1" onerror="this.style.display='none'"><div style="position:absolute;inset:0;z-index:2;pointer-events:none">${badge}</div></div>`;
-  return `<div style="width:${w}px;height:${h}px;position:relative;overflow:hidden;background:${col.bg};display:flex;align-items:center;justify-content:center;font-size:${Math.floor(w*.28)}px;font-weight:500;color:${col.text}">${c.name.slice(0,2)}${badge}</div>`;
+  const nm=esc(c.name.slice(0,2));
+  const fb=`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:${Math.floor(w*.28)}px;font-weight:500;background:${col.bg};color:${col.text}">${nm}</div>`;
+  if(c.img) return `<div style="width:${w}px;height:${h}px;position:relative;overflow:hidden;background:${col.bg}">${fb}<img src="${esc(c.img)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;z-index:1" onerror="this.style.display='none'"><div style="position:absolute;inset:0;z-index:2;pointer-events:none">${badge}</div></div>`;
+  return `<div style="width:${w}px;height:${h}px;position:relative;overflow:hidden;background:${col.bg};display:flex;align-items:center;justify-content:center;font-size:${Math.floor(w*.28)}px;font-weight:500;color:${col.text}">${nm}${badge}</div>`;
 }
 function getUsed(){ const u={}; parties.forEach(p=>p.slots.forEach(s=>{if(s!=null)u[s]=(u[s]||0)+1;})); return u; }
 
@@ -918,11 +976,11 @@ function renderPool(){
         ondragleave="charDragLeave(event)"
         ondrop="charDragDrop(event,${i})"
         ondragend="charDragEnd()"
-        title="${c.name} — 클릭: 메모 | 드래그: 순서 변경">
+        title="${esc(c.name)} — 클릭: 메모 | 드래그: 순서 변경">
         ${c.star5?'<div class="star5-corner"></div>':''}${c.dupe?'<span class="dupe-tag">×2</span>':''}
         ${c.memo?'<div class="memo-dot"></div>':''}
         <div class="portrait-wrap">${mkBg(c,63,63)}</div>
-        <div class="char-name">${c.name}</div>
+        <div class="char-name">${esc(c.name)}</div>
       </div>`;
     });
     html+='</div>';
@@ -941,8 +999,8 @@ function renderParties(){
         const c=chars[s], mp=c.memo?c.memo.split('\n')[0]:'';
         return `<div class="slot filled${c.star5?' is5':''}" onclick="openSlot(${pi},${si})">
           <div class="slot-portrait">${mkBg(c,80,68)}</div>
-          <div class="slot-name">${c.name}</div>
-          ${mp?`<div class="slot-memo">${mp}</div>`:''}
+          <div class="slot-name">${esc(c.name)}</div>
+          ${mp?`<div class="slot-memo">${esc(mp)}</div>`:''}
           <button class="rm" onclick="event.stopPropagation();rmSlot(${pi},${si})">×</button>
         </div>`;
       }
@@ -955,7 +1013,7 @@ function renderParties(){
     // 버프 select
     const buffOpts='<option value="">버프 없음</option>'+buffs.filter(Boolean).map((b,bi)=>{
       const realBi=buffs.indexOf(b);
-      return `<option value="${realBi}"${p.buffIdx===realBi?' selected':''}>${b.icon||''}${b.name}</option>`;
+      return `<option value="${realBi}"${p.buffIdx===realBi?' selected':''}>${esc(b.icon||'')}${esc(b.name)}</option>`;
     }).join('');
     const selB=p.buffIdx!=null&&buffs[p.buffIdx]?buffs[p.buffIdx]:null;
 
@@ -965,8 +1023,8 @@ function renderParties(){
       const sel=bossIdxs.includes(bi);
       const col=COLS[b.color%COLS.length];
       return `<span class="boss-chip${sel?' sel':''}" onclick="togglePartyBoss(${pi},${bi})">
-        ${b.img?`<img src="${b.img}" style="width:12px;height:12px;border-radius:2px;object-fit:cover" onerror="this.style.display='none'">`:''}
-        ${b.name}
+        ${b.img?`<img src="${esc(b.img)}" style="width:12px;height:12px;border-radius:2px;object-fit:cover" onerror="this.style.display='none'">`:''}
+        ${esc(b.name)}
       </span>`;
     }).join(''):'';
 
@@ -980,7 +1038,7 @@ function renderParties(){
       <div class="party-header">
         <span class="drag-handle" title="드래그해서 순서 변경"><i class="ti ti-grip-vertical"></i></span>
         <span style="font-size:11px;color:var(--text3);font-weight:500;flex-shrink:0">#${pi+1}</span>
-        <input class="party-name-input" value="${p.name}" oninput="renameParty(${pi},this.value)">
+        <input class="party-name-input" value="${esc(p.name)}" oninput="renameParty(${pi},this.value)">
         ${buffs.some(Boolean)?`<select class="buff-sel" onchange="setPartyBuff(${pi},this.value)">${buffOpts}</select>`:''}
         <button class="btn btn-sm btn-icon" style="position:relative;flex-shrink:0" onclick="openPartyMemo(${pi})" title="파티 메모">
           <i class="ti ti-note"></i>
@@ -993,16 +1051,16 @@ function renderParties(){
       <div class="party-record">
         <div class="party-record-field">
           <span class="party-record-label">점수</span>
-          <input class="party-record-input" type="number" placeholder="0" value="${score}"
+          <input class="party-record-input" type="number" placeholder="0" value="${esc(score)}"
             oninput="setPartyScore(${pi},this.value)" onclick="event.stopPropagation()">
         </div>
         <div class="party-record-field">
           <span class="party-record-label">HP%</span>
-          <input class="party-record-input" type="number" placeholder="100" min="0" max="100" value="${hp}"
+          <input class="party-record-input" type="number" placeholder="100" min="0" max="100" value="${esc(hp)}"
             oninput="setPartyHp(${pi},this.value)" onclick="event.stopPropagation()">
           <span style="font-size:9px;color:var(--text3)">%</span>
         </div>
-        ${selB?`<div class="applied-buff" style="margin-top:0"><span style="font-size:11px">${selB.icon||'🎯'}</span><span style="font-size:10px;color:var(--text2)">${selB.name}</span></div>`:''}
+        ${selB?`<div class="applied-buff" style="margin-top:0"><span style="font-size:11px">${esc(selB.icon||'🎯')}</span><span style="font-size:10px;color:var(--text2)">${esc(selB.name)}</span></div>`:''}
       </div>
     </div>`;
   }).join('');
@@ -1023,8 +1081,8 @@ function renderScorePanel(){
     const sub=[bNames,hp].filter(Boolean).join(' · ');
     return `<div class="score-row" style="align-items:flex-start">
       <div style="min-width:0;flex:1">
-        <div style="font-size:11px;color:var(--text2)">#${pi+1} ${p.name}</div>
-        ${sub?`<div style="font-size:10px;color:var(--text3)">${sub}</div>`:''}
+        <div style="font-size:11px;color:var(--text2)">#${pi+1} ${esc(p.name)}</div>
+        ${sub?`<div style="font-size:10px;color:var(--text3)">${esc(sub)}</div>`:''}
       </div>
       <span style="font-size:12px;font-weight:500;color:${sc>0?'var(--accent)':'var(--text3)'};flex-shrink:0;margin-left:8px">${sc>0?sc.toLocaleString():'-'}</span>
     </div>`;
@@ -1093,7 +1151,6 @@ async function charDragDrop(e,ci){
   const moved=chars.splice(charDragSrc,1)[0];
   chars.splice(ci,0,moved);
   // 파티 슬롯 인덱스 재매핑
-  const lo=Math.min(charDragSrc,ci), hi=Math.max(charDragSrc,ci);
   parties.forEach(p=>{
     p.slots=p.slots.map(s=>{
       if(s===null) return null;
@@ -1115,7 +1172,7 @@ function charDragEnd(){
 
 async function addParty(){ parties.push({name:`파티 ${parties.length+1}`,slots:[null,null,null],buffIdx:null,bossIdxs:[],score:'',hp:'',memo:''}); renderAll(); await saveSeason(); }
 async function rmParty(pi){ parties.splice(pi,1); renderAll(); await saveSeason(); }
-async function renameParty(pi,v){ parties[pi].name=v; await saveSeason(); }
+function renameParty(pi,v){ parties[pi].name=v; saveSeasonDebounced(); }
 async function rmSlot(pi,si){ parties[pi].slots[si]=null; renderAll(); await saveSeason(); }
 async function setPartyBuff(pi,v){ parties[pi].buffIdx=v===''?null:parseInt(v); renderAll(); await saveSeason(); }
 async function togglePartyBoss(pi,bi){
@@ -1125,12 +1182,12 @@ async function togglePartyBoss(pi,bi){
   else parties[pi].bossIdxs.push(bi);
   renderParties(); renderInfo(); renderScorePanel(); await saveSeason();
 }
-async function setPartyScore(pi,v){
+function setPartyScore(pi,v){
   parties[pi].score=v;
-  renderInfo(); renderScorePanel(); await saveSeason();
+  renderInfo(); renderScorePanel(); saveSeasonDebounced();
 }
-async function setPartyHp(pi,v){
-  parties[pi].hp=v; await saveSeason();
+function setPartyHp(pi,v){
+  parties[pi].hp=v; saveSeasonDebounced();
 }
 
 // ── 슬롯 선택 ──
@@ -1145,7 +1202,7 @@ function openSlot(pi,si){
       g+=`<div class="mc${out?' out':''}${c.star5?' s5':''}" onclick="pickChar(${pi},${si},${i})">
         ${c.dupe?'<span class="dupe-tag">×2</span>':''}${c.star5?'<div class="star5-corner"></div>':''}
         <div style="height:52px;overflow:hidden">${mkBg(c,62,52)}</div>
-        <div style="font-size:10px;padding:2px;text-align:center;line-height:1.2">${c.name}</div>
+        <div style="font-size:10px;padding:2px;text-align:center;line-height:1.2">${esc(c.name)}</div>
       </div>`;
     });
     return g?`<p class="sec-title" style="margin-top:10px"><span style="color:${lc}">${lbl}</span></p><div class="mcgrid">${g}</div>`:'';
@@ -1161,11 +1218,11 @@ function renderBuffGrid(){
   const filled=buffs.filter(Boolean);
   let html=filled.map((b,fi)=>{
     const ri=buffs.indexOf(b);
-    return `<div class="buff-card" title="${b.name}${b.desc?' — '+b.desc:''}">
+    return `<div class="buff-card" title="${esc(b.name+(b.desc?' — '+b.desc:''))}">
       <button style="position:absolute;top:3px;right:3px;background:none;border:none;cursor:pointer;color:var(--text3);font-size:11px;padding:1px" onclick="openEditBuff(${ri})"><i class="ti ti-edit"></i></button>
-      <div class="buff-card-icon">${b.icon||'🎯'}</div>
-      <div class="buff-card-name">${b.name}</div>
-      <div class="buff-card-desc">${b.desc||''}</div>
+      <div class="buff-card-icon">${esc(b.icon||'🎯')}</div>
+      <div class="buff-card-name">${esc(b.name)}</div>
+      <div class="buff-card-desc">${esc(b.desc||'')}</div>
     </div>`;
   }).join('');
   html+=`<div class="buff-card buff-empty" onclick="openBuffMgr()"><i class="ti ti-plus" style="font-size:14px;color:var(--text3)"></i><span>추가</span></div>`;
@@ -1182,8 +1239,8 @@ function renderBuffEditList(){
     ?buffs.map((b,i)=>{
       if(!b) return '';
       return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border)">
-        <span style="font-size:18px">${b.icon||'🎯'}</span>
-        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${b.name}</div><div style="font-size:11px;color:var(--text3)">${b.desc||''}</div></div>
+        <span style="font-size:18px">${esc(b.icon||'🎯')}</span>
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${esc(b.name)}</div><div style="font-size:11px;color:var(--text3)">${esc(b.desc||'')}</div></div>
         <button class="btn btn-sm btn-icon" onclick="openEditBuff(${i})"><i class="ti ti-edit"></i></button>
         <button class="btn btn-sm btn-icon" onclick="removeBuff(${i})"><i class="ti ti-trash"></i></button>
       </div>`;
@@ -1225,18 +1282,19 @@ function renderBossList(){
   if(!bosses.length){el.innerHTML='<p style="font-size:13px;color:var(--text3)">등록된 보스 없음</p>';return;}
   el.innerHTML=bosses.map((b,i)=>{
     const col=COLS[b.color%COLS.length];
+    const bnm=esc(b.name.slice(0,1));
     const iconInner=b.img
-      ?`<img src="${b.img}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><span style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:16px;font-weight:500">${b.name.slice(0,1)}</span>`
-      :`<span style="font-size:16px;font-weight:500;color:${col.text}">${b.name.slice(0,1)}</span>`;
-    return `<div class="boss-card" title="${b.name}${b.memo?'\n'+b.memo:''}">
+      ?`<img src="${esc(b.img)}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><span style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:16px;font-weight:500">${bnm}</span>`
+      :`<span style="font-size:16px;font-weight:500;color:${col.text}">${bnm}</span>`;
+    return `<div class="boss-card" title="${esc(b.name+(b.memo?'\n'+b.memo:''))}">
       <div class="boss-actions-row">
         <button class="btn btn-sm btn-icon" style="padding:2px 3px" onclick="openEditBoss(${i})"><i class="ti ti-edit"></i></button>
         <button class="btn btn-sm btn-icon" style="padding:2px 3px" onclick="removeBoss(${i})"><i class="ti ti-trash"></i></button>
       </div>
       <div class="boss-card-inner">
         <div class="boss-icon" style="background:${col.bg}">${iconInner}</div>
-        <div class="boss-name-label">${b.name}</div>
-        ${b.memo?`<div class="boss-memo-text">${b.memo.split('\n')[0]}</div>`:''}
+        <div class="boss-name-label">${esc(b.name)}</div>
+        ${b.memo?`<div class="boss-memo-text">${esc(b.memo.split('\n')[0])}</div>`:''}
       </div>
     </div>`;
   }).join('');
@@ -1270,8 +1328,8 @@ async function saveBoss(){
 }
 async function removeBoss(i){ bosses.splice(i,1);renderBossList();await saveSeason(); }
 function prevBossUp(){
-  const f=document.getElementById('bossFile').files[0];if(!f)return;
-  const r=new FileReader();r.onload=e=>{bossUp=e.target.result;const el=document.getElementById('bossPrev');el.src=bossUp;el.style.display='block';document.getElementById('bossUrl').value='';};r.readAsDataURL(f);
+  const f=document.getElementById('bossFile').files[0];
+  processImage(f,out=>{bossUp=out;const el=document.getElementById('bossPrev');el.src=bossUp;el.style.display='block';document.getElementById('bossUrl').value='';});
 }
 
 // ── 공명자 관리 ──
@@ -1287,11 +1345,12 @@ function renderCharEditList(){
   document.getElementById('charEditList').innerHTML=fil.length
     ?fil.map(({c,i})=>{
       const col=cc(c);const a=c.attr&&ATTRS[c.attr];
-      const imgH=c.img?`<img class="mimg" src="${c.img}" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><div class="mfb" style="background:${col.bg};color:${col.text};display:none">${c.name.slice(0,2)}</div>`:`<div class="mfb" style="background:${col.bg};color:${col.text}">${c.name.slice(0,2)}</div>`;
+      const cnm=esc(c.name.slice(0,2));
+      const imgH=c.img?`<img class="mimg" src="${esc(c.img)}" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><div class="mfb" style="background:${col.bg};color:${col.text};display:none">${cnm}</div>`:`<div class="mfb" style="background:${col.bg};color:${col.text}">${cnm}</div>`;
       return `<div class="erow${c.owned?'':' unowned'}">
         <input type="checkbox" class="own-cb" ${c.owned?'checked':''} onchange="togOwned(${i},this.checked)">
         ${imgH}
-        <span style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}${c.star5?` <span style="color:var(--gold);font-size:10px">★5</span>`:''}</span>
+        <span style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(c.name)}${c.star5?` <span style="color:var(--gold);font-size:10px">★5</span>`:''}</span>
         ${a?`<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:${a.bg};color:${a.text};flex-shrink:0">${c.attr}</span>`:''}
         <button class="dtog${c.star5?' on':''}" style="${c.star5?'background:#7a5500;color:#f5e06a;border-color:#f5e06a':''}" onclick="togStar5(${i})" title="5성 토글">${c.star5?'★5':'☆4'}</button>
         <button class="dtog${c.dupe?' on':''}" onclick="togDupe(${i})">${c.dupe?'×2':'×1'}</button>
@@ -1364,11 +1423,11 @@ async function savePartyMemo(){
   showToast('파티 메모 저장됨');
 }
 function prevUp(m){
-  const f=document.getElementById(m==='n'?'nFile':'eFile').files[0];if(!f)return;
-  const r=new FileReader();r.onload=e=>{
-    if(m==='n'){nUp=e.target.result;const el=document.getElementById('nPrev');el.src=nUp;el.style.display='block';document.getElementById('nUrl').value='';}
-    else{eUp=e.target.result;const el=document.getElementById('ePrev');el.src=eUp;el.style.display='block';document.getElementById('eUrl').value='';}
-  };r.readAsDataURL(f);
+  const f=document.getElementById(m==='n'?'nFile':'eFile').files[0];
+  processImage(f,out=>{
+    if(m==='n'){nUp=out;const el=document.getElementById('nPrev');el.src=nUp;el.style.display='block';document.getElementById('nUrl').value='';}
+    else{eUp=out;const el=document.getElementById('ePrev');el.src=eUp;el.style.display='block';document.getElementById('eUrl').value='';}
+  });
 }
 async function addChar(){
   const name=document.getElementById('nName').value.trim();if(!name){showToast('이름을 입력하세요');return;}
@@ -1428,8 +1487,8 @@ async function renderSavesList(){
     const seCount=isFull&&s.seasons?` · ${s.seasons.length}시즌`:'';
     return `<div class="si">
       <div style="flex:1;min-width:0">
-        <div style="font-size:13px">${s.name}${tag}</div>
-        <div style="font-size:11px;color:var(--text3)">${s.date}${seCount}</div>
+        <div style="font-size:13px">${esc(s.name)}${tag}</div>
+        <div style="font-size:11px;color:var(--text3)">${esc(s.date)}${seCount}</div>
       </div>
       <button class="btn btn-sm btn-icon" onclick="loadSave('${s.id}')" title="복원"><i class="ti ti-upload"></i></button>
       <button class="btn btn-sm btn-icon" onclick="delSave('${s.id}')" title="삭제"><i class="ti ti-trash"></i></button>
@@ -1440,23 +1499,28 @@ async function loadSave(id){
   const d=await window.FB.restoreFullBackup(id);
   if(!d){showToast('불러오기 실패');return;}
   if(!confirm(`"${d.name}" 백업을 복원할까요?
-현재 캐릭터 설정과 모든 시즌 데이터가 교체됩니다.`)) return;
+현재 캐릭터 설정과 모든 시즌이 백업 시점 상태로 교체됩니다.
+(백업 이후 추가/변경한 시즌은 사라집니다)`)) return;
+  showToast('복원 중...');
   try{
     if(d.type==='full'){
-      // 전체 백업 복원
-      chars=d.chars.map(c=>({attr:'회절',owned:true,memo:'',...c}));
+      // 캐릭터 복원
+      chars=(d.chars||[]).map(c=>({attr:'회절',owned:true,memo:'',...c}));
       await window.FB.saveChars(chars);
-      // 시즌 데이터 복원 (현재 시즌만 — 전체 복원은 복잡하므로 현재 시즌에 매핑)
-      if(d.allSeasonData&&curSid&&d.allSeasonData[Object.keys(d.allSeasonData)[0]]){
-        const firstSeasonData=d.allSeasonData[Object.keys(d.allSeasonData)[0]];
-        parties=firstSeasonData.parties||[{name:'파티 1',slots:[null,null,null],buffIdx:null}];
-        buffs=Array.isArray(firstSeasonData.buffs)?firstSeasonData.buffs:[];
-        bosses=firstSeasonData.bosses||[];
-        await saveSeason();
+      // 모든 시즌 + 시즌별 데이터 복원 (원본 id 유지)
+      if(Array.isArray(d.seasons)&&d.seasons.length){
+        await window.FB.restoreAllSeasons(d.seasons, d.allSeasonData||{});
+        seasons = await window.FB.loadSeasons();
+        curSid = seasons[0]?.id || null;
+        if(curSid) await loadSeasonData(curSid);
+        else { parties=[]; buffs=[]; bosses=[]; }
+      } else {
+        seasons=[]; curSid=null; parties=[]; buffs=[]; bosses=[];
       }
+      renderSeasonBar();
     }
     closeM('savesModal');renderAll();showToast('복원 완료');
-  }catch(e){showToast('복원 오류: '+(e.code||e.message));}
+  }catch(e){console.error('restore error:',e);showToast('복원 오류: '+(e.code||e.message));}
 }
 async function delSave(id){ await window.FB.deleteSave(id);renderSavesList(); }
 
@@ -1523,8 +1587,6 @@ document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>
     dragging = false;
   });
 
-  // renderAll 후 패널 위치 유지
-  const origRenderAll = window.renderAll || (()=>{});
   // dots가 만들어진 뒤 초기화
   document.addEventListener('DOMContentLoaded', ()=>{ updateDotsVisibility(); });
 })();
