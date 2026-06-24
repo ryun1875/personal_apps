@@ -233,6 +233,27 @@
     opacity: 0; transition: all .25s; pointer-events: none; }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+  /* ── Help modal ────────────────────────────────────── */
+  #help-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 80;
+    display: none; align-items: center; justify-content: center; padding: 16px;
+    padding-top: calc(16px + env(safe-area-inset-top)); padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  #help-overlay.open { display: flex; }
+  #help-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+    width: 540px; max-width: 100%; max-height: 100%; display: flex; flex-direction: column;
+    box-shadow: 0 12px 48px var(--shadow); overflow: hidden; }
+  .help-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .help-title { flex: 1; font-size: 16px; font-weight: 800; color: var(--text); letter-spacing: -.3px; }
+  .help-body { overflow-y: auto; padding: 8px 16px 18px; }
+  .help-sec { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .help-sec:last-child { border-bottom: none; }
+  .help-sec-t { font-size: 13px; font-weight: 800; color: var(--accent2); margin-bottom: 8px; }
+  .help-row { display: flex; gap: 12px; padding: 5px 0; align-items: baseline; }
+  .help-row b { flex: 0 0 96px; font-size: 12.5px; font-weight: 700; color: var(--text); }
+  .help-row span { flex: 1; font-size: 12.5px; color: var(--text2); line-height: 1.5; }
+  .help-row em { font-style: normal; font-weight: 700; color: var(--accent2);
+    background: var(--accent-glow); padding: 1px 6px; border-radius: 6px; }
+  @media (max-width: 480px) { .help-row { flex-direction: column; gap: 2px; } .help-row b { flex: none; } }
+
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -265,6 +286,7 @@
   <button class="icon-btn" id="layout-btn" title="레이아웃">⊹</button>
   <button class="icon-btn" id="theme-btn" title="테마">🌙</button>
   <button class="icon-btn" id="fit-btn" title="화면에 맞추기">⊡</button>
+  <button class="icon-btn" id="help-btn" title="도움말">?</button>
   <button class="icon-btn" id="logout-btn" title="로그아웃">⏏</button>
 </div>
 
@@ -292,6 +314,65 @@
 
 <div id="hint" style="display:none">더블탭 편집 · Tab 자식추가 · Enter 형제 · Del 삭제 · Shift+클릭 다중선택</div>
 <div id="toast"></div>
+
+<!-- Help modal -->
+<div id="help-overlay">
+  <div id="help-card">
+    <div class="help-head">
+      <span class="help-title">도움말 — Mind<span style="color:var(--accent)">Map</span></span>
+      <button class="icon-btn" id="help-close">✕</button>
+    </div>
+    <div class="help-body">
+      <div class="help-sec">
+        <div class="help-sec-t">🧭 기본 조작</div>
+        <div class="help-row"><b>화면 이동</b><span>빈 곳을 끌기 · 모바일은 한 손가락 드래그</span></div>
+        <div class="help-row"><b>확대 / 축소</b><span>마우스 휠 · 모바일은 <em>두 손가락 핀치</em></span></div>
+        <div class="help-row"><b>화면 맞춤</b><span>상단 ⊡ — 전체 맵이 한눈에 들어오게</span></div>
+        <div class="help-row"><b>노드 선택</b><span>탭/클릭 · 여러 개는 <em>Shift(또는 ⌘/Ctrl)+클릭</em></span></div>
+      </div>
+      <div class="help-sec">
+        <div class="help-sec-t">✏️ 노드 편집</div>
+        <div class="help-row"><b>글자 수정</b><span>노드 더블탭(더블클릭) 또는 F2</span></div>
+        <div class="help-row"><b>자식 추가</b><span>＋자식 버튼 또는 <em>Tab</em></span></div>
+        <div class="help-row"><b>형제 추가</b><span>↕형제 버튼 또는 <em>Enter</em></span></div>
+        <div class="help-row"><b>삭제</b><span>🗑 버튼 또는 <em>Del / Backspace</em> (하위 노드 함께 삭제)</span></div>
+        <div class="help-row"><b>이동 / 크기</b><span>노드를 끌어 이동 · 선택 시 모서리 손잡이로 너비 조절</span></div>
+        <div class="help-row"><b>접기 / 펴기</b><span>자식이 있는 노드 옆 ± 버튼</span></div>
+        <div class="help-row"><b>색상</b><span>하단 색 점으로 선택 노드 색 변경</span></div>
+      </div>
+      <div class="help-sec">
+        <div class="help-sec-t">🧩 다기능 (xmind 스타일)</div>
+        <div class="help-row"><b>📝 노트</b><span>노드 선택 → 노트 버튼 → 우측 패널에 상세설명 작성 (노드에 배지 표시)</span></div>
+        <div class="help-row"><b>🖼 이미지</b><span>노트 패널에서 이미지 첨부 → 노드에 썸네일 (PC·모바일 자동 공유)</span></div>
+        <div class="help-row"><b>⭐ 마커</b><span>노트 패널에서 우선순위·체크·별 등 마커 토글</span></div>
+        <div class="help-row"><b># 태그</b><span>노트 패널에서 태그 입력 후 Enter</span></div>
+        <div class="help-row"><b>⤳ 관계선</b><span>관계 버튼 → 두 노드를 차례로 탭하면 점선 화살표 연결 (선 탭하면 삭제)</span></div>
+        <div class="help-row"><b>⬚ 경계</b><span>여러 노드 선택 → 경계 버튼으로 묶음 박스 (다시 누르면 해제)</span></div>
+        <div class="help-row"><b>✦ 스타일</b><span>연결선 모양(곡선/꺾임/직선)과 자식 노드 모양 변경</span></div>
+      </div>
+      <div class="help-sec">
+        <div class="help-sec-t">🗺️ 레이아웃 &amp; 정렬</div>
+        <div class="help-row"><b>레이아웃 ⊹</b><span>균형 맵 · 오른쪽/왼쪽 트리 · 조직도 · 방사형</span></div>
+        <div class="help-row"><b>자동 정렬 ⇄</b><span>켜면 추가/삭제 때 자동 재배치 · 끄면 자유 배치</span></div>
+        <div class="help-row"><b>테마 🌙</b><span>다크 / 라이트 전환</span></div>
+      </div>
+      <div class="help-sec">
+        <div class="help-sec-t">☁️ 저장 &amp; 동기화</div>
+        <div class="help-row"><b>자동 저장</b><span>변경 시 자동 저장 (상단에 ✓ 저장됨 표시)</span></div>
+        <div class="help-row"><b>기기 간 동기화</b><span>같은 계정으로 로그인하면 PC·모바일이 <em>실시간</em>으로 같은 맵 공유</span></div>
+        <div class="help-row"><b>여러 맵</b><span>좌측 ☰ 메뉴에서 맵 추가/전환/삭제</span></div>
+      </div>
+      <div class="help-sec">
+        <div class="help-sec-t">⌨️ 단축키</div>
+        <div class="help-row"><b>Tab</b><span>자식 추가</span></div>
+        <div class="help-row"><b>Enter</b><span>형제 추가</span></div>
+        <div class="help-row"><b>F2</b><span>이름 편집</span></div>
+        <div class="help-row"><b>Del / Backspace</b><span>삭제</span></div>
+        <div class="help-row"><b>Esc</b><span>선택 해제 · 패널/모드 닫기</span></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div id="style-pop" class="popover">
   <div class="pop-label">연결선 (이 노드 → 자식)</div>
@@ -1346,7 +1427,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Enter') { e.preventDefault(); if (id) addSibling(id); }
   else if (e.key === 'Delete' || e.key === 'Backspace') { if (selectedIds.size) { e.preventDefault(); deleteSelected(); } }
   else if (e.key === 'F2') { if (id) startEdit(id); }
-  else if (e.key === 'Escape') { clearSelection(); closePopovers(); closeNotePanel(); if (linkMode) $('btn-relate').click(); }
+  else if (e.key === 'Escape') { helpOverlay.classList.remove('open'); clearSelection(); closePopovers(); closeNotePanel(); if (linkMode) $('btn-relate').click(); }
 });
 
 // ── Viewport pan/zoom ──────────────────────────────────
@@ -1424,6 +1505,12 @@ function updateArrangeUI() { $('arrange-btn').classList.toggle('on', autoArrange
 
 $('fit-btn').addEventListener('click', fitToScreen);
 $('theme-btn').addEventListener('click', () => { isDark = !isDark; document.body.classList.toggle('light', !isDark); $('theme-btn').textContent = isDark ? '🌙' : '☀️'; });
+
+// help modal
+const helpOverlay = $('help-overlay');
+$('help-btn').addEventListener('click', () => helpOverlay.classList.add('open'));
+$('help-close').addEventListener('click', () => helpOverlay.classList.remove('open'));
+helpOverlay.addEventListener('click', e => { if (e.target === helpOverlay) helpOverlay.classList.remove('open'); });
 
 function closePopovers(except) { [layoutPop, stylePop].forEach(p => { if (p !== except) p.classList.remove('open'); }); }
 document.addEventListener('click', e => {
