@@ -235,6 +235,8 @@
   .np-btn { width: 100%; padding: 10px; border-radius: 10px; border: 1px dashed var(--border); background: var(--surface2);
     color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer; transition: all .12s; }
   .np-btn:hover { border-color: var(--accent); color: var(--text); }
+  .np-hint { font-size: 11px; color: var(--text2); margin-top: 6px; text-align: center; }
+  .np-hint b { color: var(--accent2); }
 
   #hint { position: fixed; top: calc(62px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
     background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 6px 13px;
@@ -357,7 +359,7 @@
       <div class="help-sec">
         <div class="help-sec-t">🧩 다기능 (xmind 스타일)</div>
         <div class="help-row"><b>📝 노트</b><span>노드 선택 → 노트 버튼 → 우측 패널에 상세설명 작성 (노드에 배지 표시)</span></div>
-        <div class="help-row"><b>🖼 이미지</b><span>노트 패널에서 이미지 첨부 → 노드에 썸네일 (PC·모바일 자동 공유)</span></div>
+        <div class="help-row"><b>🖼 이미지</b><span>노트 패널에서 파일 첨부, 또는 <em>노드 선택 후 Ctrl+V</em>로 클립보드 이미지 바로 붙여넣기 → 노드에 썸네일 (PC·모바일 자동 공유)</span></div>
         <div class="help-row"><b>⭐ 마커</b><span>노트 패널에서 우선순위·체크·별 등 마커 토글</span></div>
         <div class="help-row"><b># 태그</b><span>노트 패널에서 태그 입력 후 Enter</span></div>
         <div class="help-row"><b>⤳ 관계선</b><span>관계 버튼 → 두 노드를 차례로 탭하면 점선 화살표 연결 (선 탭하면 삭제)</span></div>
@@ -430,6 +432,7 @@
       <div id="np-img-area"></div>
       <input type="file" id="np-file" accept="image/*" style="display:none">
       <button class="np-btn" id="np-img-add">＋ 이미지 첨부</button>
+      <div class="np-hint">또는 노드 선택 후 <b>Ctrl+V</b>로 클립보드 이미지 붙여넣기</div>
     </div>
     <div>
       <div class="np-sec-label">마커</div>
@@ -1512,22 +1515,37 @@ function refreshNode(id) {
 
 // ── Image upload (downscaled into Firestore asset doc) ──
 $('np-img-add').addEventListener('click', () => $('np-file').click());
-$('np-file').addEventListener('change', async e => {
+$('np-file').addEventListener('change', e => {
   const file = e.target.files[0]; e.target.value = '';
-  if (!file || !notePanelId) return;
+  if (file && notePanelId) attachImage(notePanelId, file);
+});
+// shared by file-upload AND clipboard paste
+async function attachImage(id, fileOrBlob) {
+  if (!id || !nodes[id] || !fileOrBlob || !currentMapId) return;
   toastMsg('이미지 처리 중...');
   try {
-    const dataUrl = await downscaleImage(file, 1000, 0.82);
-    const id = notePanelId;
+    const dataUrl = await downscaleImage(fileOrBlob, 1000, 0.82);
     const assetId = 'img_' + Date.now().toString(36);
     await setDoc(doc(db, 'users', uid, 'mindmaps', currentMapId, 'assets', assetId), { data: dataUrl, createdAt: Date.now() });
-    // remove old asset doc if replacing
     if (nodes[id].imageId) { const old = nodes[id].imageId; deleteDoc(doc(db, 'users', uid, 'mindmaps', currentMapId, 'assets', old)).catch(() => {}); delete assets[old]; }
     assets[assetId] = dataUrl;
     nodes[id].imageId = assetId;
-    fillNotePanel(id); refreshNode(id); scheduleSave();
+    if (notePanel.classList.contains('open') && notePanelId === id) fillNotePanel(id);
+    refreshNode(id); scheduleSave();
     toastMsg('이미지 첨부됨');
   } catch (err) { console.error(err); toastMsg('이미지 첨부 실패'); }
+}
+// paste an image from the clipboard onto the selected node
+document.addEventListener('paste', e => {
+  const items = e.clipboardData && e.clipboardData.items; if (!items) return;
+  let blob = null;
+  for (const it of items) { if (it.type && it.type.indexOf('image') === 0) { blob = it.getAsFile(); break; } }
+  if (!blob) return;   // no image in clipboard → let normal (text) paste proceed
+  e.preventDefault();
+  const id = (notePanel.classList.contains('open') && notePanelId) ? notePanelId : primaryId();
+  if (!id) { toastMsg('붙여넣을 노드를 먼저 선택하세요'); return; }
+  if (document.activeElement && document.activeElement.isContentEditable) document.activeElement.blur();
+  attachImage(id, blob);
 });
 function removeImage(id) {
   const old = nodes[id].imageId;
