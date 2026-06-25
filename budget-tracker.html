@@ -922,7 +922,7 @@ let CATS=[...DEF_CATS];
 Object.defineProperty(window,'CATS',{get:()=>CATS,set:(v)=>{CATS=v;}});
 let donutChart=null,barChart=null,compareChart=null,budgetCompareChart=null,trendChart=null,payTrendChart=null,assetChart=null,loanChart=null;
 let trendCatId=null, trendPayId=null;
-let unsubExp=null,unsubBudget=null,unsubCats=null,unsubRec=null;
+let unsubExp=null,unsubBudget=null,appSubs=[];
 let budgetTimer=null,catTimer=null,catSaving=false;
 let instOn=false,instMonths=2,expenseTag='personal';
 let curUser=null,isDark=true,editId=null;
@@ -1021,7 +1021,8 @@ document.getElementById('btn-login').onclick=async()=>{
 // 리디렉션 후 돌아왔을 때 결과 처리
 getRedirectResult(auth).catch(()=>{});
 window.logout=async function(){
-  [unsubExp,unsubBudget,unsubCats,unsubRec].forEach(u=>u&&u());
+  appSubs.forEach(u=>{try{u&&u();}catch(_){}});appSubs=[];
+  if(unsubExp)unsubExp();if(unsubBudget)unsubBudget();
   await signOut(auth);
 };
 onAuthStateChanged(auth,user=>{
@@ -1041,6 +1042,8 @@ onAuthStateChanged(auth,user=>{
 
 // ── 초기화 ────────────────────────────────────────────────
 function initApp(){
+  // 재로그인/재호출 시 이전 구독 정리 (중복 리스너 누적 방지)
+  appSubs.forEach(u=>{try{u&&u();}catch(_){}});appSubs=[];
   const now=new Date();
   curMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
   document.getElementById('today-date').textContent=
@@ -1062,59 +1065,59 @@ function initApp(){
     const div=document.createElement('div');div.className='cal-day-label';div.textContent=d;cl.appendChild(div);
   });
 
-  unsubCats=onSnapshot(doc(db,up('settings'),'categories'),snap=>{
+  appSubs.push(onSnapshot(doc(db,up('settings'),'categories'),snap=>{
     // 카테고리 탭 열려있거나 저장 중이면 덮어쓰기 금지
     if(document.getElementById('panel-cats').classList.contains('active')||catSaving)return;
     CATS=snap.exists()&&snap.data().list?.length?snap.data().list:[...DEF_CATS];
     rebuildCatSelects();
     renderAll();
-  });
+  }));
   // budgetMeta 구독 (고정항목 + 메모)
-  onSnapshot(doc(db,up('settings'),'budgetMeta'),snap=>{
+  appSubs.push(onSnapshot(doc(db,up('settings'),'budgetMeta'),snap=>{
     budgetMeta=snap.exists()&&snap.data().data?snap.data().data:{};
     renderBudget();
-  });
-  unsubRec=onSnapshot(collection(db,up('recurring')),snap=>{
+  }));
+  appSubs.push(onSnapshot(collection(db,up('recurring')),snap=>{
     recurring=snap.docs.map(d=>({id:d.id,...d.data()}));
     renderRecurring();
-  });
+  }));
   // 결제수단 구독
-  onSnapshot(collection(db,up('payMethods')),snap=>{
+  appSubs.push(onSnapshot(collection(db,up('payMethods')),snap=>{
     if(document.getElementById('panel-payment').classList.contains('active'))return;
     payMethods=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.order-b.order||0);
     rebuildPaySelects();
-  });
+  }));
   // 마이너스통장 구독
-  onSnapshot(collection(db,up('minusAccounts')),snap=>{
+  appSubs.push(onSnapshot(collection(db,up('minusAccounts')),snap=>{
     minusAccounts=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(document.getElementById('panel-asset').classList.contains('active'))renderAsset();
-  });
+  }));
   // 포트폴리오 종목 구독
-  onSnapshot(collection(db,up('portfolio')),snap=>{
+  appSubs.push(onSnapshot(collection(db,up('portfolio')),snap=>{
     portfolio=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(document.getElementById('panel-portfolio').classList.contains('active'))renderPortfolio();
-  });
+  }));
   // 포트폴리오 카테고리 구독
-  onSnapshot(doc(db,up('portSettings'),'categories'),snap=>{
+  appSubs.push(onSnapshot(doc(db,up('portSettings'),'categories'),snap=>{
     portCategories=snap.exists()&&snap.data().list?.length?snap.data().list:DEF_PORT_CATS;
     if(document.getElementById('panel-portfolio').classList.contains('active'))renderPortfolio();
-  });
+  }));
   // 투자 구독
-  onSnapshot(collection(db,up('investments')),snap=>{
+  appSubs.push(onSnapshot(collection(db,up('investments')),snap=>{
     investments=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.createdAt-b.createdAt||0);
     if(document.getElementById('panel-asset').classList.contains('active'))renderAsset();
-  });
+  }));
   // 대출 구독
-  onSnapshot(collection(db,up('loans')),snap=>{
+  appSubs.push(onSnapshot(collection(db,up('loans')),snap=>{
     loans=snap.docs.map(d=>({id:d.id,...d.data()}));
     rebuildLoanSelects();rebuildLoanPaySelects();
     if(document.getElementById('panel-asset').classList.contains('active'))renderAsset();
-  });
+  }));
   // 대출 납입 구독
-  onSnapshot(collection(db,up('loanPayments')),snap=>{
+  appSubs.push(onSnapshot(collection(db,up('loanPayments')),snap=>{
     loanPayments=snap.docs.map(d=>({id:d.id,...d.data()}));
     if(document.getElementById('panel-asset').classList.contains('active'))renderAsset();
-  });
+  }));
   subscribeMonth();
 }
 
@@ -1214,7 +1217,7 @@ function rebuildLoanPaySelects(){
     const prev=lsel.value;
     lsel.innerHTML='<option value="">대출 선택</option>';
     loans.forEach(l=>{
-      const paidExp=expenses.filter(e=>e.loanId===l.id).reduce((s,e)=>s+e.amount,0);
+      const paidExp=expenses.filter(e=>e.loanId===l.id&&!e.isLoanPayment).reduce((s,e)=>s+e.amount,0);
       const paidRec=loanPayments.filter(p=>p.loanId===l.id).reduce((s,p)=>s+(Number(p.amount)||0),0);
       const remaining=Math.max(0,(Number(l.principal)||0)-paidExp-paidRec);
       const o=document.createElement('option');
@@ -1244,7 +1247,7 @@ function updateLoanPayInfo(){
   if(!loanId){infoEl.style.display='none';return;}
   const loan=loans.find(l=>l.id===loanId);
   if(!loan){infoEl.style.display='none';return;}
-  const paidExp=expenses.filter(e=>e.loanId===loanId).reduce((s,e)=>s+e.amount,0);
+  const paidExp=expenses.filter(e=>e.loanId===loanId&&!e.isLoanPayment).reduce((s,e)=>s+e.amount,0);
   const paidRec=loanPayments.filter(p=>p.loanId===loanId).reduce((s,p)=>s+(Number(p.amount)||0),0);
   const paid=paidExp+paidRec;
   const remaining=Math.max(0,(Number(loan.principal)||0)-paid);
@@ -1677,7 +1680,7 @@ function renderHome(){
 
   // ── 절약금 현황 ────────────────────────────────────────
   const thisMonthInv=investments.filter(inv=>(inv.date||'').startsWith(curMonth)).reduce((s,i)=>s+(Number(i.amount)||0),0);
-  const thisMonthLoan=expenses.filter(e=>e.loanId&&e.month===curMonth).reduce((s,e)=>s+e.amount,0)+loanPayments.filter(p=>(p.date||'').startsWith(curMonth)).reduce((s,p)=>s+(Number(p.amount)||0),0);
+  const thisMonthLoan=expenses.filter(e=>e.loanId&&!e.isLoanPayment&&e.month===curMonth).reduce((s,e)=>s+e.amount,0)+loanPayments.filter(p=>(p.date||'').startsWith(curMonth)).reduce((s,p)=>s+(Number(p.amount)||0),0);
   const totalUsed=thisMonthInv+thisMonthLoan;
   const unused=Math.max(0,saved-totalUsed);
 
@@ -3200,7 +3203,7 @@ async function renderAsset(){
     loanList.innerHTML=`<div style="text-align:center;color:var(--text3);font-size:12px;padding:12px">등록된 대출이 없어요<br><span style="font-size:11px">+ 대출 등록 버튼을 눌러보세요</span></div>`;
   } else {
     loans.forEach(loan=>{
-      const paidFromExpenses=expenses.filter(e=>e.loanId===loan.id&&!e.isInterestOnly).reduce((s,e)=>s+(Number(e.amount)||0),0);
+      const paidFromExpenses=expenses.filter(e=>e.loanId===loan.id&&!e.isLoanPayment&&!e.isInterestOnly).reduce((s,e)=>s+(Number(e.amount)||0),0);
       const paidFromRecords=loanPayments.filter(p=>p.loanId===loan.id&&!p.isInterestOnly).reduce((s,p)=>s+(Number(p.amount)||0),0);
       const paid=paidFromExpenses+paidFromRecords;
       const remaining=Math.max(0,(Number(loan.principal)||0)-paid);
@@ -3305,7 +3308,7 @@ async function renderAsset(){
     const loanDatasets=loans.map(loan=>{
       const color='#ff6b6b';
       const data=lMonths.map(mo=>{
-        const paidExp=expenses.filter(e=>e.loanId===loan.id&&(e.date||'').slice(0,7)<=mo).reduce((s,e)=>s+(Number(e.amount)||0),0);
+        const paidExp=expenses.filter(e=>e.loanId===loan.id&&!e.isLoanPayment&&(e.date||'').slice(0,7)<=mo).reduce((s,e)=>s+(Number(e.amount)||0),0);
         const paidRec=loanPayments.filter(p=>p.loanId===loan.id&&(p.date||'').slice(0,7)<=mo).reduce((s,p)=>s+(Number(p.amount)||0),0);
         return Math.max(0,(Number(loan.principal)||0)-paidExp-paidRec);
       });
@@ -3338,7 +3341,7 @@ async function renderAsset(){
   }
   const invByMonth=aMonths.map(mo=>investments.filter(inv=>(inv.date||'').startsWith(mo)).reduce((s,i)=>s+(Number(i.amount)||0),0));
   const loanByMonth=aMonths.map(mo=>{
-    const fromExp=expenses.filter(e=>(e.isLoanPayment||e.loanId)&&e.month===mo).reduce((s,e)=>s+e.amount,0);
+    const fromExp=expenses.filter(e=>e.loanId&&!e.isLoanPayment&&e.month===mo).reduce((s,e)=>s+e.amount,0);
     const fromRec=loanPayments.filter(p=>(p.date||'').startsWith(mo)).reduce((s,p)=>s+(Number(p.amount)||0),0);
     return fromExp+fromRec;
   });
@@ -3971,9 +3974,6 @@ async function fetchPrice(symbol,isUS){
 
 async function fetchDividend(symbol){
   try{
-    const now=new Date();
-    const from=`${now.getFullYear()-1}-01-01`;
-    const to=`${now.getFullYear()}-12-31`;
     const r=await fetch(`https://finnhub.io/api/v1/stock/dividend2?symbol=${symbol}&token=${FINNHUB_KEY}`);
     const d=await r.json();
     return d?.data||[];
@@ -4357,7 +4357,7 @@ window.exportCSV=function(){
     const pay=payMethods.find(p=>p.id===e.payId);
     rows.push([e.date,cat?.name||e.cat,e.desc||'',e.amount,pay?.name||'',e.installmentTotal?`${e.installmentCurrent}/${e.installmentTotal}`:'',e.isRecurring?'O':'']);
   });
-  const csv='\uFEFF'+rows.map(r=>r.map(v=>`"${v}"`).join(',')).join('\n');
+  const csv='\uFEFF'+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
   const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})),download:`가계부_${curMonth}.csv`});
   a.click();showToast('CSV 저장됐어요 📥','success');
 };
