@@ -156,6 +156,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .buff-card-icon{font-size:16px;margin-bottom:2px}
 .buff-card-name{font-size:10px;font-weight:500;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .buff-card-desc{font-size:9px;color:var(--text3);line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.buff-card-x,.buff-card-e{position:absolute;top:3px;background:none;border:none;cursor:pointer;color:var(--text3);font-size:11px;padding:1px;line-height:1;z-index:2}
+.buff-card-x{left:3px}.buff-card-e{right:3px}
+.buff-card-x:hover{color:var(--red)}.buff-card-e:hover{color:var(--text)}
 .buff-empty{border:1.5px dashed rgba(255,255,255,0.08);background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:58px;cursor:pointer;flex:1;border-radius:var(--radius)}
 .buff-empty:hover{border-color:var(--border2)}
 .buff-empty span{font-size:10px;color:var(--text3)}
@@ -289,7 +292,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <div style="display:flex;flex-direction:column;gap:4px">
             <div style="display:flex;align-items:center;justify-content:space-between">
               <span style="font-size:12px;font-weight:500;color:var(--text2)">보스</span>
-              <button class="btn btn-sm" onclick="openAddBoss()"><i class="ti ti-plus"></i> 추가</button>
+              <button class="btn btn-sm" onclick="openBossBench()"><i class="ti ti-layout-grid-add"></i> 벤치</button>
             </div>
             <div class="boss-list" id="bossList"></div>
           </div>
@@ -402,8 +405,21 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   </div>
 </div>
 
+<!-- 보스 벤치 (전역 보스 풀 + 시즌 활성화) -->
+<div class="modal-bg" id="bossBenchModal">
+  <div class="modal">
+    <div style="display:flex;align-items:center;margin-bottom:10px">
+      <span class="modal-title">보스 벤치</span>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="closeM('bossBenchModal')">닫기</button>
+    </div>
+    <p style="font-size:12px;color:var(--text3);margin-bottom:10px">보스를 한 번 등록하면 모든 시즌에서 재사용할 수 있어요. '사용중'으로 켜면 이번 시즌 보스로 표시됩니다.</p>
+    <div id="bossBenchList"></div>
+    <button class="btn btn-accent" style="justify-content:center;width:100%;margin-top:14px" onclick="openAddBoss()"><i class="ti ti-plus"></i> 새 보스 등록</button>
+  </div>
+</div>
+
 <!-- 보스 추가/편집 -->
-<div class="modal-bg" id="bossMgrModal">
+<div class="modal-bg" id="bossMgrModal" style="z-index:110">
   <div class="modal-sm">
     <div style="display:flex;align-items:center;margin-bottom:12px">
       <span class="modal-title" id="bossMgrTitle">보스 추가</span>
@@ -413,7 +429,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <input class="field" id="bossName" placeholder="보스 이름">
       <input class="field" id="bossUrl" placeholder="이미지 URL (선택)">
       <div>
-        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:3px">파일 업로드</label>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:3px">파일 업로드 <span style="color:var(--text3)">또는 Ctrl+V로 붙여넣기</span></label>
         <input type="file" id="bossFile" accept="image/*" style="font-size:12px;color:var(--text2)" onchange="prevBossUp()">
         <img id="bossPrev" style="display:none;width:50px;height:50px;object-fit:cover;border-radius:8px;margin-top:5px">
       </div>
@@ -450,7 +466,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
         <input class="field" id="nName" placeholder="캐릭터 이름">
         <input class="field" id="nUrl" placeholder="이미지 URL (선택)">
         <div>
-          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:3px">파일 업로드</label>
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:3px">파일 업로드 <span style="color:var(--text3)">또는 Ctrl+V로 붙여넣기</span></label>
           <input type="file" id="nFile" accept="image/*" style="font-size:12px;color:var(--text2)" onchange="prevUp('n')">
           <img id="nPrev" style="display:none;width:50px;height:50px;object-fit:cover;border-radius:8px;margin-top:5px">
         </div>
@@ -477,7 +493,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     <div style="display:flex;flex-direction:column;gap:9px">
       <div><p style="font-size:12px;color:var(--text2);margin-bottom:3px">이미지 URL</p><input class="field" id="eUrl" placeholder="https://..."></div>
       <div>
-        <p style="font-size:12px;color:var(--text2);margin-bottom:3px">파일 업로드</p>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:3px">파일 업로드 <span style="color:var(--text3)">또는 Ctrl+V로 붙여넣기</span></p>
         <input type="file" id="eFile" accept="image/*" style="font-size:12px;color:var(--text2)" onchange="prevUp('e')">
         <img id="ePrev" style="display:none;width:50px;height:50px;object-fit:cover;border-radius:8px;margin-top:5px">
       </div>
@@ -583,6 +599,11 @@ window.FB = {
     return d.exists() ? d.data().list.map(c=>({attr:'회절',owned:true,memo:'',...c})) : null;
   },
   async saveChars(list){ await setDoc(uDoc('chars'),{list}); },
+  // 전역 버프/보스 풀 (벤치) — 모든 시즌이 공유, 시즌별로는 활성 id만 저장
+  async loadBuffs(){ const d=await getDoc(uDoc('buffs'));  return d.exists()?(d.data().list||[]):null; },
+  async saveBuffs(list){ await setDoc(uDoc('buffs'),{list}); },
+  async loadBosses(){ const d=await getDoc(uDoc('bosses')); return d.exists()?(d.data().list||[]):null; },
+  async saveBosses(list){ await setDoc(uDoc('bosses'),{list}); },
   async loadSeasons(){
     const q = query(uColl('seasons'), orderBy('ts','asc'));
     const s = await getDocs(q);
@@ -623,6 +644,8 @@ window.FB = {
     await addDoc(uColl('saves'),{
       name, type:'full',
       chars: backupData.chars,
+      buffs: backupData.buffs || [],
+      bosses: backupData.bosses || [],
       seasons: backupData.seasons,
       allSeasonData: backupData.allSeasonData,
       date: new Date().toLocaleString('ko'),
@@ -744,9 +767,15 @@ const DC=[
 ];
 
 // ── 상태 ──
+// buffs/bosses = 전역 풀(벤치). activeBuffs/activeBosses = 현재 시즌에서 활성화된 id 목록.
 let chars=[], parties=[], buffs=[], bosses=[];
+let activeBuffs=[], activeBosses=[];
 let seasons=[], curSid=null;
-let editCharIdx=null, memoIdx=null, editBossIdx=null, editBuffIdx=null, editSid=null;
+let editCharIdx=null, memoIdx=null, editBossId=null, editBuffId=null, editSid=null;
+
+// 안정적 id 생성기 (전역 버프/보스용)
+let _idc=0;
+function genId(p){ return p+'_'+Date.now().toString(36)+'_'+(_idc++).toString(36); }
 let curFilter='all';
 let nC=COLS[0],nA='회절',eC=COLS[0],eA='회절',nUp=null,eUp=null;
 let bossC=COLS[0],bossUp=null;
@@ -789,6 +818,8 @@ async function appInit(){
     const saved = await window.FB.loadChars();
     chars = saved || DC.map(c=>({...c}));
     if(!saved) await window.FB.saveChars(chars);
+    buffs  = (await window.FB.loadBuffs())  || [];
+    bosses = (await window.FB.loadBosses()) || [];
     seasons = await window.FB.loadSeasons();
     if(seasons.length>0){
       curSid = seasons[0].id;
@@ -806,19 +837,57 @@ async function appInit(){
 
 async function loadSeasonData(sid){
   const d = await window.FB.loadSeasonData(sid);
-  if(d){
-    parties = (d.parties||[{name:'파티 1',slots:[null,null,null],buffIdx:null}])
-      .map(p=>({bossIdxs:[],score:'',hp:'',memo:'',...p}));
-    buffs   = Array.isArray(d.buffs)?d.buffs:[];
-    bosses  = d.bosses  || [];
+  if(!d){
+    parties=[{name:'파티 1',slots:[null,null,null],buffId:null,bossIds:[],score:'',hp:'',memo:''}];
+    activeBuffs=[]; activeBosses=[];
+    return;
+  }
+  const rawParties = (Array.isArray(d.parties)&&d.parties.length) ? d.parties : [{name:'파티 1',slots:[null,null,null]}];
+  let migrated=false;
+
+  // ── 레거시 버프 마이그레이션: 시즌별 buffs[] → 전역 풀 + activeBuffs(id) ──
+  if(Array.isArray(d.buffs)){
+    const map = d.buffs.map(ob=>{
+      if(!ob||typeof ob!=='object') return null;
+      let g = buffs.find(x=>x.name===ob.name && (x.desc||'')===(ob.desc||''));
+      if(!g){ g={id:genId('buff'),name:ob.name,icon:ob.icon||'',desc:ob.desc||''}; buffs.push(g); migrated=true; }
+      return g.id;
+    });
+    activeBuffs = map.filter(Boolean);
+    rawParties.forEach(p=>{ if(p.buffIdx!=null && map[p.buffIdx]) p.buffId=map[p.buffIdx]; delete p.buffIdx; });
   } else {
-    parties=[{name:'파티 1',slots:[null,null,null],buffIdx:null,bossIdxs:[],score:'',hp:''}];
-    buffs=[];
-    bosses=[];
+    activeBuffs = Array.isArray(d.activeBuffs) ? d.activeBuffs.slice() : [];
+  }
+
+  // ── 레거시 보스 마이그레이션: 시즌별 bosses[] → 전역 풀 + activeBosses(id) ──
+  if(Array.isArray(d.bosses)){
+    const map = d.bosses.map(ob=>{
+      if(!ob||typeof ob!=='object') return null;
+      let g = bosses.find(x=>x.name===ob.name);
+      if(!g){ g={id:genId('boss'),name:ob.name,img:ob.img||null,color:ob.color||0,memo:ob.memo||''}; bosses.push(g); migrated=true; }
+      return g.id;
+    });
+    activeBosses = map.filter(Boolean);
+    rawParties.forEach(p=>{ if(Array.isArray(p.bossIdxs)) p.bossIds=p.bossIdxs.map(i=>map[i]).filter(Boolean); delete p.bossIdxs; });
+  } else {
+    activeBosses = Array.isArray(d.activeBosses) ? d.activeBosses.slice() : [];
+  }
+
+  parties = rawParties.map(p=>({name:'파티',slots:[null,null,null],buffId:null,bossIds:[],score:'',hp:'',memo:'',...p}));
+  // 전역 풀에서 삭제된 id는 활성 목록에서 제거
+  activeBuffs  = activeBuffs.filter(bid=>buffs.some(b=>b.id===bid));
+  activeBosses = activeBosses.filter(bid=>bosses.some(b=>b.id===bid));
+
+  if(migrated){
+    await window.FB.saveBuffs(buffs);
+    await window.FB.saveBosses(bosses);
+    await saveSeason();   // 새 형식(activeBuffs/activeBosses)으로 시즌 재저장
   }
 }
-async function saveSeason(){ if(curSid) await window.FB.saveSeasonData(curSid,{parties,buffs,bosses}); }
+async function saveSeason(){ if(curSid) await window.FB.saveSeasonData(curSid,{parties,activeBuffs,activeBosses}); }
 async function saveChars(){ await window.FB.saveChars(chars); }
+async function saveBuffs(){ await window.FB.saveBuffs(buffs); }
+async function saveBosses(){ await window.FB.saveBosses(bosses); }
 
 // 디바운스 — 텍스트 입력(이름/점수/HP)이 키 입력마다 Firestore에 쓰지 않도록 모아서 저장
 function debounce(fn, ms){
@@ -942,7 +1011,7 @@ async function deleteSeason(sid){
   if(curSid===sid){
     curSid = seasons[0]?.id||null;
     if(curSid) await loadSeasonData(curSid);
-    else { parties=[]; buffs=[]; bosses=[]; }
+    else { parties=[]; activeBuffs=[]; activeBosses=[]; }
   }
   renderSeasonList(); renderSeasonBar(); renderAll();
 }
@@ -1010,19 +1079,18 @@ function renderParties(){
       </div>`;
     }).join('');
 
-    // 버프 select
-    const buffOpts='<option value="">버프 없음</option>'+buffs.filter(Boolean).map((b,bi)=>{
-      const realBi=buffs.indexOf(b);
-      return `<option value="${realBi}"${p.buffIdx===realBi?' selected':''}>${esc(b.icon||'')}${esc(b.name)}</option>`;
-    }).join('');
-    const selB=p.buffIdx!=null&&buffs[p.buffIdx]?buffs[p.buffIdx]:null;
+    // 버프 select — 이번 시즌 활성 버프만
+    const actBuffs=buffs.filter(b=>activeBuffs.includes(b.id));
+    const buffOpts='<option value="">버프 없음</option>'+actBuffs.map(b=>
+      `<option value="${b.id}"${p.buffId===b.id?' selected':''}>${esc(b.icon||'')}${esc(b.name)}</option>`).join('');
+    const selB=p.buffId!=null?buffs.find(b=>b.id===p.buffId)||null:null;
 
-    // 보스 칩
-    const bossIdxs=p.bossIdxs||[];
-    const bossChips=bosses.length?bosses.map((b,bi)=>{
-      const sel=bossIdxs.includes(bi);
-      const col=COLS[b.color%COLS.length];
-      return `<span class="boss-chip${sel?' sel':''}" onclick="togglePartyBoss(${pi},${bi})">
+    // 보스 칩 — 이번 시즌 활성 보스만 (활성화 순서 유지)
+    const actBosses=activeBosses.map(id=>bosses.find(b=>b.id===id)).filter(Boolean);
+    const pBossIds=p.bossIds||[];
+    const bossChips=actBosses.length?actBosses.map(b=>{
+      const sel=pBossIds.includes(b.id);
+      return `<span class="boss-chip${sel?' sel':''}" onclick="togglePartyBoss(${pi},'${b.id}')">
         ${b.img?`<img src="${esc(b.img)}" style="width:12px;height:12px;border-radius:2px;object-fit:cover" onerror="this.style.display='none'">`:''}
         ${esc(b.name)}
       </span>`;
@@ -1039,7 +1107,7 @@ function renderParties(){
         <span class="drag-handle" title="드래그해서 순서 변경"><i class="ti ti-grip-vertical"></i></span>
         <span style="font-size:11px;color:var(--text3);font-weight:500;flex-shrink:0">#${pi+1}</span>
         <input class="party-name-input" value="${esc(p.name)}" oninput="renameParty(${pi},this.value)">
-        ${buffs.some(Boolean)?`<select class="buff-sel" onchange="setPartyBuff(${pi},this.value)">${buffOpts}</select>`:''}
+        ${actBuffs.length?`<select class="buff-sel" onchange="setPartyBuff(${pi},this.value)">${buffOpts}</select>`:''}
         <button class="btn btn-sm btn-icon" style="position:relative;flex-shrink:0" onclick="openPartyMemo(${pi})" title="파티 메모">
           <i class="ti ti-note"></i>
           ${p.memo?`<span class="party-memo-dot" style="position:absolute;top:-2px;right:-2px;width:5px;height:5px"></span>`:''}
@@ -1077,7 +1145,7 @@ function renderScorePanel(){
   const rows=parties.map((p,pi)=>{
     const sc=parseFloat(p.score)||0;
     const hp=p.hp?` HP ${p.hp}%`:'';
-    const bNames=(p.bossIdxs||[]).map(bi=>bosses[bi]?.name||'').filter(Boolean).join(', ');
+    const bNames=(p.bossIds||[]).map(bid=>{const b=bosses.find(x=>x.id===bid);return b?b.name:'';}).filter(Boolean).join(', ');
     const sub=[bNames,hp].filter(Boolean).join(' · ');
     return `<div class="score-row" style="align-items:flex-start">
       <div style="min-width:0;flex:1">
@@ -1170,16 +1238,15 @@ function charDragEnd(){
   document.querySelectorAll('.char-card').forEach(c=>c.classList.remove('char-dragging','char-drag-over'));
 }
 
-async function addParty(){ parties.push({name:`파티 ${parties.length+1}`,slots:[null,null,null],buffIdx:null,bossIdxs:[],score:'',hp:'',memo:''}); renderAll(); await saveSeason(); }
+async function addParty(){ parties.push({name:`파티 ${parties.length+1}`,slots:[null,null,null],buffId:null,bossIds:[],score:'',hp:'',memo:''}); renderAll(); await saveSeason(); }
 async function rmParty(pi){ parties.splice(pi,1); renderAll(); await saveSeason(); }
 function renameParty(pi,v){ parties[pi].name=v; saveSeasonDebounced(); }
 async function rmSlot(pi,si){ parties[pi].slots[si]=null; renderAll(); await saveSeason(); }
-async function setPartyBuff(pi,v){ parties[pi].buffIdx=v===''?null:parseInt(v); renderAll(); await saveSeason(); }
-async function togglePartyBoss(pi,bi){
-  if(!parties[pi].bossIdxs) parties[pi].bossIdxs=[];
-  const idx=parties[pi].bossIdxs.indexOf(bi);
-  if(idx>=0) parties[pi].bossIdxs.splice(idx,1);
-  else parties[pi].bossIdxs.push(bi);
+async function setPartyBuff(pi,v){ parties[pi].buffId=v===''?null:v; renderAll(); await saveSeason(); }
+async function togglePartyBoss(pi,bid){
+  if(!parties[pi].bossIds) parties[pi].bossIds=[];
+  const arr=parties[pi].bossIds, idx=arr.indexOf(bid);
+  if(idx>=0) arr.splice(idx,1); else arr.push(bid);
   renderParties(); renderInfo(); renderScorePanel(); await saveSeason();
 }
 function setPartyScore(pi,v){
@@ -1212,20 +1279,18 @@ function openSlot(pi,si){
 }
 async function pickChar(pi,si,i){ parties[pi].slots[si]=i; closeM('slotModal'); renderAll(); await saveSeason(); }
 
-// ── 버프 ──
+// ── 버프 (전역 벤치 + 시즌별 활성화) ──
 function renderBuffGrid(){
-  // 실제 버프만 + 추가 버튼 하나
-  const filled=buffs.filter(Boolean);
-  let html=filled.map((b,fi)=>{
-    const ri=buffs.indexOf(b);
-    return `<div class="buff-card" title="${esc(b.name+(b.desc?' — '+b.desc:''))}">
-      <button style="position:absolute;top:3px;right:3px;background:none;border:none;cursor:pointer;color:var(--text3);font-size:11px;padding:1px" onclick="openEditBuff(${ri})"><i class="ti ti-edit"></i></button>
+  // 이번 시즌 활성 버프 카드 + 벤치 열기 카드
+  const act=buffs.filter(b=>activeBuffs.includes(b.id));
+  let html=act.map(b=>`<div class="buff-card" title="${esc(b.name+(b.desc?' — '+b.desc:''))}">
+      <button class="buff-card-x" onclick="toggleActiveBuff('${b.id}')" title="벤치로 보내기"><i class="ti ti-x"></i></button>
+      <button class="buff-card-e" onclick="openEditBuff('${b.id}')" title="편집"><i class="ti ti-edit"></i></button>
       <div class="buff-card-icon">${esc(b.icon||'🎯')}</div>
       <div class="buff-card-name">${esc(b.name)}</div>
       <div class="buff-card-desc">${esc(b.desc||'')}</div>
-    </div>`;
-  }).join('');
-  html+=`<div class="buff-card buff-empty" onclick="openBuffMgr()"><i class="ti ti-plus" style="font-size:14px;color:var(--text3)"></i><span>추가</span></div>`;
+    </div>`).join('');
+  html+=`<div class="buff-card buff-empty" onclick="openBuffMgr()"><i class="ti ti-layout-grid-add" style="font-size:14px;color:var(--text3)"></i><span>벤치</span></div>`;
   document.getElementById('buffGrid').innerHTML=html;
 }
 
@@ -1235,52 +1300,60 @@ function openBuffMgr(){
   document.getElementById('buffMgrModal').classList.add('open');
 }
 function renderBuffEditList(){
-  document.getElementById('buffEditList').innerHTML=buffs.filter(Boolean).length
-    ?buffs.map((b,i)=>{
-      if(!b) return '';
+  document.getElementById('buffEditList').innerHTML=buffs.length
+    ?buffs.map(b=>{
+      const on=activeBuffs.includes(b.id);
       return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border)">
+        <button class="dtog${on?' on':''}" style="flex-shrink:0;width:46px" onclick="toggleActiveBuff('${b.id}')" title="이번 시즌 사용">${on?'사용중':'벤치'}</button>
         <span style="font-size:18px">${esc(b.icon||'🎯')}</span>
         <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${esc(b.name)}</div><div style="font-size:11px;color:var(--text3)">${esc(b.desc||'')}</div></div>
-        <button class="btn btn-sm btn-icon" onclick="openEditBuff(${i})"><i class="ti ti-edit"></i></button>
-        <button class="btn btn-sm btn-icon" onclick="removeBuff(${i})"><i class="ti ti-trash"></i></button>
+        <button class="btn btn-sm btn-icon" onclick="openEditBuff('${b.id}')"><i class="ti ti-edit"></i></button>
+        <button class="btn btn-sm btn-icon" onclick="removeBuff('${b.id}')"><i class="ti ti-trash"></i></button>
       </div>`;
     }).join('')
-    :'<p style="font-size:13px;color:var(--text3);padding:6px 0">등록된 버프 없음</p>';
+    :'<p style="font-size:13px;color:var(--text3);padding:6px 0">벤치에 등록된 버프 없음</p>';
   document.getElementById('buffAddArea').style.display='block';
+}
+async function toggleActiveBuff(bid){
+  const i=activeBuffs.indexOf(bid);
+  if(i>=0){ activeBuffs.splice(i,1); parties.forEach(p=>{ if(p.buffId===bid) p.buffId=null; }); }
+  else activeBuffs.push(bid);
+  renderBuffEditList();renderBuffGrid();renderParties();await saveSeason();
 }
 async function addBuff(){
   const name=document.getElementById('bName').value.trim();
   if(!name){showToast('버프 이름을 입력하세요');return;}
-  buffs.push({name,icon:document.getElementById('bIcon').value.trim(),desc:document.getElementById('bDesc').value.trim()});
+  const b={id:genId('buff'),name,icon:document.getElementById('bIcon').value.trim(),desc:document.getElementById('bDesc').value.trim()};
+  buffs.push(b); activeBuffs.push(b.id);
   document.getElementById('bName').value='';document.getElementById('bIcon').value='';document.getElementById('bDesc').value='';
-  renderBuffEditList();renderBuffGrid();renderParties();await saveSeason();showToast('버프 추가됨');
+  renderBuffEditList();renderBuffGrid();renderParties();await saveBuffs();await saveSeason();showToast('버프 추가됨 · 이번 시즌 활성화');
 }
-function openEditBuff(i){
-  editBuffIdx=i; const b=buffs[i];
+function openEditBuff(bid){
+  editBuffId=bid; const b=buffs.find(x=>x.id===bid); if(!b) return;
   document.getElementById('ebName').value=b.name;document.getElementById('ebIcon').value=b.icon||'';document.getElementById('ebDesc').value=b.desc||'';
   document.getElementById('buffEditModal').classList.add('open');
 }
 async function saveBuffEdit(){
-  const b=buffs[editBuffIdx];
+  const b=buffs.find(x=>x.id===editBuffId); if(!b) return;
   b.name=document.getElementById('ebName').value.trim()||b.name;
   b.icon=document.getElementById('ebIcon').value.trim();
   b.desc=document.getElementById('ebDesc').value.trim();
-  closeM('buffEditModal');renderBuffEditList();renderBuffGrid();renderParties();await saveSeason();showToast('버프 수정됨');
+  closeM('buffEditModal');renderBuffEditList();renderBuffGrid();renderParties();await saveBuffs();showToast('버프 수정됨');
 }
-async function removeBuff(i){
-  buffs.splice(i,1);
-  parties.forEach(p=>{
-    if(p.buffIdx===i) p.buffIdx=null;
-    else if(p.buffIdx!=null&&p.buffIdx>i) p.buffIdx--;
-  });
-  renderBuffEditList();renderBuffGrid();renderParties();await saveSeason();
+async function removeBuff(bid){
+  if(!confirm('이 버프를 벤치에서 완전히 삭제할까요?\n모든 시즌에서 사라집니다.')) return;
+  buffs=buffs.filter(b=>b.id!==bid);
+  const i=activeBuffs.indexOf(bid); if(i>=0) activeBuffs.splice(i,1);
+  parties.forEach(p=>{ if(p.buffId===bid) p.buffId=null; });
+  renderBuffEditList();renderBuffGrid();renderParties();await saveBuffs();await saveSeason();
 }
 
-// ── 보스 ──
+// ── 보스 (전역 벤치 + 시즌별 활성화) ──
 function renderBossList(){
   const el=document.getElementById('bossList');
-  if(!bosses.length){el.innerHTML='<p style="font-size:13px;color:var(--text3)">등록된 보스 없음</p>';return;}
-  el.innerHTML=bosses.map((b,i)=>{
+  const act=activeBosses.map(id=>bosses.find(b=>b.id===id)).filter(Boolean);
+  if(!act.length){el.innerHTML='<p style="font-size:13px;color:var(--text3)">이번 시즌 보스 없음 · 벤치에서 추가</p>';return;}
+  el.innerHTML=act.map(b=>{
     const col=COLS[b.color%COLS.length];
     const bnm=esc(b.name.slice(0,1));
     const iconInner=b.img
@@ -1288,8 +1361,8 @@ function renderBossList(){
       :`<span style="font-size:16px;font-weight:500;color:${col.text}">${bnm}</span>`;
     return `<div class="boss-card" title="${esc(b.name+(b.memo?'\n'+b.memo:''))}">
       <div class="boss-actions-row">
-        <button class="btn btn-sm btn-icon" style="padding:2px 3px" onclick="openEditBoss(${i})"><i class="ti ti-edit"></i></button>
-        <button class="btn btn-sm btn-icon" style="padding:2px 3px" onclick="removeBoss(${i})"><i class="ti ti-trash"></i></button>
+        <button class="btn btn-sm btn-icon" style="padding:2px 3px" onclick="openEditBoss('${b.id}')"><i class="ti ti-edit"></i></button>
+        <button class="btn btn-sm btn-icon" style="padding:2px 3px" onclick="toggleActiveBoss('${b.id}')" title="벤치로 보내기"><i class="ti ti-x"></i></button>
       </div>
       <div class="boss-card-inner">
         <div class="boss-icon" style="background:${col.bg}">${iconInner}</div>
@@ -1300,15 +1373,44 @@ function renderBossList(){
   }).join('');
 }
 function renderPillsBoss(){ document.getElementById('bossSwatches').innerHTML=COLS.map((c,i)=>`<div class="sw${bossC===c?' on':''}" style="background:${c.bg};border-color:${c.text}" onclick="bossC=COLS[${i}];renderPillsBoss()"></div>`).join(''); }
+// 보스 벤치 모달
+function openBossBench(){ renderBossBenchList(); document.getElementById('bossBenchModal').classList.add('open'); }
+function renderBossBenchList(){
+  const el=document.getElementById('bossBenchList');
+  if(!el) return;
+  el.innerHTML=bosses.length
+    ?bosses.map(b=>{
+      const on=activeBosses.includes(b.id);
+      const col=COLS[b.color%COLS.length];
+      const bnm=esc(b.name.slice(0,1));
+      const icon=b.img
+        ?`<img src="${esc(b.img)}" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none';this.nextSibling.style.display='flex'"><span style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:12px;font-weight:500">${bnm}</span>`
+        :`<span style="font-size:12px;font-weight:500;color:${col.text}">${bnm}</span>`;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border)">
+        <button class="dtog${on?' on':''}" style="flex-shrink:0;width:46px" onclick="toggleActiveBoss('${b.id}')" title="이번 시즌 사용">${on?'사용중':'벤치'}</button>
+        <div class="boss-icon" style="width:28px;height:28px;border-radius:6px;background:${col.bg}">${icon}</div>
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.name)}</div>${b.memo?`<div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.memo.split('\n')[0])}</div>`:''}</div>
+        <button class="btn btn-sm btn-icon" onclick="openEditBoss('${b.id}')"><i class="ti ti-edit"></i></button>
+        <button class="btn btn-sm btn-icon" onclick="removeBoss('${b.id}')"><i class="ti ti-trash"></i></button>
+      </div>`;
+    }).join('')
+    :'<p style="font-size:13px;color:var(--text3);padding:6px 0">벤치에 등록된 보스 없음</p>';
+}
+async function toggleActiveBoss(bid){
+  const i=activeBosses.indexOf(bid);
+  if(i>=0){ activeBosses.splice(i,1); parties.forEach(p=>{ if(Array.isArray(p.bossIds)){ const j=p.bossIds.indexOf(bid); if(j>=0)p.bossIds.splice(j,1); } }); }
+  else activeBosses.push(bid);
+  renderBossBenchList();renderBossList();renderParties();renderScorePanel();await saveSeason();
+}
 function openAddBoss(){
-  editBossIdx=null;bossUp=null;bossC=COLS[0];
+  editBossId=null;bossUp=null;bossC=COLS[0];
   document.getElementById('bossMgrTitle').textContent='보스 추가';
   ['bossName','bossUrl','bossMemo'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('bossFile').value='';document.getElementById('bossPrev').style.display='none';
   renderPillsBoss();document.getElementById('bossMgrModal').classList.add('open');
 }
-function openEditBoss(i){
-  editBossIdx=i;bossUp=null; const b=bosses[i];
+function openEditBoss(bid){
+  editBossId=bid;bossUp=null; const b=bosses.find(x=>x.id===bid); if(!b) return;
   document.getElementById('bossMgrTitle').textContent=`편집: ${b.name}`;
   document.getElementById('bossName').value=b.name;
   document.getElementById('bossUrl').value=b.img&&!b.img.startsWith('data:')?b.img:'';
@@ -1322,11 +1424,22 @@ async function saveBoss(){
   const name=document.getElementById('bossName').value.trim();
   if(!name){showToast('보스 이름을 입력하세요');return;}
   const url=document.getElementById('bossUrl').value.trim();
-  const boss={name,img:bossUp||url||null,color:COLS.indexOf(bossC),memo:document.getElementById('bossMemo').value.trim()};
-  if(editBossIdx===null) bosses.push(boss); else bosses[editBossIdx]=boss;
-  closeM('bossMgrModal');renderBossList();await saveSeason();showToast('저장됨');
+  const data={name,img:bossUp||url||null,color:COLS.indexOf(bossC),memo:document.getElementById('bossMemo').value.trim()};
+  if(editBossId===null){
+    const b={id:genId('boss'),...data}; bosses.push(b); activeBosses.push(b.id);
+  } else {
+    const b=bosses.find(x=>x.id===editBossId); if(b) Object.assign(b,data);
+  }
+  closeM('bossMgrModal');renderBossBenchList();renderBossList();renderParties();
+  await saveBosses();await saveSeason();showToast('저장됨');
 }
-async function removeBoss(i){ bosses.splice(i,1);renderBossList();await saveSeason(); }
+async function removeBoss(bid){
+  if(!confirm('이 보스를 벤치에서 완전히 삭제할까요?\n모든 시즌에서 사라집니다.')) return;
+  bosses=bosses.filter(b=>b.id!==bid);
+  const i=activeBosses.indexOf(bid); if(i>=0) activeBosses.splice(i,1);
+  parties.forEach(p=>{ if(Array.isArray(p.bossIds)){ const j=p.bossIds.indexOf(bid); if(j>=0)p.bossIds.splice(j,1); } });
+  renderBossBenchList();renderBossList();renderParties();renderScorePanel();await saveBosses();await saveSeason();
+}
 function prevBossUp(){
   const f=document.getElementById('bossFile').files[0];
   processImage(f,out=>{bossUp=out;const el=document.getElementById('bossPrev');el.src=bossUp;el.style.display='block';document.getElementById('bossUrl').value='';});
@@ -1465,6 +1578,8 @@ async function doSave(){
     const allSeasonData = await window.FB.loadAllSeasonData(seasons.map(s=>s.id));
     await window.FB.saveFullBackup(name, {
       chars: JSON.parse(JSON.stringify(chars)),
+      buffs: JSON.parse(JSON.stringify(buffs)),
+      bosses: JSON.parse(JSON.stringify(bosses)),
       seasons: JSON.parse(JSON.stringify(seasons)),
       allSeasonData
     });
@@ -1504,18 +1619,23 @@ async function loadSave(id){
   showToast('복원 중...');
   try{
     if(d.type==='full'){
-      // 캐릭터 복원
+      // 캐릭터 + 전역 버프/보스 풀 복원
       chars=(d.chars||[]).map(c=>({attr:'회절',owned:true,memo:'',...c}));
+      buffs=Array.isArray(d.buffs)?d.buffs:[];
+      bosses=Array.isArray(d.bosses)?d.bosses:[];
       await window.FB.saveChars(chars);
+      await window.FB.saveBuffs(buffs);
+      await window.FB.saveBosses(bosses);
       // 모든 시즌 + 시즌별 데이터 복원 (원본 id 유지)
+      // (구버전 백업은 시즌 안에 buffs/bosses가 있어 loadSeasonData가 전역 풀로 자동 마이그레이션)
       if(Array.isArray(d.seasons)&&d.seasons.length){
         await window.FB.restoreAllSeasons(d.seasons, d.allSeasonData||{});
         seasons = await window.FB.loadSeasons();
         curSid = seasons[0]?.id || null;
         if(curSid) await loadSeasonData(curSid);
-        else { parties=[]; buffs=[]; bosses=[]; }
+        else { parties=[]; activeBuffs=[]; activeBosses=[]; }
       } else {
-        seasons=[]; curSid=null; parties=[]; buffs=[]; bosses=[];
+        seasons=[]; curSid=null; parties=[]; activeBuffs=[]; activeBosses=[];
       }
       renderSeasonBar();
     }
@@ -1529,6 +1649,28 @@ function closeM(id){ document.getElementById(id).classList.remove('open'); }
 function showToast(msg){ const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200); }
 
 document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); }));
+
+// ── 이미지 붙여넣기 (Ctrl+V) — 열려있는 편집/추가 모달에 스크린샷 적용 ──
+function isOpen(id){ const el=document.getElementById(id); return el&&el.classList.contains('open'); }
+function applyPasted(out, upVar, prevId, urlId){
+  if(upVar==='n') nUp=out; else if(upVar==='e') eUp=out; else bossUp=out;
+  const el=document.getElementById(prevId); el.src=out; el.style.display='block';
+  document.getElementById(urlId).value='';
+  showToast('이미지 붙여넣음');
+}
+document.addEventListener('paste', e=>{
+  const items=e.clipboardData&&e.clipboardData.items;
+  if(!items) return;
+  let file=null;
+  for(const it of items){ if(it.type&&it.type.indexOf('image')===0){ file=it.getAsFile(); break; } }
+  if(!file) return;
+  // 우선순위: 보스 폼 > 공명자 편집 > 공명자 추가 (위에 떠있는 모달 우선)
+  if(isOpen('bossMgrModal')){ e.preventDefault(); processImage(file,out=>applyPasted(out,'boss','bossPrev','bossUrl')); }
+  else if(isOpen('editCharModal')){ e.preventDefault(); processImage(file,out=>applyPasted(out,'e','ePrev','eUrl')); }
+  else if(isOpen('charMgrModal') && document.getElementById('cpane-add').classList.contains('active')){
+    e.preventDefault(); processImage(file,out=>applyPasted(out,'n','nPrev','nUrl'));
+  }
+});
 
 // ── 모바일 스와이프 ──
 (function(){
