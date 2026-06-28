@@ -1084,18 +1084,6 @@ async function init() {
     await requestNotifPermission();
   }
 
-  // 데모 데이터
-  if (!events.length) {
-    const t = today();
-    const addDay = (d, n) => addDays(d, n);
-    events = [
-      { id: uid(), bank: '신한카드', cardName: '딥드림', name: '7월 첫 결제 캐시백', start: t, end: addDay(t, 14), minAmount: 300000, cashbackAmount: 10000, currentAmount: 180000, memo: '월 1회 제공 / 자동납부 제외', images: [], notifDeadline: true, notifStart: true, createdAt: Date.now() },
-      { id: uid(), bank: '현대카드', cardName: 'ZERO', name: '신규회원 웰컴 캐시백', start: addDay(t, 3), end: addDay(t, 33), minAmount: 500000, cashbackAmount: 30000, currentAmount: 0, memo: '가입 후 30일 이내 50만원 이상 사용', images: [], notifDeadline: true, notifStart: true, createdAt: Date.now() },
-      { id: uid(), bank: 'KB국민카드', cardName: '탄탄대로', name: '6월 실적 달성 캐시백', start: addDay(t, -20), end: addDay(t, -5), minAmount: 400000, cashbackAmount: 15000, currentAmount: 420000, memo: '', images: [], notifDeadline: false, notifStart: false, createdAt: Date.now() },
-    ];
-    save();
-  }
-
   // 저장된 이벤트들의 미발사 알림을 현재 데이터 기준으로 동기화
   events.forEach(rebuildNotifications);
   save();
