@@ -82,6 +82,9 @@
   .bar .wrap{padding:0;display:flex;gap:10px;}
   .share{background:var(--go);flex:2;}.copy{background:var(--panel2);border:1px solid var(--line);color:var(--ink);flex:1;}
   input[type=file]{display:none;}
+  input.ai-filled{border-color:var(--accent)!important;box-shadow:0 0 0 2px rgba(90,169,255,.30);}
+  #labelStat.ok{color:var(--accent);font-weight:700;}
+  #labelStat.no{color:var(--bone);font-weight:700;}
   /* 라이브 카메라 */
   .cam{position:fixed;inset:0;z-index:60;background:#000;display:none;flex-direction:column;}
   .camtop{display:flex;align-items:center;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top)) 16px 14px;color:#fff;font-size:18px;font-weight:800;}
@@ -130,6 +133,11 @@
     <div class="field">
       <div class="lbl">종류</div>
       <div class="toggle" id="kindToggle"><button data-k="북채" class="on">북채</button><button data-k="날개">날개</button></div>
+    </div>
+    <div class="field">
+      <div class="lbl">손질 봉 수</div>
+      <div class="chips" id="bongChips"></div>
+      <input type="text" id="bongEtc" inputmode="numeric" placeholder="직접 입력 (숫자)" style="margin-top:8px;text-align:left;font-size:16px;font-weight:600">
     </div>
   </div>
 
@@ -196,7 +204,8 @@ const DEFAULT_MAKERS=["마니커","케이탑푸드","하림","체리부로","사
 const MAX_PER_SEND=30;
 let makers=LS.get("dr_makers",DEFAULT_MAKERS.slice());
 let history=LS.get("dr_history",[]);
-let maker="",kind="북채",editMakers=false,queue=[];
+let maker="",kind="북채",bong="",editMakers=false,queue=[];
+const BONG=[1,2,3,4,5];
 const bruise=[],bone=[],labels=[];     // 모두 in-place 변형(재할당 X)
 const TCFG={
   bruise:{arr:bruise,thumbs:"thBruise",count:"cBruise",clr:"clrBruise",tag:"피멍"},
@@ -209,16 +218,16 @@ const todayMD=()=>{const d=new Date();return (d.getMonth()+1)+"."+d.getDate();};
 (function init(){
   const d=LS.get("dr_draft",null);
   $("ipgo").value=d&&d.ipgo!=null?d.ipgo:todayMD();
-  if(d){$("gihan").value=d.gihan||"";$("makerEtc").value=d.etc||"";kind=d.kind||"북채";maker=d.maker||"";}
+  if(d){$("gihan").value=d.gihan||"";$("makerEtc").value=d.etc||"";kind=d.kind||"북채";maker=d.maker||"";bong=d.bong||"";if(bong&&!BONG.includes(+bong))$("bongEtc").value=bong;}
   $("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k===kind));
-  renderMakerChips();render();renderHistory();updateShareUI();
+  renderMakerChips();renderBongChips();render();renderHistory();updateShareUI();
 })();
 
 // ── 제조사 ──
 function renderMakerChips(){const box=$("makerChips");box.innerHTML="";
   makers.forEach(m=>{const c=document.createElement("div");c.className="chip"+(m===maker?" on":"");
     c.innerHTML=`<span>${m}</span>`;
-    c.querySelector("span").onclick=()=>{maker=m;$("makerEtc").value="";renderMakerChips();saveDraft();render();};
+    c.querySelector("span").onclick=()=>{maker=m;$("makerEtc").value="";setAI($("makerEtc"),false);renderMakerChips();saveDraft();render();};
     if(editMakers){const x=document.createElement("button");x.className="del";x.textContent="×";
       x.onclick=(e)=>{e.stopPropagation();const i=makers.indexOf(m);if(i>=0)makers.splice(i,1);LS.set("dr_makers",makers);if(maker===m)maker="";renderMakerChips();render();};c.appendChild(x);}
     box.appendChild(c);});}
@@ -226,12 +235,18 @@ function toggleMakerEdit(){editMakers=!editMakers;$("makerEdit").classList.toggl
   $("makerEdit").textContent=editMakers?"완료":"편집";$("addMakerRow").style.display=editMakers?"flex":"none";renderMakerChips();}
 function addMakerPreset(){const v=$("newMaker").value.trim();if(!v)return;
   if(!makers.includes(v))makers.push(v);LS.set("dr_makers",makers);$("newMaker").value="";maker=v;renderMakerChips();saveDraft();render();}
-$("makerEtc").addEventListener("input",e=>{maker=e.target.value.trim();renderMakerChips();saveDraft();render();});
+$("makerEtc").addEventListener("input",e=>{maker=e.target.value.trim();setAI($("makerEtc"),false);renderMakerChips();saveDraft();render();});
 
 // ── 종류/필드 ──
 $("kindToggle").querySelectorAll("button").forEach(b=>{b.onclick=()=>{kind=b.dataset.k;
   $("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));saveDraft();render();};});
-["ipgo","gihan"].forEach(id=>$(id).addEventListener("input",()=>{saveDraft();render();}));
+["ipgo","gihan"].forEach(id=>$(id).addEventListener("input",()=>{if(id==="gihan")setAI($("gihan"),false);saveDraft();render();}));
+// ── 손질 봉 수 ──
+function renderBongChips(){const box=$("bongChips");box.innerHTML="";
+  BONG.forEach(n=>{const c=document.createElement("div");c.className="chip"+(String(n)===String(bong)?" on":"");
+    c.innerHTML=`<span>${n}봉</span>`;
+    c.onclick=()=>{bong=String(n);$("bongEtc").value="";renderBongChips();saveDraft();render();};box.appendChild(c);});}
+$("bongEtc").addEventListener("input",e=>{bong=e.target.value.replace(/[^0-9]/g,"");e.target.value=bong;renderBongChips();saveDraft();render();});
 
 // ── 사진 공통 ──
 function afterPhotoChange(){queue=[];render();updateShareUI();}
@@ -275,16 +290,23 @@ function camUndo(){if(!camTarget)return;const cfg=TCFG[camTarget];if(!cfg.arr.le
   const p=cfg.arr.pop();URL.revokeObjectURL(p.url);camShotN--;$("camCount").textContent=camShotN;renderThumbsFor(camTarget);afterPhotoChange();}
 
 // ── 라벨 OCR ──
-function runOCR(file){$("labelStat").innerHTML='<span class="spin"></span> 인식 중…';
+function setAI(el,on){if(el)el.classList.toggle("ai-filled",on);}
+function runOCR(file){const st=$("labelStat");st.className="hint";st.innerHTML='<span class="spin"></span> 라벨 인식 중…';
   ocrLabel(file).then(r=>{
-    if(r.기한)$("gihan").value=normDate(r.기한);
-    if(r.제조사)matchMaker(r.제조사);
-    if(r.종류==="북채"||r.종류==="날개"){kind=r.종류;$("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k===kind));}
-    $("labelStat").textContent="인식 완료 — 값 확인하세요";saveDraft();render();
-  }).catch(()=>{$("labelStat").textContent="자동인식 실패 — 직접 입력하세요";});}
+    const found=[],missing=[];
+    const nd=r.기한?normDate(r.기한):"";
+    if(nd){$("gihan").value=nd;setAI($("gihan"),true);found.push("기한 "+nd);}else missing.push("기한");
+    if(r.제조사){matchMaker(r.제조사);found.push("제조사 "+maker);}else missing.push("제조사");
+    if(r.종류==="북채"||r.종류==="날개"){kind=r.종류;$("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k===kind));found.push("종류 "+kind);}
+    let msg = found.length ? "✓ 인식됨 — "+found.join(" · ") : "인식된 값 없음";
+    if(missing.length) msg += "   ✗ 못 읽음: "+missing.join("·")+" → 직접 입력";
+    st.textContent=msg; st.className="hint "+(found.length?"ok":"no");
+    saveDraft();render();
+  }).catch(()=>{st.textContent="✗ 자동인식 실패 — 기한·제조사 직접 입력하세요";st.className="hint no";});}
 function normDate(s){const m=String(s).match(/(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})/);return m?parseInt(m[1],10)+"."+parseInt(m[2],10):"";}
 function matchMaker(raw){const hit=makers.find(m=>raw.includes(m)||m.includes(raw));
-  if(hit){maker=hit;$("makerEtc").value="";renderMakerChips();}else{maker=raw.trim();$("makerEtc").value=maker;renderMakerChips();}saveDraft();}
+  if(hit){maker=hit;$("makerEtc").value="";setAI($("makerEtc"),false);renderMakerChips();}
+  else{maker=raw.trim();$("makerEtc").value=maker;setAI($("makerEtc"),true);renderMakerChips();}saveDraft();}
 async function ocrLabel(file){const b64=await toBase64(file);
   const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:[
@@ -302,10 +324,12 @@ function toBase64(file){return new Promise((res,rej)=>{const r=new FileReader();
 function buildMsg(){const ip=$("ipgo").value.trim(),gi=$("gihan").value.trim();const h=[];
   if(ip)h.push("입고"+ip);if(gi)h.push("기한"+gi);if(maker)h.push(maker);h.push(kind);
   const d=[];if(bruise.length)d.push("피멍"+bruise.length+"개");if(bone.length)d.push("골절"+bone.length+"개");
-  return (h.join(" ")+(d.length?" "+d.join(" "):"")).trim();}
+  let s=(h.join(" ")+(d.length?" "+d.join(" "):"")).trim();
+  if(bong)s+=" "+bong+"봉";
+  return s;}
 function render(){$("preview").textContent=buildMsg()||"—";const tot=totalCount();
   $("totLine").textContent=tot?`첨부 사진 ${tot}장 (피멍 ${bruise.length} · 골절 ${bone.length} · 라벨 ${labels.length}) — 라벨이 맨 끝`:"";}
-function saveDraft(){LS.set("dr_draft",{ipgo:$("ipgo").value,gihan:$("gihan").value,maker,kind,etc:$("makerEtc").value});}
+function saveDraft(){LS.set("dr_draft",{ipgo:$("ipgo").value,gihan:$("gihan").value,maker,kind,etc:$("makerEtc").value,bong});}
 
 // ── 기록 ──
 function pushHistory(msg){if(!msg)return;const d=new Date();
@@ -360,11 +384,12 @@ async function copyText(ev){const msg=buildMsg();try{await navigator.clipboard.w
 // ── 초기화 ──
 function resetAll(){if(!confirm("현재 입력과 사진을 모두 지울까요?\n(제조사 목록·보고 기록은 유지됩니다)"))return;
   [bruise,bone,labels].forEach(a=>{a.forEach(p=>URL.revokeObjectURL(p.url));a.length=0;});
-  maker="";queue=[];
+  maker="";bong="";queue=[];
   renderThumbsFor("bruise");renderThumbsFor("bone");renderThumbsFor("label");
-  $("labelStat").textContent="";$("gihan").value="";$("makerEtc").value="";$("ipgo").value=todayMD();
+  $("labelStat").textContent="";$("labelStat").className="hint";$("gihan").value="";$("makerEtc").value="";$("bongEtc").value="";$("ipgo").value=todayMD();
+  setAI($("gihan"),false);setAI($("makerEtc"),false);
   kind="북채";$("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k==="북채"));
-  renderMakerChips();LS.set("dr_draft",null);render();updateShareUI();}
+  renderMakerChips();renderBongChips();LS.set("dr_draft",null);render();updateShareUI();}
 </script>
 </body>
 </html>
