@@ -189,7 +189,9 @@
 
 <!-- 라이브 카메라 오버레이 -->
 <div class="cam" id="camOverlay">
-  <div class="camtop"><span id="camTitle">촬영</span><button onclick="closeCam()">완료 ✕</button></div>
+  <div class="camtop"><span id="camTitle">촬영</span>
+    <span><button id="camSoundBtn" onclick="toggleCamSound()" style="margin-right:8px">소리 🔊</button><button id="camSaveBtn" onclick="toggleCamSave()" style="margin-right:8px">원본저장 ✗</button><button onclick="closeCam()">완료 ✕</button></span>
+  </div>
   <video id="camVideo" playsinline muted></video>
   <div class="cambottom">
     <span class="camcount">이번 <b id="camCount">0</b>장</span>
@@ -207,6 +209,32 @@ let makers=LS.get("dr_makers",DEFAULT_MAKERS.slice());
 let history=LS.get("dr_history",[]);
 let maker="",kind="북채",bong="",editMakers=false,queue=[];
 const BONG=[1,2,3,4,5];
+const COMP_MAX=2048, COMP_Q=0.90;      // 공유 시 압축(고화질)
+let camSave=LS.get("dr_camsave",false);  // 라이브 카메라 원본 저장(기본 꺼짐, 필요시 토글)
+function compressFile(file){return new Promise(resolve=>{
+  if(!file.type||file.type.indexOf("image/")!==0)return resolve(file);
+  const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{let w=img.naturalWidth,h=img.naturalHeight;
+    if(Math.max(w,h)<=COMP_MAX){URL.revokeObjectURL(url);return resolve(file);}
+    const s=COMP_MAX/Math.max(w,h),nw=Math.round(w*s),nh=Math.round(h*s);
+    const c=document.createElement("canvas");c.width=nw;c.height=nh;
+    c.getContext("2d").drawImage(img,0,0,nw,nh);
+    c.toBlob(b=>{URL.revokeObjectURL(url);resolve(b?new File([b],file.name,{type:"image/jpeg"}):file);},"image/jpeg",COMP_Q);};
+  img.onerror=()=>{URL.revokeObjectURL(url);resolve(file);};img.src=url;});}
+function saveToDevice(blob,name){try{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);}catch(e){}}
+function toggleCamSave(){camSave=!camSave;LS.set("dr_camsave",camSave);$("camSaveBtn").textContent=camSave?"원본저장 ✓":"원본저장 ✗";}
+let camSound=LS.get("dr_camsound",true);  // 셔터음
+let _ac=null;
+function shutterSound(){if(!camSound)return;
+  try{_ac=_ac||new (window.AudioContext||window.webkitAudioContext)();const ac=_ac;if(ac.state==="suspended")ac.resume();
+    const t=ac.currentTime;
+    const o=ac.createOscillator(),g=ac.createGain();
+    o.type="square";o.frequency.setValueAtTime(1700,t);o.frequency.exponentialRampToValueAtTime(900,t+0.05);
+    g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.25,t+0.005);g.gain.exponentialRampToValueAtTime(0.0001,t+0.08);
+    o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+0.09);
+  }catch(e){}}
+function toggleCamSound(){camSound=!camSound;LS.set("dr_camsound",camSound);$("camSoundBtn").textContent=camSound?"소리 🔊":"소리 🔇";}
 const bruise=[],bone=[],labels=[];     // 모두 in-place 변형(재할당 X)
 const TCFG={
   bruise:{arr:bruise,thumbs:"thBruise",count:"cBruise",clr:"clrBruise",tag:"피멍"},
@@ -277,6 +305,8 @@ $("boneAlbum").addEventListener("change",e=>{addFiles(e.target.files,"bone");e.t
 // ── 라이브 카메라 ──
 let camStream=null,camTarget=null,camShotN=0;
 async function openCam(key){camTarget=key;camShotN=0;$("camCount").textContent="0";
+  $("camSaveBtn").textContent=camSave?"원본저장 ✓":"원본저장 ✗";
+  $("camSoundBtn").textContent=camSound?"소리 🔊":"소리 🔇";
   $("camTitle").textContent=TCFG[key].tag+" 촬영";$("camOverlay").style.display="flex";
   try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
     $("camVideo").srcObject=camStream;await $("camVideo").play();
@@ -284,14 +314,16 @@ async function openCam(key){camTarget=key;camShotN=0;$("camCount").textContent="
     alert("카메라를 열 수 없어요. 카메라 권한을 허용했는지 확인하거나 '앨범'을 사용하세요.\n(이 미리보기 화면에선 카메라가 막혀 있어요 — 본인 도메인에 올리면 작동해요)");}}
 function closeCam(){if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}$("camOverlay").style.display="none";camTarget=null;}
 function camShoot(){const v=$("camVideo");if(!v.videoWidth)return;
+  shutterSound();
   const c=document.createElement("canvas");c.width=v.videoWidth;c.height=v.videoHeight;
   c.getContext("2d").drawImage(v,0,0);
   c.toBlob(b=>{if(!b)return;const key=camTarget;const cfg=TCFG[key];const wasEmpty=cfg.arr.length===0;
     const f=new File([b],"shot.jpg",{type:"image/jpeg"});
+    if(camSave)saveToDevice(b,TCFG[key].tag+"_"+Date.now()+".jpg");
     cfg.arr.push({file:f,url:URL.createObjectURL(f)});renderThumbsFor(key);
     camShotN++;$("camCount").textContent=camShotN;
     if(key==="label"&&wasEmpty)runOCR(f);
-    afterPhotoChange();},"image/jpeg",0.92);}
+    afterPhotoChange();},"image/jpeg",0.95);}
 function camUndo(){if(!camTarget)return;const cfg=TCFG[camTarget];if(!cfg.arr.length||camShotN<=0)return;
   const p=cfg.arr.pop();URL.revokeObjectURL(p.url);camShotN--;$("camCount").textContent=camShotN;renderThumbsFor(camTarget);afterPhotoChange();}
 
@@ -374,27 +406,30 @@ async function shareAll(){
   if(queue.length===0)queue=buildBatches();
   const batch=queue[0],multi=batch.total>1;
   const text=buildMsg()+(multi?` (사진 ${batch.idx}/${batch.total})`:"");
-  const hasF=batch.files.length>0;
-  const canTF=hasF&&navigator.canShare&&navigator.canShare({text,files:batch.files});
-  const canF =hasF&&navigator.canShare&&navigator.canShare({files:batch.files});
+  let files=batch.files;
+  if(files.length){const btn=$("shareBtn");btn.textContent="사진 처리 중…";
+    files=await Promise.all(files.map(f=>compressFile(f)));}
+  const hasF=files.length>0;
+  const canTF=hasF&&navigator.canShare&&navigator.canShare({text,files});
+  const canF =hasF&&navigator.canShare&&navigator.canShare({files});
   try{
-    if(canTF){                               // ① 문자+사진 함께
-      await navigator.share({text,files:batch.files});
-    }else if(canF){                          // ② 조합 불가 → 사진만 공유 + 문자 복사
+    if(canTF){
+      await navigator.share({text,files});
+    }else if(canF){
       try{await navigator.clipboard.writeText(text);}catch(e){}
-      await navigator.share({files:batch.files});
+      await navigator.share({files});
       flash("사진 첨부됨 · 문자는 복사됐어요 → 메시지창에서 길게 눌러 붙여넣기");
-    }else if(hasF){                          // ③ 사진 공유 자체 미지원
+    }else if(hasF){
       try{await navigator.clipboard.writeText(text);}catch(e){}
       pushHistory(buildMsg()); queue=[]; updateShareUI();
       alert("이 브라우저가 사진 공유를 지원하지 않아요.\n문자는 복사됐어요. (안드로이드 크롬 권장)\n아래 진단 줄을 확인해 주세요."); return;
-    }else{                                   // 사진 없음 → 텍스트만
+    }else{
       if(navigator.share) await navigator.share({text});
       else { try{await navigator.clipboard.writeText(text);}catch(e){} }
     }
     if(batch.idx===1)pushHistory(buildMsg());
     queue.shift();updateShareUI();
-  }catch(err){if(err&&err.name==="AbortError")return;
+  }catch(err){if(err&&err.name==="AbortError"){updateShareUI();return;}
     if(batch.idx===1){try{await navigator.clipboard.writeText(buildMsg());}catch(e){}pushHistory(buildMsg());}
     queue=[];updateShareUI();
     alert("공유가 막혔어요. 문자는 복사됐고 기록에 저장됐어요.\n아래 진단 줄을 확인해 주세요.");}}
