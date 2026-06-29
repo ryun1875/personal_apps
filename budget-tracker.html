@@ -854,7 +854,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, writeBatch, getDocs }
+import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, where, writeBatch, getDocs }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -924,6 +924,7 @@ let donutChart=null,barChart=null,compareChart=null,budgetCompareChart=null,tren
 let trendCatId=null, trendPayId=null;
 let unsubExp=null,unsubBudget=null,appSubs=[];
 let budgetTimer=null,catTimer=null,catSaving=false;
+let carryOverTimer=null,prevOverspend=null; // 이월 차감(prevOverspend: null=미로드)
 let instOn=false,instMonths=2,expenseTag='personal';
 let curUser=null,isDark=true,editId=null;
 let compareRange=6;
@@ -1097,7 +1098,13 @@ function initApp(){
   }));
   // budgetMeta 구독 (고정항목 + 메모)
   appSubs.push(onSnapshot(doc(db,up('settings'),'budgetMeta'),snap=>{
-    budgetMeta=snap.exists()&&snap.data().data?snap.data().data:{};
+    const incoming=snap.exists()&&snap.data().data?snap.data().data:{};
+    // 월별 이월차감(carryOver)은 보존하고 fixedItems/memo/minBudget만 갱신
+    const merged={};
+    new Set([...Object.keys(incoming),...Object.keys(budgetMeta)]).forEach(k=>{
+      merged[k]={...(incoming[k]||{}),carryOver:budgetMeta[k]?.carryOver||0};
+    });
+    budgetMeta=merged;
     renderBudget();
   }));
   appSubs.push(onSnapshot(collection(db,up('recurring')),snap=>{
@@ -1155,6 +1162,15 @@ function subscribeMonth(){
   unsubBudget=onSnapshot(doc(db,up('budgets'),curMonth),snap=>{
     budgets=snap.exists()?snap.data():{};renderAll();
   });
+  // 이월 차감(월별) 로드 + 전월 초과 계산
+  prevOverspend=null;
+  Object.values(budgetMeta).forEach(v=>{if(v)v.carryOver=0;});
+  getDoc(doc(db,up('settings'),'budgetCarryOver_'+curMonth)).then(s=>{
+    const data=s.exists()&&s.data().data?s.data().data:{};
+    Object.entries(data).forEach(([k,v])=>{if(!budgetMeta[k])budgetMeta[k]={fixedItems:[],memo:''};budgetMeta[k].carryOver=Number(v)||0;});
+    renderBudget();
+  }).catch(()=>{});
+  loadPrevOverspend();
 }
 
 window.changeMonth=function(d){
@@ -2139,9 +2155,12 @@ function renderBudget(){
     const spent=expenses.filter(e=>e.cat===cat.id&&e.month===curMonth).reduce((s,e)=>s+e.amount,0);
     // 정기지출 합산
     const recurTotal=recurring.filter(r=>r.cat===cat.id).reduce((s,r)=>s+(Number(r.amount)||0),0);
-    const pct=b>0?Math.min(Math.round(spent/b*100),100):0;
-    const bc=pct>=100?'#ff6b6b':pct>=80?'#ffb347':cat.color;
     const meta=budgetMeta[cat.id]||{fixedItems:[],memo:''};
+    const carryOver=Math.max(0,Math.round(Number(meta.carryOver)||0)); // 이번 달 이월 차감
+    const minBudget=Math.max(0,Math.round(Number(meta.minBudget)||0));  // 최소예산(floor)
+    const effectiveB=Math.max(b-carryOver,0);                          // 실질 예산
+    const pct=effectiveB>0?Math.min(Math.round(spent/effectiveB*100),100):0;
+    const bc=pct>=100?'#ff6b6b':pct>=80?'#ffb347':cat.color;
     const fixedTotal=(meta.fixedItems||[]).reduce((s,fi)=>s+(Number(fi.amt)||0),0);
 
     const div=document.createElement('div');div.className='budget-item';
@@ -2178,7 +2197,7 @@ function renderBudget(){
         <div class="cat-dot" style="background:${cat.color}22;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">${cat.emoji}</div>
         <div class="budget-info" style="flex:1">
           <div class="budget-name">${cat.name}${pct>=80&&b>0?`<span style="font-size:9px;background:${bc}22;color:${bc};padding:1px 5px;border-radius:99px">${pct}%</span>`:''}</div>
-          <div class="budget-spent">${fmt(spent)} 지출${recurTotal>0?` · 🔄 정기 ${fmt(recurTotal)}`:''}${fixedTotal>0?` · 📋 예상 ${fmt(fixedTotal)}`:''}${meta.memo?` · 📝`:''}</div>
+          <div class="budget-spent">${fmt(spent)} 지출${recurTotal>0?` · 🔄 정기 ${fmt(recurTotal)}`:''}${fixedTotal>0?` · 📋 예상 ${fmt(fixedTotal)}`:''}${carryOver>0?` · ⏮️ 이월 −${fmt(carryOver)} → 실질 ${fmt(effectiveB)}`:''}${meta.memo?` · 📝`:''}</div>
           ${b>0?`<div class="mini-bar"><div class="mini-bar-fill" style="width:${pct}%;background:${bc}"></div></div>`:''}
         </div>
         <div style="display:flex;align-items:center;gap:5px">
@@ -2189,6 +2208,24 @@ function renderBudget(){
         <button class="budget-expand-btn" onclick="toggleBudgetDetail('${cat.id}',this)" title="상세 펼치기">▾</button>
       </div>
       <div class="budget-detail" id="bd-${cat.id}">
+        <div style="background:var(--surface2);border-radius:9px;padding:10px;margin-bottom:10px">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:6px;letter-spacing:.3px">⏮️ 전월 초과 이월 차감</div>
+          <div id="prev-over-${cat.id}" style="font-size:11px;color:var(--text3);margin-bottom:8px">${prevOverHtml(cat.id)}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <span style="font-size:11px;color:var(--text2);flex:1">이번 달 차감액</span>
+            <input type="number" value="${carryOver||''}" placeholder="0"
+              style="width:90px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 7px;color:var(--text);font-size:12px;text-align:right;outline:none"
+              onblur="updateCarryOver('${cat.id}',this.value)">
+            <span style="font-size:11px;color:var(--text3)">원</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;color:var(--text2);flex:1">최소예산 <span style="color:var(--text3)">(이 밑으론 안 깎임)</span></span>
+            <input type="number" value="${minBudget||''}" placeholder="0"
+              style="width:90px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 7px;color:var(--text);font-size:12px;text-align:right;outline:none"
+              onblur="updateMinBudget('${cat.id}',this.value)">
+            <span style="font-size:11px;color:var(--text3)">원</span>
+          </div>
+        </div>
         ${cat.subs?.length?`<div style="margin-bottom:10px">
           <div style="font-size:10px;color:var(--text3);margin-bottom:6px">📊 세부 카테고리 예산</div>
           ${subRows}
@@ -2290,11 +2327,111 @@ function scheduleBudgetMetaSave(){
   budgetMetaTimer=setTimeout(async()=>{
     setSyncStatus('syncing');
     try{
-      await setDoc(doc(db,up('settings'),'budgetMeta'),{data:budgetMeta});
+      // carryOver(월별)는 budgetCarryOver_{월} 문서에 따로 저장 → 공유 문서에선 제외
+      const clean={};
+      Object.entries(budgetMeta).forEach(([k,v])=>{const{carryOver,...rest}=v||{};clean[k]=rest;});
+      await setDoc(doc(db,up('settings'),'budgetMeta'),{data:clean});
       setSyncStatus('online');
     }catch(e){setSyncStatus('offline');}
   },800);
 }
+
+// ── 예산 이월/분할 차감 ───────────────────────────────────
+// 전월 초과 표시 HTML
+function prevOverHtml(catId){
+  if(prevOverspend===null)return '지난달 초과 확인 중…';
+  const o=Math.round(prevOverspend[catId]||0);
+  if(o<=0)return '지난달 초과 없음 👍';
+  return `지난달 <b style="color:var(--accent2)">${fmt(o)}</b> 초과 · <button onclick="applyClawback('${catId}',${o})" style="background:none;border:1px solid var(--accent3);border-radius:6px;padding:1px 7px;color:var(--accent3);font-size:10px;cursor:pointer">분할 차감 적용</button>`;
+}
+// 전월(지난달) 카테고리별 초과액 계산 → prevOverspend 캐시
+async function loadPrevOverspend(){
+  const[y,m]=curMonth.split('-').map(Number);
+  const pd=new Date(y,m-2,1);
+  const prevMonth=`${pd.getFullYear()}-${String(pd.getMonth()+1).padStart(2,'0')}`;
+  try{
+    const[bSnap,eSnap]=await Promise.all([
+      getDoc(doc(db,up('budgets'),prevMonth)),
+      getDocs(query(collection(db,up('expenses')),where('month','==',prevMonth)))
+    ]);
+    const pb=bSnap.exists()?bSnap.data():{};
+    const pe=eSnap.docs.map(d=>d.data());
+    const result={};
+    CATS.forEach(cat=>{
+      const bb=Number(pb[cat.id])||0;
+      if(bb<=0)return;
+      const sp=pe.filter(e=>e.cat===cat.id).reduce((s,e)=>s+e.amount,0);
+      if(sp>bb)result[cat.id]=sp-bb;
+    });
+    prevOverspend=result;
+  }catch(e){prevOverspend={};}
+  if(document.getElementById('panel-budget').classList.contains('active'))renderBudget();
+}
+// 이번 달 차감액 수동 입력
+window.updateCarryOver=function(catId,val){
+  if(!budgetMeta[catId])budgetMeta[catId]={fixedItems:[],memo:''};
+  budgetMeta[catId].carryOver=Math.max(0,Math.round(Number(val))||0);
+  renderBudget();
+  clearTimeout(carryOverTimer);
+  carryOverTimer=setTimeout(()=>saveCarryOverMonth(curMonth),800);
+};
+// 최소예산(floor) 설정 — 공유 budgetMeta에 저장
+window.updateMinBudget=function(catId,val){
+  if(!budgetMeta[catId])budgetMeta[catId]={fixedItems:[],memo:''};
+  budgetMeta[catId].minBudget=Math.max(0,Math.round(Number(val))||0);
+  scheduleBudgetMetaSave();
+};
+// 현재 메모리의 carryOver를 해당 월 문서에 저장
+async function saveCarryOverMonth(mo){
+  setSyncStatus('syncing');
+  const data={};
+  Object.entries(budgetMeta).forEach(([k,v])=>{if(v&&Number(v.carryOver)>0)data[k]=Math.round(v.carryOver);});
+  try{await setDoc(doc(db,up('settings'),'budgetCarryOver_'+mo),{data});setSyncStatus('online');}
+  catch(e){setSyncStatus('offline');}
+}
+// 특정 월 문서에 차감액 누적 추가
+async function addCarryOverToMonth(mo,catId,amount){
+  const ref=doc(db,up('settings'),'budgetCarryOver_'+mo);
+  const snap=await getDoc(ref);
+  const data=snap.exists()&&snap.data().data?snap.data().data:{};
+  data[catId]=Math.round((Number(data[catId])||0)+amount);
+  await setDoc(ref,{data});
+  if(mo===curMonth){
+    if(!budgetMeta[catId])budgetMeta[catId]={fixedItems:[],memo:''};
+    budgetMeta[catId].carryOver=data[catId];
+  }
+}
+// 초과분을 (예산−최소예산)씩 미래 달에 분할 차감
+window.applyClawback=function(catId,total){
+  const cat=CATS.find(c=>c.id===catId);
+  const b=Number(budgets[catId])||0;
+  if(b<=0){showToast('이 카테고리에 이번 달 예산을 먼저 설정하세요','warning');return;}
+  const minB=Math.max(0,Math.round(Number(budgetMeta[catId]?.minBudget)||0));
+  if(minB>=b){showToast('최소예산은 예산보다 작아야 분할 차감이 가능해요','warning');return;}
+  const perMonth=b-minB; // 매달 뺄 수 있는 최대치 (최소예산 0이면 = 예산 전체)
+  let debt=Math.round(Number(total)||0);
+  if(debt<=0){showToast('차감할 초과분이 없어요','warning');return;}
+  // 이번 달부터 분배 (최대 24개월)
+  const[y,m]=curMonth.split('-').map(Number);
+  const plan=[];let rest=debt,i=0;
+  while(rest>0&&i<24){
+    const add=Math.min(perMonth,rest);
+    const nd=new Date(y,m-1+i,1);
+    const mo=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,'0')}`;
+    plan.push({mo,add});rest-=add;i++;
+  }
+  if(rest>0&&plan.length)plan[plan.length-1].add+=rest; // 24개월 초과분은 마지막 달에
+  const summary=plan.map(p=>`${parseInt(p.mo.slice(5))}월 ${fmt(p.add)}`).join(' / ');
+  showConfirm(`${cat?.name||''} 초과 ${fmt(debt)}을 ${plan.length}개월로 나눠 차감할까요?\n${summary}`,async()=>{
+    setSyncStatus('syncing');
+    try{
+      for(const p of plan){await addCarryOverToMonth(p.mo,catId,p.add);}
+      setSyncStatus('online');
+      showToast(`${plan.length}개월 분할 차감 적용됐어요 ✓`,'success');
+      renderBudget();
+    }catch(e){setSyncStatus('offline');showToast('적용 실패','error');}
+  },'분할 적용','#378ADD');
+};
 
 function renderRecurring(){
   if(isEditing())return;
