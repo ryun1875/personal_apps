@@ -904,7 +904,7 @@ const DEF_CATS=[
     {id:'living_utility',name:'공과금'},
     {id:'living_etc',name:'기타 생활'},
   ]},
-  {id:'store',name:'매장 지출',emoji:'🏪',color:'#fb923c',subs:[
+  {id:'store',name:'매장 지출',emoji:'🏪',color:'#fb923c',isBusiness:true,subs:[
     {id:'store_food',name:'식재료/식비'},
     {id:'store_supply',name:'소모품'},
     {id:'store_equipment',name:'기물/장비'},
@@ -931,6 +931,21 @@ let compareRange=6;
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const fmt=n=>Number(n).toLocaleString('ko-KR')+'원';
 const up=p=>`users/${curUser.uid}/${p}`;
+
+// ── 사업비(매장 등) 분리 ──────────────────────────────────
+// 전체 보기 여부 (false=개인만, true=사업 포함)
+let inclBiz=localStorage.getItem('inclBiz')==='1';
+// 카테고리가 사업비인지: isBusiness 플래그 우선, 미설정 시 레거시 'store' id 하위호환
+const isBizCat=c=>c?(c.isBusiness===true||(c.isBusiness==null&&c.id==='store')):false;
+const isBizExp=e=>isBizCat(CATS.find(c=>c.id===e.cat));
+// 사업비 카테고리/하위카테고리의 예산 키 집합
+function bizBudgetKeys(){
+  const set=new Set();
+  CATS.filter(isBizCat).forEach(c=>{set.add(c.id);(c.subs||[]).forEach(s=>set.add(s.id));});
+  return set;
+}
+// 사업비를 제외해야 하는지(=개인만 보기일 때)
+const isExcludedBiz=e=>!inclBiz&&isBizExp(e);
 
 function showToast(msg,type=''){
   const t=document.getElementById('toast');
@@ -1003,6 +1018,14 @@ window.toggleTheme=function(){
   localStorage.setItem('theme',isDark?'dark':'light');
 };
 (()=>{const t=localStorage.getItem('theme');if(t==='light'){isDark=false;document.body.classList.add('light');document.getElementById('theme-btn').textContent='🌙';}})();
+
+// 개인/전체(사업 포함) 보기 토글
+window.toggleBizView=function(){
+  inclBiz=!inclBiz;
+  localStorage.setItem('inclBiz',inclBiz?'1':'0');
+  renderAll();
+  if(document.getElementById('panel-chart').classList.contains('active'))renderChart();
+};
 
 // ── 인증 ──────────────────────────────────────────────────
 document.getElementById('btn-login').onclick=async()=>{
@@ -1397,8 +1420,9 @@ window.toggleInstallment=function(){
 // ── 렌더 ──────────────────────────────────────────────────
 function updateSummary(){
   renderHome();
-  const tS=expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment).reduce((s,e)=>s+e.amount,0);
-  const tB=Object.values(budgets).reduce((s,v)=>s+(Number(v)||0),0);
+  const tS=expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment&&!isExcludedBiz(e)).reduce((s,e)=>s+e.amount,0);
+  const bizKeys=bizBudgetKeys();
+  const tB=Object.entries(budgets).reduce((s,[k,v])=>(!inclBiz&&bizKeys.has(k))?s:s+(Number(v)||0),0);
   const pct=tB>0?Math.min(Math.round(tS/tB*100),100):0;
   document.getElementById('alert-banner').classList.toggle('show',pct>=80&&tB>0);
 }
@@ -1602,26 +1626,28 @@ function renderHome(){
   const dp=isThis?today.getDate():dim;
   const remainDays=isThis?dim-today.getDate():0;
 
-  // 고정비/변동비/매장 분류
+  // 고정비/변동비 + 사업비(매장) 분류
   const normalExp=expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment);
-  const tS=normalExp.reduce((s,e)=>s+e.amount,0);
-  const storeCatId='store';
-  const storeExp=normalExp.filter(e=>e.cat===storeCatId);
-  const nonStoreExp=normalExp.filter(e=>e.cat!==storeCatId);
+  const personalExp=normalExp.filter(e=>!isBizExp(e));
+  const bizExp=normalExp.filter(isBizExp);
   const isFixedExp=e=>{
     if(e.isRecurring)return true;
     const cat=CATS.find(c=>c.id===e.cat);
     if(cat?.isFixed)return true;
     return cat?.subs?.find(s=>s.id===e.subCat)?.isFixed||false;
   };
-  const fixedTotal=nonStoreExp.filter(isFixedExp).reduce((s,e)=>s+e.amount,0);
-  const variableTotal=nonStoreExp.filter(e=>!isFixedExp(e)).reduce((s,e)=>s+e.amount,0);
-  const storeFixedTotal=storeExp.filter(isFixedExp).reduce((s,e)=>s+e.amount,0);
-  const storeVarTotal=storeExp.filter(e=>!isFixedExp(e)).reduce((s,e)=>s+e.amount,0);
-  const hasBreakdown=fixedTotal>0||storeFixedTotal>0||storeVarTotal>0;
+  const fixedTotal=personalExp.filter(isFixedExp).reduce((s,e)=>s+e.amount,0);
+  const variableTotal=personalExp.filter(e=>!isFixedExp(e)).reduce((s,e)=>s+e.amount,0);
+  const bizFixedTotal=bizExp.filter(isFixedExp).reduce((s,e)=>s+e.amount,0);
+  const bizVarTotal=bizExp.filter(e=>!isFixedExp(e)).reduce((s,e)=>s+e.amount,0);
+  const personalTotal=personalExp.reduce((s,e)=>s+e.amount,0);
+  const bizTotal=bizExp.reduce((s,e)=>s+e.amount,0);
+  const tS=inclBiz?personalTotal+bizTotal:personalTotal; // 헤드라인 = 개인(전체 보기 시 사업 포함)
+  const hasBreakdown=fixedTotal>0;
+  const hasBizCat=CATS.some(isBizCat);
 
-  // 카테고리별 집계
-  const catData=CATS.map(c=>{
+  // 카테고리별 집계 (개인만 보기일 땐 사업비 카테고리 제외)
+  const catData=CATS.filter(c=>inclBiz||!isBizCat(c)).map(c=>{
     const b=Number(budgets[c.id])||0;
     const spent=expenses.filter(e=>e.cat===c.id).reduce((s,e)=>s+e.amount,0);
     const pct=b>0?Math.min(Math.round(spent/b*100),100):0;
@@ -1635,11 +1661,20 @@ function renderHome(){
 
   wrap.innerHTML='';
 
+  // ── 개인/전체 보기 토글 ────────────────────────────────
+  if(hasBizCat){
+    const tgl=document.createElement('div');
+    tgl.style.cssText='display:flex;justify-content:flex-end;margin-bottom:8px';
+    tgl.innerHTML=`<button onclick="toggleBizView()" style="background:var(--surface);border:1px solid var(--border);border-radius:99px;padding:5px 12px;color:var(--text2);font-size:11px;cursor:pointer">${inclBiz?'📊 전체 (사업 포함)':'🙋 개인만 보기'}</button>`;
+    wrap.appendChild(tgl);
+  }
+
   // ── 예산/지출 현황 ─────────────────────────────────────
-  const tB=Object.values(budgets).reduce((s,v)=>s+(Number(v)||0),0);
+  const bizKeys=bizBudgetKeys();
+  const tB=Object.entries(budgets).reduce((s,[k,v])=>(!inclBiz&&bizKeys.has(k))?s:s+(Number(v)||0),0);
   const saved=tB>tS&&tB>0?tB-tS:0;
   const dailyLeft=remainDays>0&&tB>tS?Math.round((tB-tS)/remainDays):0;
-  const overCount=CATS.filter(c=>{const b=Number(budgets[c.id])||0;return b>0&&expenses.filter(e=>e.cat===c.id).reduce((s,e)=>s+e.amount,0)>b;}).length;
+  const overCount=CATS.filter(c=>inclBiz||!isBizCat(c)).filter(c=>{const b=Number(budgets[c.id])||0;return b>0&&expenses.filter(e=>e.cat===c.id).reduce((s,e)=>s+e.amount,0)>b;}).length;
 
   const statusCard=document.createElement('div');
   statusCard.className='form-card';
@@ -1647,15 +1682,14 @@ function renderHome(){
   statusCard.innerHTML=`
     <div style="display:flex;flex-direction:column;gap:9px">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:12px;color:var(--text2)">이번 달 지출</span>
+        <span style="font-size:12px;color:var(--text2)">이번 달 지출${(!inclBiz&&bizTotal>0)?' (개인)':''}</span>
         <span style="font-family:'Gmarket Sans',sans-serif;font-weight:700;font-size:18px;color:var(--accent2)" id="total-spent">${fmt(tS)}</span>
       </div>
       ${hasBreakdown?`
       <div style="border-top:1px solid var(--border);padding-top:6px;display:flex;flex-direction:column;gap:3px">
         ${fixedTotal>0?`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">🔒 고정비</span><span style="color:var(--text2)">${fmt(fixedTotal)}</span></div>`:''}
         ${variableTotal>0?`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">💸 변동비</span><span style="color:var(--accent2);font-weight:700">${fmt(variableTotal)}</span></div>`:''}
-        ${storeFixedTotal>0?`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">🏪 매장 고정</span><span style="color:#fb923c">${fmt(storeFixedTotal)}</span></div>`:''}
-        ${storeVarTotal>0?`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">🏪 매장 변동</span><span style="color:#fb923c">${fmt(storeVarTotal)}</span></div>`:''}
+        ${inclBiz&&bizTotal>0?`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">🏪 사업(매장)</span><span style="color:#fb923c">${fmt(bizTotal)}</span></div>`:''}
       </div>`:''}
       ${tB>0?`
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -1677,6 +1711,24 @@ function renderHome(){
       </div>
     </div>`;
   wrap.appendChild(statusCard);
+
+  // ── 사업(매장) 지출 — 개인 총지출과 분리 ────────────────
+  if(bizTotal>0){
+    const bizCard=document.createElement('div');
+    bizCard.className='form-card';
+    bizCard.style.marginBottom='14px';
+    bizCard.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;color:var(--text2)">🏪 사업(매장) 지출</span>
+        <span style="font-family:'Gmarket Sans',sans-serif;font-weight:700;font-size:16px;color:#fb923c">${fmt(bizTotal)}</span>
+      </div>
+      ${(bizFixedTotal>0||bizVarTotal>0)?`<div style="border-top:1px solid var(--border);padding-top:6px;margin-top:8px;display:flex;flex-direction:column;gap:3px">
+        ${bizFixedTotal>0?`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">🔒 고정</span><span style="color:var(--text2)">${fmt(bizFixedTotal)}</span></div>`:''}
+        ${bizVarTotal>0?`<div style="display:flex;justify-content:space-between;font-size:11px"><span style="color:var(--text3)">💸 변동</span><span style="color:#fb923c">${fmt(bizVarTotal)}</span></div>`:''}
+      </div>`:''}
+      <div style="font-size:10px;color:var(--text3);margin-top:6px">${inclBiz?'전체 보기 — 위 총지출에 포함됨':'개인 총지출과 분리해서 집계 중'}</div>`;
+    wrap.appendChild(bizCard);
+  }
 
   // ── 절약금 현황 ────────────────────────────────────────
   const thisMonthInv=investments.filter(inv=>(inv.date||'').startsWith(curMonth)).reduce((s,i)=>s+(Number(i.amount)||0),0);
@@ -1771,7 +1823,7 @@ function renderHome(){
   const grid=document.getElementById('home-cal-grid');
   const dayMap={};
   // 홈 달력: 현재 월의 순수 지출만 (대출상환/투자 제외)
-  expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment&&(e.date||'').startsWith(curMonth)).forEach(e=>{
+  expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment&&!isExcludedBiz(e)&&(e.date||'').startsWith(curMonth)).forEach(e=>{
     const d=parseInt(e.date.split('-')[2]);
     if(!dayMap[d])dayMap[d]={total:0,cats:[]};
     dayMap[d].total+=e.amount;
@@ -2030,7 +2082,7 @@ function renderCalendar(){
   const grid=document.getElementById('cal-grid');grid.innerHTML='';
   const dayMap={};
   // 달력: 현재 월의 순수 지출만 (대출상환/투자 제외)
-  expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment&&(e.date||'').startsWith(curMonth)).forEach(e=>{
+  expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment&&!isExcludedBiz(e)&&(e.date||'').startsWith(curMonth)).forEach(e=>{
     const d=parseInt(e.date.split('-')[2]);
     if(!dayMap[d])dayMap[d]={total:0,cats:[]};
     dayMap[d].total+=e.amount;
@@ -2266,7 +2318,7 @@ function renderRecurring(){
 // ── 차트 ──────────────────────────────────────────────────
 async function renderChart(){
   // 지출분석: 순수 지출만 (대출상환/투자 제외)
-  const fe=expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment);
+  const fe=expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment&&!isExcludedBiz(e));
 
   const topId=(()=>{const m={};fe.forEach(e=>m[e.cat]=(m[e.cat]||0)+e.amount);return Object.entries(m).sort((a,b)=>b[1]-a[1])[0]?.[0];})();
   const topCat=CATS.find(c=>c.id===topId);
@@ -2359,7 +2411,7 @@ async function renderCompareChart(){
     const snap=await getDocs(query(collection(db,up('expenses')),where('month','==',mo)));
     const allExp=snap.docs.map(d=>d.data());
     const filtered=chartFilter==='all'?allExp:chartFilter==='loan'?allExp.filter(e=>e.loanId):chartFilter==='invest'?allExp.filter(e=>e.isInvestment):allExp.filter(e=>!e.loanId&&!e.isInvestment);
-    return filtered.reduce((s,e)=>s+e.amount,0);
+    return filtered.filter(e=>!isExcludedBiz(e)).reduce((s,e)=>s+e.amount,0);
   }));
 
   if(compareChart){compareChart.destroy();compareChart=null;}
@@ -2420,7 +2472,7 @@ window.setChartFilter=function(filter,btn){
 
 // 필터 적용된 지출 반환
 function filteredExpenses(){
-  return expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment);
+  return expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment&&!isExcludedBiz(e));
 }
 
 // ── 예산 대비 실제 지출 ───────────────────────────────────
@@ -2577,6 +2629,10 @@ function renderCatManage(){
           <input type="checkbox" ${cat.isFixed?'checked':''} onchange="CATS[${i}].isFixed=this.checked" style="width:11px;height:11px;accent-color:#ffb347">
           고정비
         </label>
+        <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--text3);cursor:pointer;white-space:nowrap;flex-shrink:0" title="개인 가계와 분리되는 사업/매장 비용">
+          <input type="checkbox" ${cat.isBusiness?'checked':''} onchange="CATS[${i}].isBusiness=this.checked" style="width:11px;height:11px;accent-color:#fb923c">
+          사업
+        </label>
         <div class="color-dot-btn" style="background:${cat.color}" onclick="openColorPicker(${i})"></div>
         <button class="act-btn del" onclick="deleteCat(${i})">✕</button>
       </div>
@@ -2625,6 +2681,8 @@ function syncCatInputs(){
     if(m1)CATS[parseInt(m1[1])].isFixed=cb.checked;
     if(m2&&CATS[parseInt(m2[1])]?.subs?.[parseInt(m2[2])])
       CATS[parseInt(m2[1])].subs[parseInt(m2[2])].isFixed=cb.checked;
+    const m3=attr.match(/CATS\[(\d+)\]\.isBusiness=this\.checked/);
+    if(m3)CATS[parseInt(m3[1])].isBusiness=cb.checked;
   });
 }
 window.addCategory=function(){
