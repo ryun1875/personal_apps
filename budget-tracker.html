@@ -947,6 +947,13 @@ function bizBudgetKeys(){
 }
 // 사업비를 제외해야 하는지(=개인만 보기일 때)
 const isExcludedBiz=e=>!inclBiz&&isBizExp(e);
+// 고정(정기지출 또는 고정비 카테고리/하위) 판별 — 목록 그룹핑용
+function isFixedExpense(e){
+  if(e.isRecurring)return true;
+  const cat=CATS.find(c=>c.id===e.cat);
+  if(cat?.isFixed)return true;
+  return cat?.subs?.find(s=>s.id===e.subCat)?.isFixed||false;
+}
 
 function showToast(msg,type=''){
   const t=document.getElementById('toast');
@@ -2062,7 +2069,7 @@ function renderList(){
   let items=expenses.filter(e=>!e.isLoanPayment&&!e.isInvestment&&!e.installmentTotal).sort((a,b)=>b.date.localeCompare(a.date));
   if(filterCat!=='all')items=items.filter(e=>e.cat===filterCat);
   if(!items.length){le.innerHTML=`<div class="empty-state"><div class="ic">🗒️</div>지출 내역이 없어요</div>`;return;}
-  items.forEach(e=>{
+  const makeRow=e=>{
     const cat=CATS.find(c=>c.id===e.cat)||CATS[CATS.length-1];
     const div=document.createElement('div');div.className='expense-item';
     const ib=e.installmentTotal?`<span class="inst-badge">할부 ${e.installmentCurrent}/${e.installmentTotal}</span>`:'';
@@ -2085,8 +2092,22 @@ function renderList(){
         ${!e.installmentTotal?`<button class="act-btn" onclick="openEdit('${e.id}')">✏️</button>`:''}
         <button class="act-btn del" onclick="${e.installmentTotal?`deleteGroup('${e.installmentGroupId||e.id}')`:`deleteExpense('${e.id}')`}">✕</button>
       </div>`;
-    le.appendChild(div);
-  });
+    return div;
+  };
+  // 🔄 고정(정기·고정비) / 💸 변동 섹션 분리
+  const fixedItems=items.filter(isFixedExpense);
+  const varItems=items.filter(e=>!isFixedExpense(e));
+  const addSection=(emoji,title,arr,clr,first)=>{
+    if(!arr.length)return;
+    const sum=arr.reduce((s,e)=>s+e.amount,0);
+    const h=document.createElement('div');
+    h.style.cssText=`display:flex;justify-content:space-between;align-items:center;margin:${first?'2px':'16px'} 2px 7px`;
+    h.innerHTML=`<span style="font-size:11px;font-weight:700;color:${clr}">${emoji} ${title} <span style="color:var(--text3);font-weight:400">${arr.length}건</span></span><span style="font-size:11px;color:var(--text3)">합계 ${fmt(sum)}</span>`;
+    le.appendChild(h);
+    arr.forEach(e=>le.appendChild(makeRow(e)));
+  };
+  addSection('🔄','고정 지출',fixedItems,'var(--accent3)',true);
+  addSection('💸','변동 지출',varItems,'var(--accent2)',false);
 }
 
 function renderCalendar(){
@@ -2365,7 +2386,7 @@ async function loadPrevOverspend(){
     });
     prevOverspend=result;
   }catch(e){prevOverspend={};}
-  if(document.getElementById('panel-budget').classList.contains('active'))renderBudget();
+  renderBudget(); // 로드 완료 시 항상 다시 그려서 '확인 중' 갱신
 }
 // 이번 달 차감액 수동 입력
 window.updateCarryOver=function(catId,val){
@@ -4542,6 +4563,7 @@ window.switchSettings=function(name,btn){
   if(name==='payment')renderPayment();
   if(name==='list')renderList();
   if(name==='backup')renderBackup();
+  if(name==='budget'){renderBudget();if(prevOverspend===null)loadPrevOverspend();}
 };
 
 window.exportCSV=function(){
