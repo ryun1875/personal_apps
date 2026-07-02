@@ -204,12 +204,12 @@
 const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}},
          set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
 const DEFAULT_MAKERS=["마니커","케이탑푸드","하림","체리부로","사조"];
-const MAX_PER_SEND=30;
+const MAX_PER_SEND=15, SIZE_BUDGET=8*1024*1024;   // 1회 최대 장수 · 최대 용량(약 8MB)
 let makers=LS.get("dr_makers",DEFAULT_MAKERS.slice());
 let history=LS.get("dr_history",[]);
 let maker="",kind="북채",bong="",editMakers=false,queue=[];
 const BONG=[1,2,3,4,5];
-const COMP_MAX=2048, COMP_Q=0.90;      // 공유 시 압축(고화질)
+const COMP_MAX=1600, COMP_Q=0.80;      // 공유 시 압축(용량 우선)
 let camSave=LS.get("dr_camsave",false);  // 라이브 카메라 원본 저장(기본 꺼짐, 필요시 토글)
 function compressFile(file){return new Promise(resolve=>{
   if(!file.type||file.type.indexOf("image/")!==0)return resolve(file);
@@ -391,24 +391,30 @@ function namedFiles(){const items=[];
   return items.map((it,i)=>{const ext=(it.file.type&&it.file.type.indexOf("png")>=0)?"png":"jpg";
     const name=String(i+1).padStart(3,"0")+"_"+it.tag+"."+ext;
     try{return new File([it.file],name,{type:it.file.type||"image/jpeg"});}catch(e){return it.file;}});}
-function buildBatches(){const files=namedFiles(),n=files.length;
-  if(n<=MAX_PER_SEND)return [{files,idx:1,total:1}];
-  const ch=[];for(let i=0;i<n;i+=MAX_PER_SEND)ch.push(files.slice(i,i+MAX_PER_SEND));
-  return ch.map((c,i)=>({files:c,idx:i+1,total:ch.length}));}
+async function prepareQueue(){                // 압축 후 장수+용량 기준으로 분할
+  let files=namedFiles();
+  files=await Promise.all(files.map(f=>compressFile(f)));
+  const batches=[];let cur=[],bytes=0;
+  for(const f of files){
+    if(cur.length>=MAX_PER_SEND || (cur.length>0 && bytes+(f.size||0)>SIZE_BUDGET)){batches.push(cur);cur=[];bytes=0;}
+    cur.push(f);bytes+=(f.size||0);
+  }
+  if(cur.length)batches.push(cur);
+  if(!batches.length)batches.push([]);
+  return batches.map((c,i)=>({files:c,idx:i+1,total:batches.length}));}
 function updateShareUI(){const btn=$("shareBtn"),hint=$("batchHint"),tot=totalCount();
   if(queue.length>0){const b=queue[0];btn.textContent=`남은 사진 전송 (${b.idx}/${b.total})`;
     hint.style.display="block";hint.className="hint warn";hint.textContent=`아직 ${queue.length}묶음 남았어요. 버튼을 눌러 ${b.idx}/${b.total}번째를 마저 보내세요.`;return;}
   btn.textContent="공유 (사진+문자)";
-  if(tot>MAX_PER_SEND){const n=Math.ceil(tot/MAX_PER_SEND);hint.style.display="block";hint.className="hint warn";
-    hint.textContent=`사진 ${tot}장 — SMS는 1회 ${MAX_PER_SEND}장 제한이라 ${n}번에 나눠 전송돼요. 공유 버튼을 ${n}번 누르면 돼요.`;}
+  if(tot>MAX_PER_SEND){hint.style.display="block";hint.className="hint warn";
+    hint.textContent=`사진 ${tot}장 — 자동 압축 후 용량에 맞춰 여러 번에 나눠 전송돼요. 공유를 눌러 순서대로 보내면 돼요.`;}
   else hint.style.display="none";}
 async function shareAll(){
-  if(queue.length===0)queue=buildBatches();
+  if(queue.length===0){const btn=$("shareBtn");btn.textContent="사진 압축·처리 중…";
+    queue=await prepareQueue();updateShareUI();}
   const batch=queue[0],multi=batch.total>1;
   const text=buildMsg()+(multi?` (사진 ${batch.idx}/${batch.total})`:"");
-  let files=batch.files;
-  if(files.length){const btn=$("shareBtn");btn.textContent="사진 처리 중…";
-    files=await Promise.all(files.map(f=>compressFile(f)));}
+  const files=batch.files;
   const hasF=files.length>0;
   const canTF=hasF&&navigator.canShare&&navigator.canShare({text,files});
   const canF =hasF&&navigator.canShare&&navigator.canShare({files});
