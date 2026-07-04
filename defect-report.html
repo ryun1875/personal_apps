@@ -251,11 +251,12 @@ const todayMD=()=>{const d=new Date();return (d.getMonth()+1)+"."+d.getDate();};
   $("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k===kind));
   renderMakerChips();renderBongChips();render();renderHistory();updateShareUI();showDiag();
 })();
+const APP_VER="v1.6 (압축1600·15장/8MB분할)";
 function showDiag(){let has=!!navigator.share,f=false,tf=false;
   try{const t=new File([new Blob(["x"],{type:"image/jpeg"})],"t.jpg",{type:"image/jpeg"});
     f=!!(navigator.canShare&&navigator.canShare({files:[t]}));
     tf=!!(navigator.canShare&&navigator.canShare({text:"x",files:[t]}));}catch(e){}
-  $("diagLine").textContent=`공유 진단 — 공유:${has?"O":"X"} · 사진:${f?"O":"X"} · 사진+문자:${tf?"O":"X"}`;}
+  $("diagLine").textContent=`${APP_VER} · 공유 진단 — 공유:${has?"O":"X"} · 사진:${f?"O":"X"} · 사진+문자:${tf?"O":"X"}`;}
 
 // ── 제조사 ──
 function renderMakerChips(){const box=$("makerChips");box.innerHTML="";
@@ -292,7 +293,9 @@ function renderThumbsFor(key){const cfg=TCFG[key],box=$(cfg.thumbs);box.innerHTM
   if($(cfg.count))$(cfg.count).textContent=cfg.arr.length;
   $(cfg.clr).style.display=cfg.arr.length?"block":"none";}
 function addFiles(list,key){const cfg=TCFG[key],wasEmpty=cfg.arr.length===0;
-  [...list].forEach(f=>cfg.arr.push({file:f,url:URL.createObjectURL(f)}));
+  [...list].forEach(f=>{const p={file:f,url:URL.createObjectURL(f)};
+    p.ready=compressFile(f).then(c=>{p.c=c;}).catch(()=>{p.c=f;});   // 미리 압축
+    cfg.arr.push(p);});
   renderThumbsFor(key);
   if(key==="label"&&wasEmpty&&cfg.arr.length)runOCR(cfg.arr[0].file);
   afterPhotoChange();}
@@ -320,7 +323,9 @@ function camShoot(){const v=$("camVideo");if(!v.videoWidth)return;
   c.toBlob(b=>{if(!b)return;const key=camTarget;const cfg=TCFG[key];const wasEmpty=cfg.arr.length===0;
     const f=new File([b],"shot.jpg",{type:"image/jpeg"});
     if(camSave)saveToDevice(b,TCFG[key].tag+"_"+Date.now()+".jpg");
-    cfg.arr.push({file:f,url:URL.createObjectURL(f)});renderThumbsFor(key);
+    cfg.arr.push((()=>{const p={file:f,url:URL.createObjectURL(f)};
+      p.ready=compressFile(f).then(c=>{p.c=c;}).catch(()=>{p.c=f;});return p;})());
+    renderThumbsFor(key);
     camShotN++;$("camCount").textContent=camShotN;
     if(key==="label"&&wasEmpty)runOCR(f);
     afterPhotoChange();},"image/jpeg",0.95);}
@@ -385,15 +390,16 @@ function clearHistory(){if(confirm("보고 기록을 전부 지울까요?")){his
 // ── 공유 (불량→라벨 순, 30장 분할, 파일명 번호) ──
 function totalCount(){return bruise.length+bone.length+labels.length;}
 function namedFiles(){const items=[];
-  bruise.forEach(p=>items.push({file:p.file,tag:"bruise"}));
-  bone.forEach(p=>items.push({file:p.file,tag:"bone"}));
-  labels.forEach(p=>items.push({file:p.file,tag:"label"}));
+  bruise.forEach(p=>items.push({file:p.c||p.file,tag:"bruise"}));
+  bone.forEach(p=>items.push({file:p.c||p.file,tag:"bone"}));
+  labels.forEach(p=>items.push({file:p.c||p.file,tag:"label"}));
   return items.map((it,i)=>{const ext=(it.file.type&&it.file.type.indexOf("png")>=0)?"png":"jpg";
     const name=String(i+1).padStart(3,"0")+"_"+it.tag+"."+ext;
     try{return new File([it.file],name,{type:it.file.type||"image/jpeg"});}catch(e){return it.file;}});}
-async function prepareQueue(){                // 압축 후 장수+용량 기준으로 분할
-  let files=namedFiles();
-  files=await Promise.all(files.map(f=>compressFile(f)));
+async function prepareQueue(){                // 압축은 추가 시점에 이미 완료 — 여기선 대기만(즉시)
+  const all=[...bruise,...bone,...labels];
+  await Promise.all(all.map(p=>p.ready||Promise.resolve()));
+  const files=namedFiles();
   const batches=[];let cur=[],bytes=0;
   for(const f of files){
     if(cur.length>=MAX_PER_SEND || (cur.length>0 && bytes+(f.size||0)>SIZE_BUDGET)){batches.push(cur);cur=[];bytes=0;}
@@ -403,15 +409,14 @@ async function prepareQueue(){                // 압축 후 장수+용량 기준
   if(!batches.length)batches.push([]);
   return batches.map((c,i)=>({files:c,idx:i+1,total:batches.length}));}
 function updateShareUI(){const btn=$("shareBtn"),hint=$("batchHint"),tot=totalCount();
-  if(queue.length>0){const b=queue[0];btn.textContent=`남은 사진 전송 (${b.idx}/${b.total})`;
+  if(queue.length>0&&queue[0].total>1){const b=queue[0];btn.textContent=`남은 사진 전송 (${b.idx}/${b.total})`;
     hint.style.display="block";hint.className="hint warn";hint.textContent=`아직 ${queue.length}묶음 남았어요. 버튼을 눌러 ${b.idx}/${b.total}번째를 마저 보내세요.`;return;}
   btn.textContent="공유 (사진+문자)";
   if(tot>MAX_PER_SEND){hint.style.display="block";hint.className="hint warn";
     hint.textContent=`사진 ${tot}장 — 자동 압축 후 용량에 맞춰 여러 번에 나눠 전송돼요. 공유를 눌러 순서대로 보내면 돼요.`;}
   else hint.style.display="none";}
 async function shareAll(){
-  if(queue.length===0){const btn=$("shareBtn");btn.textContent="사진 압축·처리 중…";
-    queue=await prepareQueue();updateShareUI();}
+  if(queue.length===0)queue=await prepareQueue();   // 압축은 이미 끝나 있어 즉시 반환
   const batch=queue[0],multi=batch.total>1;
   const text=buildMsg()+(multi?` (사진 ${batch.idx}/${batch.total})`:"");
   const files=batch.files;
