@@ -205,6 +205,7 @@ const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.par
          set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
 const DEFAULT_MAKERS=["마니커","케이탑푸드","하림","체리부로","사조"];
 const MAX_PER_SEND=15, SIZE_BUDGET=8*1024*1024;   // 1회 최대 장수 · 최대 용량(약 8MB)
+const APP_VER="v1.7 (사전압축·즉시공유)";
 let makers=LS.get("dr_makers",DEFAULT_MAKERS.slice());
 let history=LS.get("dr_history",[]);
 let maker="",kind="북채",bong="",editMakers=false,queue=[];
@@ -251,7 +252,6 @@ const todayMD=()=>{const d=new Date();return (d.getMonth()+1)+"."+d.getDate();};
   $("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k===kind));
   renderMakerChips();renderBongChips();render();renderHistory();updateShareUI();showDiag();
 })();
-const APP_VER="v1.6 (압축1600·15장/8MB분할)";
 function showDiag(){let has=!!navigator.share,f=false,tf=false;
   try{const t=new File([new Blob(["x"],{type:"image/jpeg"})],"t.jpg",{type:"image/jpeg"});
     f=!!(navigator.canShare&&navigator.canShare({files:[t]}));
