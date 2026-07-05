@@ -497,6 +497,28 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   </div>
 </div>
 
+<!-- 정기지출 수정 모달 -->
+<div class="modal-bg" id="rec-edit-modal">
+  <div class="modal">
+    <div class="modal-title">📌 정기 지출 수정 <button class="modal-close" onclick="closeModal('rec-edit-modal')">×</button></div>
+    <div class="form-row">
+      <div class="form-group"><label>카테고리</label><select id="re-cat" onchange="rebuildSubCatSelect('re-subcat',this.value)"></select></div>
+      <div class="form-group"><label>매월 며칠</label><input type="number" id="re-day" min="1" max="31"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>세부 카테고리</label><select id="re-subcat"><option value="">선택 안 함</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="flex:2"><label>내용</label><input type="text" id="re-desc"></div>
+      <div class="form-group"><label>금액 (원)</label><input type="number" id="re-amount"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>결제수단</label><select id="re-pay"></select></div>
+    </div>
+    <button class="btn-primary" onclick="saveRecEdit()">수정 완료</button>
+  </div>
+</div>
+
 <!-- 할부 그룹 수정 모달 -->
 <div class="modal-bg" id="inst-edit-modal">
   <div class="modal">
@@ -2217,7 +2239,7 @@ function renderBudget(){
       const subPct=subBudget>0?Math.min(Math.round(subSpent/subBudget*100),100):0;
       return `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:10px;color:var(--text3);width:10px">└</span>
-        <span style="font-size:12px;flex:1;color:var(--text2)">${sub.name}</span>
+        <span style="font-size:12px;flex:1;color:var(--text2)">${esc(sub.name)}</span>
         <span style="font-size:11px;color:var(--text3)">${fmt(subSpent)} 지출</span>
         <input type="number" value="${subBudget||''}" placeholder="0"
           style="width:80px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 6px;color:var(--text);font-size:11px;text-align:right;outline:none"
@@ -2230,7 +2252,7 @@ function renderBudget(){
       <div class="budget-item-row">
         <div class="cat-dot" style="background:${cat.color}22;width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0">${cat.emoji}</div>
         <div class="budget-info" style="flex:1">
-          <div class="budget-name">${cat.name}${pct>=80&&basisBudget>0?`<span style="font-size:9px;background:${bc}22;color:${bc};padding:1px 5px;border-radius:99px">${pct}%</span>`:''}</div>
+          <div class="budget-name">${esc(cat.name)}${pct>=80&&basisBudget>0?`<span style="font-size:9px;background:${bc}22;color:${bc};padding:1px 5px;border-radius:99px">${pct}%</span>`:''}</div>
           <div class="budget-spent">${fmt(spent)} 지출${recurTotal>0?` · 🔄 정기 ${fmt(recurTotal)}`:''}${fixedTotal>0?` · 📋 예상 ${fmt(fixedTotal)}`:''}${carryOver>0?` · ⏮️ 이월 −${fmt(carryOver)} → 실질 ${fmt(effectiveB)}`:''}${meta.memo?` · 📝`:''}</div>
           ${basisBudget>0?`<div class="mini-bar"><div class="mini-bar-fill" style="width:${pct}%;background:${bc}"></div></div>`:''}
         </div>
@@ -2268,7 +2290,7 @@ function renderBudget(){
           <div style="font-size:10px;color:var(--text3);margin-bottom:6px">🔄 정기 지출</div>
           ${recurring.filter(r=>r.cat===cat.id).map(r=>`
             <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border)">
-              <span style="color:var(--text2)">${r.desc||'정기지출'}</span>
+              <span style="color:var(--text2)">${esc(r.desc||'정기지출')}</span>
               <span style="color:var(--accent3);font-family:'Gmarket Sans',sans-serif">${fmt(r.amount)}</span>
             </div>`).join('')}
           <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);padding-top:5px">
@@ -2488,10 +2510,44 @@ function renderRecurring(){
       <div class="cat-dot" style="background:${cat.color}22">${cat.emoji}</div>
       <div class="rec-info"><div class="rec-name">${esc(r.desc||cat.name)} ${pb}</div><div class="rec-meta">매월 ${r.day}일 · ${esc(cat.name)}${subCatObj?` > ${esc(subCatObj.name)}`:''}</div></div>
       <div class="rec-amt">-${fmt(r.amount)}</div>
-      <button class="act-btn del" onclick="deleteRecurring('${r.id}')">✕</button>`;
+      <div class="act-btns">
+        <button class="act-btn" onclick="openRecEdit('${r.id}')">✏️</button>
+        <button class="act-btn del" onclick="deleteRecurring('${r.id}')">✕</button>
+      </div>`;
     le.appendChild(div);
   });
 }
+let editRecId=null;
+window.openRecEdit=function(id){
+  const r=recurring.find(x=>x.id===id);if(!r)return;
+  editRecId=id;
+  rebuildCatSelects();rebuildPaySelects();
+  const catSel=document.getElementById('re-cat');
+  if(catSel){catSel.innerHTML='';CATS.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=`${c.emoji} ${c.name}`;catSel.appendChild(o);});catSel.value=r.cat||'';}
+  rebuildSubCatSelect('re-subcat',r.cat||'');
+  const subSel=document.getElementById('re-subcat');if(subSel)subSel.value=r.subCat||'';
+  const paySel=document.getElementById('re-pay');
+  if(paySel){paySel.innerHTML='<option value="">결제수단 선택 안 함</option>';payMethods.forEach(p=>{const o=document.createElement('option');o.value=p.id;o.textContent=`${p.emoji||'💳'} ${p.name}`;paySel.appendChild(o);});paySel.value=r.payId||'';}
+  document.getElementById('re-day').value=r.day||'';
+  document.getElementById('re-desc').value=r.desc||'';
+  document.getElementById('re-amount').value=r.amount||'';
+  document.getElementById('rec-edit-modal').classList.add('open');
+};
+window.saveRecEdit=async function(){
+  if(!editRecId)return;
+  const cat=document.getElementById('re-cat').value;
+  const subCat=document.getElementById('re-subcat')?.value||'';
+  const day=parseInt(document.getElementById('re-day').value)||0;
+  const desc=document.getElementById('re-desc').value.trim();
+  const amount=Math.round(Number(document.getElementById('re-amount').value))||0;
+  const payId=document.getElementById('re-pay').value||'';
+  if(!day||day<1||day>31){showToast('날짜를 확인해주세요','warning');return;}
+  if(!amount){showToast('금액을 입력해주세요','warning');return;}
+  try{
+    await updateDoc(doc(db,up('recurring'),editRecId),{cat,subCat,day,desc,amount,payId});
+    closeModal('rec-edit-modal');editRecId=null;showToast('수정됐어요 ✓','success');
+  }catch(e){console.error(e);showToast('수정 실패','error');}
+};
 
 // ── 차트 ──────────────────────────────────────────────────
 async function renderChart(){
@@ -2904,8 +2960,13 @@ window.openColorPicker=function(i){
   COLORS.forEach(c=>{const d=document.createElement('div');d.className='color-opt'+(CATS[i].color===c?' sel':'');d.style.background=c;d.onclick=()=>{CATS[i].color=c;closeModal('color-modal');renderCatManage();};p.appendChild(d);});
   document.getElementById('color-modal').classList.add('open');
 };
-['emoji-modal','color-modal','edit-modal','cal-modal','confirm-modal','loan-edit-modal','inv-edit-modal','port-edit-modal','minus-edit-modal','inst-edit-modal'].forEach(id=>{
-  document.getElementById(id).addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal(id);});
+['emoji-modal','color-modal','edit-modal','cal-modal','confirm-modal','loan-edit-modal','inv-edit-modal','port-edit-modal','minus-edit-modal','inst-edit-modal','rec-edit-modal'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el)el.addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal(id);});
+});
+// Esc 키로 열린 모달/팝업 닫기
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')document.querySelectorAll('.modal-bg.open,.alert-popup.open').forEach(el=>el.classList.remove('open'));
 });
 
 // ── 고정 지출 ─────────────────────────────────────────────
@@ -3321,7 +3382,7 @@ async function renderAsset(){
         <div style="width:36px;height:36px;border-radius:9px;background:${color}22;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${color};flex-shrink:0">${inv.type}</div>
         <div style="flex:1">
           <div style="font-size:13px;font-weight:500;color:var(--text)">${esc(inv.name)}</div>
-          <div style="font-size:10px;color:var(--text3)">${inv.date||''}${inv.broker?` · ${inv.broker}`:''}</div>
+          <div style="font-size:10px;color:var(--text3)">${inv.date||''}${inv.broker?` · ${esc(inv.broker)}`:''}</div>
         </div>
         <div style="font-family:'Gmarket Sans',sans-serif;font-size:14px;font-weight:700;color:${color}">${fmt(inv.amount)}</div>
         <div style="display:flex;gap:4px">
@@ -4222,7 +4283,7 @@ function checkAutoBackup(){
 }
 
 // ── 포트폴리오 ─────────────────────────────────────────────
-const FINNHUB_KEY='d80a21hr01qq9ln34dpgd80a21hr01qq9ln34dq0';
+// Finnhub 시세 연동 비활성화 (API 키 노출 방지). 투자 재개 시 키+fetch 복원.
 const DEF_PORT_CATS=[
   {id:'us_growth',name:'미국 성장주',color:'#378ADD',target:30},
   {id:'us_dividend',name:'미국 배당주',color:'#1D9E75',target:20},
@@ -4234,24 +4295,9 @@ const DEF_PORT_CATS=[
 let portChart=null,portFilterCat='all';
 let priceCache={};
 
-async function fetchPrice(symbol,isUS){
-  if(priceCache[symbol]&&Date.now()-priceCache[symbol].ts<300000)return priceCache[symbol].price;
-  if(!isUS)return null;
-  try{
-    const r=await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${FINNHUB_KEY}`);
-    const d=await r.json();
-    if(d.c){priceCache[symbol]={price:d.c,ts:Date.now()};return d.c;}
-  }catch(e){}
-  return null;
-}
-
-async function fetchDividend(symbol){
-  try{
-    const r=await fetch(`https://finnhub.io/api/v1/stock/dividend2?symbol=${symbol}&token=${FINNHUB_KEY}`);
-    const d=await r.json();
-    return d?.data||[];
-  }catch(e){return [];}
-}
+// 시세 자동 조회 비활성화 — 수동 입력(현재가)만 사용. (키 미노출)
+async function fetchPrice(symbol,isUS){return null;}
+async function fetchDividend(symbol){return [];}
 
 async function renderPortfolio(){
   const wrap=document.getElementById('portfolio-wrap');
@@ -4432,7 +4478,7 @@ async function renderPortfolio(){
       const isUS=p.market==='US';
       const priceStr=isUS&&p._price?`$${p._price.toFixed(2)}`:(p.currentPrice?fmt(p.currentPrice):'수동 입력 필요');
       holdCard.innerHTML+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
-        <div style="width:40px;height:40px;border-radius:9px;background:${color}22;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${color};flex-shrink:0;text-align:center;line-height:1.2">${p.symbol||p.name?.slice(0,4)||'?'}</div>
+        <div style="width:40px;height:40px;border-radius:9px;background:${color}22;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${color};flex-shrink:0;text-align:center;line-height:1.2">${esc(p.symbol||p.name?.slice(0,4)||'?')}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.name)}</div>
           <div style="font-size:10px;color:var(--text3)">${esc(cat?.name||'미분류')} · ${p.qty}주 · ${priceStr}${p.broker?` · ${esc(p.broker)}`:''}</div>
