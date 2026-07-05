@@ -239,7 +239,19 @@
   .np-hint { font-size: 11px; color: var(--text2); margin-top: 6px; text-align: center; }
   .np-hint b { color: var(--accent2); }
 
-  #hint { position: fixed; top: calc(62px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  /* ── Sheet tabs (xmind-style sheets within one map) ── */
+  #sheet-bar { position: fixed; top: calc(56px + env(safe-area-inset-top)); left: 8px; z-index: 43;
+    display: flex; gap: 4px; align-items: center; max-width: calc(100vw - 70px); overflow-x: auto; padding: 4px; }
+  .sheet-tab { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 9px; padding: 5px 11px; font-size: 12px; font-weight: 600; color: var(--text2); cursor: pointer;
+    white-space: nowrap; flex-shrink: 0; transition: all .12s; }
+  .sheet-tab:hover { color: var(--text); border-color: var(--accent); }
+  .sheet-tab.active { background: var(--accent-glow); color: var(--accent2); border-color: var(--accent); }
+  .sheet-tab .st-x { font-size: 11px; opacity: .6; }
+  .sheet-tab .st-x:hover { opacity: 1; color: var(--coral); }
+  .sheet-tab.add { padding: 5px 10px; font-weight: 800; }
+
+  #hint { position: fixed; top: calc(104px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
     background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 6px 13px;
     font-size: 11px; color: var(--text2); pointer-events: none; opacity: 1; transition: opacity .5s;
     z-index: 44; max-width: 92vw; text-align: center; }
@@ -315,6 +327,8 @@
   <div class="pop-opt" data-layout="radial">❋ 방사형</div>
 </div>
 
+<div id="sheet-bar" style="display:none"></div>
+
 <div id="viewport" style="display:none">
   <div id="world">
     <div id="boundaries"></div>
@@ -380,7 +394,8 @@
         <div class="help-row"><b>자동 저장</b><span>변경 시 자동 저장 (상단에 ✓ 저장됨 표시)</span></div>
         <div class="help-row"><b>기기 간 동기화</b><span>같은 계정으로 로그인하면 PC·모바일이 <em>실시간</em>으로 같은 맵 공유</span></div>
         <div class="help-row"><b>여러 맵</b><span>좌측 ☰ 메뉴에서 맵 추가/전환/삭제 (목록도 기기 간 실시간 동기화)</span></div>
-        <div class="help-row"><b>맵 이름 변경</b><span>루트(중심) 노드의 글자를 수정하면 맵 이름이 함께 바뀜</span></div>
+        <div class="help-row"><b>📑 시트</b><span>좌측 상단 탭으로 한 맵 안에 여러 시트 — <em>＋</em>로 추가, 탭 클릭 전환, <em>더블클릭</em> 이름변경, ✕ 삭제</span></div>
+        <div class="help-row"><b>맵 이름 변경</b><span>첫 번째 시트의 루트(중심) 노드 글자를 수정하면 맵 이름이 함께 바뀜</span></div>
       </div>
       <div class="help-sec">
         <div class="help-sec-t">⌨️ 단축키</div>
@@ -501,6 +516,8 @@ const CLIENT_ID = 'c' + Math.random().toString(36).slice(2, 10);
 
 // ── State ──────────────────────────────────────────────
 let uid = null, currentMapId = null;
+let sheets = [];           // [{id,name,layout,nodes,relations,boundaries}] — all sheets of the open map (plain data)
+let currentSheetId = null; // the sheet currently loaded into the working state below
 let nodes = {};            // id -> {id,label,parentId,color,x,y,w,h,shape?,lineStyle?,note?,markers?,tags?,collapsed?,imageId?}
 let relations = [];        // {id,from,to}
 let boundaries = [];       // {id,nodeIds:[],color}
@@ -541,6 +558,7 @@ onAuthStateChanged(auth, async user => {
     topbar.style.display = 'flex';
     viewport.style.display = 'block';
     toolbar.style.display = 'flex';
+    $('sheet-bar').style.display = 'flex';
     hint.style.display = 'block';
     await loadMapList();
     setTimeout(() => hint.classList.add('hide'), 6000);
@@ -553,6 +571,7 @@ onAuthStateChanged(auth, async user => {
     closeNotePanel();
     loginScreen.style.display = 'flex';
     topbar.style.display = 'none'; viewport.style.display = 'none'; toolbar.style.display = 'none';
+    $('sheet-bar').style.display = 'none';
   }
 });
 
@@ -611,9 +630,10 @@ async function createNewMap() {
     const title = '새 마인드맵 ' + (mapList.children.length + 1);
     const id = 'map_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
     const data = {
-      title, updatedAt: Date.now(), clientId: CLIENT_ID, layout: 'map',
-      nodes: { n1: { id: 'n1', label: title, x: 0, y: 0, parentId: null, color: '#7c6af7' } },
-      relations: [], boundaries: []
+      title, updatedAt: Date.now(), clientId: CLIENT_ID, activeSheet: 's1',
+      sheets: [{ id: 's1', name: '시트 1', layout: 'map',
+        nodes: { n1: { id: 'n1', label: title, x: 0, y: 0, parentId: null, color: '#7c6af7' } },
+        relations: [], boundaries: [] }]
     };
     await setDoc(doc(db, 'users', uid, 'mindmaps', id), data);
     addMapItem(id, title);
@@ -632,6 +652,7 @@ async function openMap(id) {
   if (mapUnsub) { mapUnsub(); mapUnsub = null; }
   undoStack.length = 0; redoStack.length = 0; updateUndoUI();   // history is per-map
   currentMapId = id;
+  sheets = []; currentSheetId = null; renderSheetBar();
   document.querySelectorAll('.map-item').forEach(el => el.classList.toggle('active', el.dataset.id === id));
   clearCanvas();
   // load image assets for this map
@@ -659,15 +680,121 @@ async function openMap(id) {
 }
 
 function applyMapData(data, fit) {
+  if (data.sheets && data.sheets.length) {
+    sheets = data.sheets.map(s => ({
+      id: s.id, name: s.name, layout: s.layout || 'map',
+      nodes: { ...(s.nodes || {}) },
+      relations: (s.relations || []).map(r => ({ ...r })),
+      boundaries: (s.boundaries || []).map(b => ({ ...b }))
+    }));
+  } else {
+    // legacy single-sheet map → migrate to sheet 1 (persisted on next save)
+    sheets = [{ id: 's1', name: '시트 1', layout: data.layout || 'map',
+      nodes: { ...(data.nodes || {}) },
+      relations: (data.relations || []).map(r => ({ ...r })),
+      boundaries: (data.boundaries || []).map(b => ({ ...b })) }];
+  }
+  const target = sheets.find(s => s.id === currentSheetId)   // stay on the user's sheet across remote syncs
+    || sheets.find(s => s.id === data.activeSheet) || sheets[0];
+  currentSheetId = target.id;
+  renderSheetBar();
+  loadSheetIntoWorkspace(target, fit);
+}
+
+// load one sheet's data into the working state (nodes/relations/boundaries/layout)
+function loadSheetIntoWorkspace(sheet, fit) {
   nodes = {};
-  Object.entries(data.nodes || {}).forEach(([k, v]) => { nodes[k] = { ...v }; });
-  relations = (data.relations || []).map(r => ({ ...r }));
-  boundaries = (data.boundaries || []).map(b => ({ ...b }));
-  layoutType = data.layout || 'map';
+  Object.entries(sheet.nodes || {}).forEach(([k, v]) => { nodes[k] = { ...v }; });
+  relations = (sheet.relations || []).map(r => ({ ...r }));
+  boundaries = (sheet.boundaries || []).map(b => ({ ...b }));
+  layoutType = sheet.layout || 'map';
   selectedIds.clear();
+  closeNotePanel();
   nodeCounter = Object.keys(nodes).reduce((m, k) => Math.max(m, parseInt(k.replace(/\D/g, '')) || 0), 1);
   updateLayoutUI();
   renderAll(fit);
+}
+
+// write the working state back into the sheets array entry
+function snapshotWorkingSheet() {
+  const s = sheets.find(x => x.id === currentSheetId); if (!s) return;
+  const clean = {};
+  Object.entries(nodes).forEach(([id, n]) => { clean[id] = stripNode(n); });
+  s.nodes = clean;
+  s.relations = relations.map(r => ({ ...r }));
+  s.boundaries = boundaries.map(b => ({ ...b }));
+  s.layout = layoutType;
+}
+
+// ── Sheet tabs ─────────────────────────────────────────
+function renderSheetBar() {
+  const bar = $('sheet-bar');
+  bar.innerHTML = '';
+  sheets.forEach(s => {
+    const t = document.createElement('div');
+    t.className = 'sheet-tab' + (s.id === currentSheetId ? ' active' : '');
+    const nm = document.createElement('span');
+    nm.textContent = s.name || '시트';
+    t.appendChild(nm);
+    if (sheets.length > 1) {
+      const x = document.createElement('span');
+      x.className = 'st-x'; x.textContent = '✕'; x.title = '시트 삭제';
+      x.addEventListener('click', e => { e.stopPropagation(); deleteSheet(s.id); });
+      t.appendChild(x);
+    }
+    t.addEventListener('click', () => switchSheet(s.id));
+    t.addEventListener('dblclick', e => { e.preventDefault(); renameSheet(s.id); });
+    bar.appendChild(t);
+  });
+  if (sheets.length) {
+    const add = document.createElement('div');
+    add.className = 'sheet-tab add'; add.textContent = '＋'; add.title = '새 시트';
+    add.addEventListener('click', addSheet);
+    bar.appendChild(add);
+  }
+}
+function switchSheet(id) {
+  if (id === currentSheetId) return;
+  const target = sheets.find(s => s.id === id); if (!target) return;
+  snapshotWorkingSheet();                                  // keep unsaved work on the sheet we leave
+  currentSheetId = id;
+  undoStack.length = 0; redoStack.length = 0; updateUndoUI();  // history is per-sheet
+  renderSheetBar();
+  loadSheetIntoWorkspace(target, true);
+  scheduleSave();                                          // persists activeSheet + snapshot
+}
+function addSheet() {
+  snapshotWorkingSheet();
+  const id = 's' + Date.now().toString(36);
+  const name = '시트 ' + (sheets.length + 1);
+  sheets.push({ id, name, layout: 'map',
+    nodes: { n1: { id: 'n1', label: name, x: 0, y: 0, parentId: null, color: '#7c6af7' } },
+    relations: [], boundaries: [] });
+  switchSheet(id);
+  toastMsg('새 시트 추가 — 이름은 탭 더블클릭');
+}
+function renameSheet(id) {
+  const s = sheets.find(x => x.id === id); if (!s) return;
+  const v = prompt('시트 이름', s.name || '시트');
+  if (v === null) return;
+  s.name = v.trim() || s.name;
+  renderSheetBar(); scheduleSave();
+}
+function deleteSheet(id) {
+  if (sheets.length <= 1) { toastMsg('마지막 시트는 삭제할 수 없어요'); return; }
+  const s = sheets.find(x => x.id === id); if (!s) return;
+  if (!confirm(`'${s.name || '시트'}' 시트를 삭제할까요?\n(시트의 모든 노드가 함께 삭제됩니다)`)) return;
+  const wasCurrent = id === currentSheetId;
+  if (!wasCurrent) snapshotWorkingSheet();
+  sheets = sheets.filter(x => x.id !== id);
+  if (wasCurrent) {
+    currentSheetId = sheets[0].id;
+    undoStack.length = 0; redoStack.length = 0; updateUndoUI();
+    loadSheetIntoWorkspace(sheets[0], true);
+  }
+  renderSheetBar();
+  scheduleSave();
+  toastMsg('시트 삭제됨');
 }
 
 function clearCanvas() {
@@ -695,18 +822,16 @@ function scheduleSave() {
 }
 async function saveMap(mapId = currentMapId) {
   if (!uid || !mapId || mapId !== currentMapId) return;   // map switched → drop stale save
-  if (!Object.keys(nodes).length) return;                  // never overwrite a map with nothing
-  const title = nodes['n1']?.label || rootNode()?.label || '마인드맵';
+  if (!Object.keys(nodes).length || !sheets.length) return; // never overwrite a map with nothing
+  snapshotWorkingSheet();
+  const firstRoot = Object.values(sheets[0].nodes || {}).find(n => !n.parentId);
+  const title = firstRoot?.label || '마인드맵';
   const item = document.querySelector(`.map-item[data-id="${mapId}"] .map-item-name`);
   if (item) item.textContent = title;
-  const clean = {};
-  Object.entries(nodes).forEach(([id, n]) => {
-    clean[id] = stripNode(n);
-  });
   const now = Date.now();
   try {
     await setDoc(doc(db, 'users', uid, 'mindmaps', mapId),
-      { title, updatedAt: now, clientId: CLIENT_ID, layout: layoutType, nodes: clean, relations, boundaries });
+      { title, updatedAt: now, clientId: CLIENT_ID, sheets, activeSheet: currentSheetId });
     lastSavedAt = now;
     showSave('saved', '✓ 저장됨');
   } catch (e) {
@@ -744,8 +869,9 @@ function undoPushRaw(s) {
 }
 function pushUndo() { undoPushRaw(serializeState()); }
 function restoreState(json) {
-  closeNotePanel();
-  applyMapData(JSON.parse(json), false);
+  // restore the WORKING SHEET only — other sheets are untouched
+  const d = JSON.parse(json);
+  loadSheetIntoWorkspace({ nodes: d.nodes, relations: d.relations, boundaries: d.boundaries, layout: d.layout }, false);
   scheduleSave();
 }
 function undo() {
