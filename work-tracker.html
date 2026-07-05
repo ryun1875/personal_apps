@@ -1260,7 +1260,7 @@ lightMode = localStorage.getItem('lightMode') === 'true';
 applyTheme();
 
 // ── 앱 버전 표시 + 캐시 강제 새로고침 ──
-const APP_VERSION = '2026.07.05';
+const APP_VERSION = '2026.07.05 (2)';
 (() => {
   const lbl = document.getElementById('appVersionLabel');
   if (lbl) lbl.textContent = `버전 ${APP_VERSION}`;
@@ -1344,6 +1344,9 @@ onAuthStateChanged(auth, async user => {
     document.getElementById('settingsRole').textContent = '직원';
     document.getElementById('wageEditBtn').style.display = 'none';
     document.getElementById('wageBanner').style.cursor = 'default';
+    // 세금 토글은 관리자 전역 설정이라 직원은 표시만 (변경 불가)
+    const tt = document.getElementById('taxToggle');
+    tt.style.opacity = '.55'; tt.style.pointerEvents = 'none';
     // 직원용 탭 표시
     document.querySelectorAll('.staff-only').forEach(el => el.style.display = 'flex');
     // 사전등록 직원 연결/기록이전은 보안 규칙상 직원 본인이 할 수 없어(권한 없음)
@@ -1351,6 +1354,7 @@ onAuthStateChanged(auth, async user => {
     await loadMyDisputes();
   }
 
+  await loadGlobalConfig();
   await loadSettings();
   await loadRecords();
 });
@@ -1725,10 +1729,18 @@ async function loadSettings() {
     snap.forEach(d => {
       const data = d.data();
       if (data.hourlyWage) hourlyWage = data.hourlyWage;
-      if (data.taxEnabled !== undefined) taxEnabled = data.taxEnabled;
     });
   } catch(e) {}
   applySettings();
+}
+
+// 세금 공제는 관리자가 정하는 전역 설정 (shared/work-tracker/config/global).
+// 직원은 이 값을 읽기만 하고, 관리자가 켜둔 대로 실수령액이 표시됨.
+async function loadGlobalConfig() {
+  try {
+    const snap = await getDoc(doc(db, 'shared', 'work-tracker', 'config', 'global'));
+    if (snap.exists() && snap.data().taxEnabled !== undefined) taxEnabled = snap.data().taxEnabled;
+  } catch(e) {}
 }
 
 async function saveSettings() {
@@ -1750,9 +1762,13 @@ function applySettings() {
   renderStats();
 }
 
-document.getElementById('taxToggle').addEventListener('click', () => {
+document.getElementById('taxToggle').addEventListener('click', async () => {
+  if (!isAdmin) return; // 직원은 관리자가 설정한 값만 표시 (변경 불가)
   taxEnabled = !taxEnabled;
-  saveSettings(); applySettings();
+  applySettings();
+  try {
+    await setDoc(doc(db, 'shared', 'work-tracker', 'config', 'global'), { taxEnabled }, { merge: true });
+  } catch(e) { alert('세금 설정 저장 실패: ' + e.message); }
 });
 
 // ── 목표 급여 ──
@@ -1789,7 +1805,10 @@ async function loadGoal() {
   } else if (isAdmin && selectedStaffUid) {
     hourlyWage = 10030;
   }
-  applySettings();
+  // 시급 표시만 갱신 (기록/통계는 저장된 gross 기반이라 재렌더 불필요 → 중복 렌더 제거)
+  document.getElementById('wageDisplay').textContent = `₩${hourlyWage.toLocaleString()}`;
+  document.getElementById('settingsWage').textContent = `₩${hourlyWage.toLocaleString()}`;
+  updatePreview();
   renderGoalCard();
 }
 
@@ -2119,12 +2138,12 @@ function updateMonthDisplay() {
 document.getElementById('prevMonth').addEventListener('click', () => {
   if (currentMonth === 0) { currentYear--; currentMonth = 11; } else currentMonth--;
   openWeekGroups = new Set();
-  updateMonthDisplay(); renderRecords(); renderStats();
+  updateMonthDisplay(); loadRecords();
 });
 document.getElementById('nextMonth').addEventListener('click', () => {
   if (currentMonth === 11) { currentYear++; currentMonth = 0; } else currentMonth++;
   openWeekGroups = new Set();
-  updateMonthDisplay(); renderRecords(); renderStats();
+  updateMonthDisplay(); loadRecords();
 });
 updateMonthDisplay();
 
@@ -2222,29 +2241,42 @@ dayoffToggleWrap.addEventListener('click', () => {
 });
 
 // ── Records 로드 ──
+// 보는 달을 포함하는 조회 범위(주 경계 spillover 대비 앞뒤 10일 버퍼).
+// 전체 기록을 통째로 받지 않고 이 범위만 조회 → 데이터·성능 개선.
+function monthQueryRange() {
+  const first = new Date(currentYear, currentMonth, 1);
+  const last = new Date(currentYear, currentMonth + 1, 0);
+  const start = new Date(first); start.setDate(first.getDate() - 10);
+  const end = new Date(last); end.setDate(last.getDate() + 10);
+  return { start: toLocalDateStr(start), end: toLocalDateStr(end) };
+}
+
 async function loadRecords() {
   setSyncStatus('syncing', '동기화 중...');
   records = [];
   let loadFailed = false;
+  const { start: rStart, end: rEnd } = monthQueryRange();
+  const rangeQ = (uid) => query(
+    collection(db, `users/${uid}/workRecords`),
+    where('date', '>=', rStart), where('date', '<=', rEnd),
+    orderBy('date', 'desc'));
   try {
     if (isAdmin && selectedStaffUid) {
-      // 특정 직원 기록
-      const snap = await getDocs(query(collection(db, `users/${selectedStaffUid}/workRecords`), orderBy('date','desc')));
+      // 특정 직원 기록 (보는 달 범위)
+      const snap = await getDocs(rangeQ(selectedStaffUid));
       records = snap.docs.map(d => ({ id: d.id, ownerUid: selectedStaffUid, ...d.data() }));
     } else if (isAdmin && !selectedStaffUid) {
-      // 전체 직원 기록
+      // 전체 직원 기록 (보는 달 범위)
       const approved = allStaff.filter(s => s.status === 'approved');
-      const snaps = await Promise.all(approved.map(s =>
-        getDocs(query(collection(db, `users/${s.uid}/workRecords`), orderBy('date','desc')))
-      ));
+      const snaps = await Promise.all(approved.map(s => getDocs(rangeQ(s.uid))));
       snaps.forEach((snap, i) => {
         const s = approved[i];
         snap.docs.forEach(d => records.push({ id: d.id, ownerUid: s.uid, ownerName: s.name, ...d.data() }));
       });
       records.sort((a,b) => b.date.localeCompare(a.date));
     } else {
-      // 직원 본인 기록
-      const snap = await getDocs(query(collection(db, `users/${currentUser.uid}/workRecords`), orderBy('date','desc')));
+      // 직원 본인 기록 (보는 달 범위)
+      const snap = await getDocs(rangeQ(currentUser.uid));
       const myInfo = allStaff.find(s => s.uid === currentUser.uid);
       records = snap.docs.map(d => ({ id: d.id, ownerUid: currentUser.uid, ownerName: myInfo?.name || '', ...d.data() }));
     }
@@ -2266,8 +2298,8 @@ document.getElementById('addRecordBtn').addEventListener('click', async () => {
 
   // ── 휴무 모드 ──
   if (isDayoffMode) {
-    const hasRecord = records.some(r => r.date === date && !r.isDayoff);
-    if (hasRecord && !confirm('이 날짜에 이미 근무 기록이 있어요. 그래도 휴무로 등록할까요?')) return;
+    const hasRecord = records.some(r => r.date === date);
+    if (hasRecord && !confirm('이 날짜에 이미 기록이 있어요. 그래도 휴무로 등록할까요?')) return;
     try {
       const ref = await addDoc(collection(db, `users/${targetUid}/workRecords`), {
         date, memo, isDayoff: true,
@@ -2288,6 +2320,8 @@ document.getElementById('addRecordBtn').addEventListener('click', async () => {
   const start = document.getElementById('startTime').value;
   const end = document.getElementById('endTime').value;
   if (!start || !end) return alert('출근/퇴근 시간을 입력해주세요');
+  const dupWork = records.some(r => r.date === date);
+  if (dupWork && !confirm('이 날짜에 이미 기록이 있어요. 그래도 추가할까요?')) return;
   const breakMin = calcBreakTotal();
   const extraMin = calcExtraTotal();
   const r = calcPay(start, end, breakMin, extraMin);
@@ -2838,9 +2872,13 @@ function renderWeekSummary() {
   const container = document.getElementById('wsDays');
   if (!container) return;
 
-  // 관리자 전체보기: 여러 직원 근무가 섞여 의미가 없으므로 주간 요약 숨김
+  // 주간 요약은 "이번 주" 기준이라, 현재 달을 볼 때만 의미가 있음.
+  // (범위 조회로 다른 달엔 이번 주 데이터가 없을 수 있어 함께 숨김)
+  // 또한 관리자 전체보기에선 여러 직원이 섞여 의미가 없으므로 숨김.
   const wrap = document.getElementById('weekSummary');
-  if (isAdmin && !selectedStaffUid) { if (wrap) wrap.style.display = 'none'; return; }
+  const t = new Date();
+  const isThisMonthView = currentYear === t.getFullYear() && currentMonth === t.getMonth();
+  if ((isAdmin && !selectedStaffUid) || !isThisMonthView) { if (wrap) wrap.style.display = 'none'; return; }
   if (wrap) wrap.style.display = 'block';
 
   // 오늘 로컬 날짜
