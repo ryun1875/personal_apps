@@ -943,6 +943,13 @@ let CATS=[...DEF_CATS];
 // 인라인 oninput에서 접근 가능하도록 전역 노출
 Object.defineProperty(window,'CATS',{get:()=>CATS,set:(v)=>{CATS=v;}});
 let donutChart=null,barChart=null,compareChart=null,budgetCompareChart=null,trendChart=null,payTrendChart=null,assetChart=null,loanChart=null;
+// 과거 달 지출 캐시 (차트 반복 렌더 시 Firestore 재읽기 방지, 데이터 변경 시 비움)
+let monthExpCache={};
+async function getMonthExpenses(mo){
+  if(monthExpCache[mo])return monthExpCache[mo];
+  const snap=await getDocs(query(collection(db,up('expenses')),where('month','==',mo)));
+  return (monthExpCache[mo]=snap.docs.map(d=>d.data()));
+}
 let trendCatId=null, trendPayId=null;
 let unsubExp=null,unsubBudget=null,appSubs=[];
 let budgetTimer=null,catTimer=null,catSaving=false;
@@ -1192,6 +1199,7 @@ function subscribeMonth(){
   setSyncStatus('syncing');let first=true;
   unsubExp=onSnapshot(query(collection(db,up('expenses')),where('month','==',curMonth)),snap=>{
     expenses=snap.docs.map(d=>({id:d.id,...d.data()}));
+    monthExpCache={}; // 지출 변경 시 과거달 캐시 무효화
     renderAll();setSyncStatus('online');
     if(first){hideLoading();first=false;setTimeout(checkBudgetAlert,800);setTimeout(checkAutoBackup,2000);setTimeout(checkAutoRecurring,3000);}
   },()=>{setSyncStatus('offline');hideLoading();});
@@ -2642,8 +2650,7 @@ async function renderCompareChart(){
   }
   const monthTotals=await Promise.all(months.map(async mo=>{
     if(mo===curMonth)return filteredExpenses().reduce((s,e)=>s+e.amount,0);
-    const snap=await getDocs(query(collection(db,up('expenses')),where('month','==',mo)));
-    const allExp=snap.docs.map(d=>d.data());
+    const allExp=await getMonthExpenses(mo);
     const filtered=chartFilter==='all'?allExp:chartFilter==='loan'?allExp.filter(e=>e.loanId):chartFilter==='invest'?allExp.filter(e=>e.isInvestment):allExp.filter(e=>!e.loanId&&!e.isInvestment);
     return filtered.filter(e=>!isExcludedBiz(e)).reduce((s,e)=>s+e.amount,0);
   }));
@@ -2762,8 +2769,7 @@ async function renderTrendChart(){
   const cat=CATS.find(c=>c.id===trendCatId);
   const vals=await Promise.all(months.map(async mo=>{
     if(mo===curMonth)return expenses.filter(e=>e.cat===trendCatId).reduce((s,e)=>s+e.amount,0);
-    const snap=await getDocs(query(collection(db,up('expenses')),where('month','==',mo),where('cat','==',trendCatId)));
-    return snap.docs.reduce((s,d)=>s+d.data().amount,0);
+    return (await getMonthExpenses(mo)).filter(e=>e.cat===trendCatId).reduce((s,e)=>s+(e.amount||0),0);
   }));
   const labels=months.map(mo=>{const[,mm]=mo.split('-');return parseInt(mm)+'월';});
 
@@ -2814,8 +2820,7 @@ async function renderPayTrendChart(){
   const pay=payMethods.find(p=>p.id===trendPayId);
   const vals=await Promise.all(months.map(async mo=>{
     if(mo===curMonth)return expenses.filter(e=>e.payId===trendPayId).reduce((s,e)=>s+e.amount,0);
-    const snap=await getDocs(query(collection(db,up('expenses')),where('month','==',mo),where('payId','==',trendPayId)));
-    return snap.docs.reduce((s,d)=>s+d.data().amount,0);
+    return (await getMonthExpenses(mo)).filter(e=>e.payId===trendPayId).reduce((s,e)=>s+(e.amount||0),0);
   }));
 
   // 전월 대비 증감 계산
@@ -2858,13 +2863,13 @@ function renderCatManage(){
     div.innerHTML=`
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
         <div class="emoji-box" style="background:${cat.color}22;flex-shrink:0" onclick="openEmojiPicker(${i})">${cat.emoji}</div>
-        <input class="cat-name-inp" value="${esc(cat.name)}" oninput="CATS[${i}].name=this.value;" style="flex:1">
+        <input class="cat-name-inp" data-ci="${i}" data-field="name" value="${esc(cat.name)}" oninput="CATS[${i}].name=this.value;" style="flex:1">
         <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--text3);cursor:pointer;white-space:nowrap;flex-shrink:0">
-          <input type="checkbox" ${cat.isFixed?'checked':''} onchange="CATS[${i}].isFixed=this.checked" style="width:11px;height:11px;accent-color:#ffb347">
+          <input type="checkbox" data-ci="${i}" data-field="isFixed" ${cat.isFixed?'checked':''} onchange="CATS[${i}].isFixed=this.checked" style="width:11px;height:11px;accent-color:#ffb347">
           고정비
         </label>
         <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--text3);cursor:pointer;white-space:nowrap;flex-shrink:0" title="개인 가계와 분리되는 사업/매장 비용">
-          <input type="checkbox" ${cat.isBusiness?'checked':''} onchange="CATS[${i}].isBusiness=this.checked" style="width:11px;height:11px;accent-color:#fb923c">
+          <input type="checkbox" data-ci="${i}" data-field="isBusiness" ${cat.isBusiness?'checked':''} onchange="CATS[${i}].isBusiness=this.checked" style="width:11px;height:11px;accent-color:#fb923c">
           사업
         </label>
         <div class="color-dot-btn" style="background:${cat.color}" onclick="openColorPicker(${i})"></div>
@@ -2879,10 +2884,10 @@ function renderCatManage(){
       row.style.cssText='display:flex;align-items:center;gap:5px;margin-bottom:5px';
       row.innerHTML=`
         <span style="font-size:11px;color:var(--text3);width:10px">└</span>
-        <input value="${esc(sub.name)}" oninput="CATS[${i}].subs[${j}].name=this.value"
+        <input data-ci="${i}" data-si="${j}" data-field="name" value="${esc(sub.name)}" oninput="CATS[${i}].subs[${j}].name=this.value"
           style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-size:11px;outline:none">
         <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--text3);cursor:pointer;white-space:nowrap;flex-shrink:0">
-          <input type="checkbox" ${sub.isFixed?'checked':''} onchange="CATS[${i}].subs[${j}].isFixed=this.checked" style="width:11px;height:11px;accent-color:#ffb347">
+          <input type="checkbox" data-ci="${i}" data-si="${j}" data-field="isFixed" ${sub.isFixed?'checked':''} onchange="CATS[${i}].subs[${j}].isFixed=this.checked" style="width:11px;height:11px;accent-color:#ffb347">
           고정비
         </label>
         <button onclick="deleteSubCat(${i},${j})" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px">✕</button>`;
@@ -2894,29 +2899,15 @@ window.deleteSubCat=function(i,j){
   CATS[i].subs.splice(j,1);
   renderCatManage();
 };
-// 현재 카테고리 입력창 값을 CATS에 반영하는 공통 함수
+// 카테고리 관리 입력값을 CATS에 반영 — data-* 속성 기반(정규식 파싱 제거)
 function syncCatInputs(){
-  document.querySelectorAll('.cat-name-inp').forEach((inp,i)=>{
-    if(CATS[i])CATS[i].name=inp.value.trim()||CATS[i].name;
-  });
-  document.querySelectorAll('#cat-manage-list input[oninput]').forEach(inp=>{
-    const attr=inp.getAttribute('oninput')||'';
-    const m=attr.match(/CATS\[(\d+)\]\.subs\[(\d+)\]\.name=this\.value/);
-    if(m){
-      const i=parseInt(m[1]),j=parseInt(m[2]);
-      if(CATS[i]?.subs?.[j])CATS[i].subs[j].name=inp.value.trim()||CATS[i].subs[j].name;
-    }
-  });
-  // isFixed 체크박스도 반영
-  document.querySelectorAll('#cat-manage-list input[type="checkbox"]').forEach(cb=>{
-    const attr=cb.getAttribute('onchange')||'';
-    const m1=attr.match(/CATS\[(\d+)\]\.isFixed=this\.checked/);
-    const m2=attr.match(/CATS\[(\d+)\]\.subs\[(\d+)\]\.isFixed=this\.checked/);
-    if(m1)CATS[parseInt(m1[1])].isFixed=cb.checked;
-    if(m2&&CATS[parseInt(m2[1])]?.subs?.[parseInt(m2[2])])
-      CATS[parseInt(m2[1])].subs[parseInt(m2[2])].isFixed=cb.checked;
-    const m3=attr.match(/CATS\[(\d+)\]\.isBusiness=this\.checked/);
-    if(m3)CATS[parseInt(m3[1])].isBusiness=cb.checked;
+  document.querySelectorAll('#cat-manage-list [data-ci][data-field]').forEach(el=>{
+    const ci=parseInt(el.dataset.ci);
+    const target=el.dataset.si!==undefined?CATS[ci]?.subs?.[parseInt(el.dataset.si)]:CATS[ci];
+    if(!target)return;
+    const field=el.dataset.field;
+    if(el.type==='checkbox')target[field]=el.checked;
+    else target[field]=el.value.trim()||target[field]; // 이름을 비우면 기존값 유지
   });
 }
 window.addCategory=function(){
