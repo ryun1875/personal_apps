@@ -932,6 +932,8 @@ let compareRange=6;
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const fmt=n=>Number(n).toLocaleString('ko-KR')+'원';
 const up=p=>`users/${curUser.uid}/${p}`;
+// HTML 이스케이프 (innerHTML에 넣는 사용자 텍스트용 — 텍스트·속성값 겸용)
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // ── 사업비(매장 등) 분리 ──────────────────────────────────
 // 전체 보기 여부 (false=개인만, true=사업 포함)
@@ -1325,11 +1327,12 @@ window.addLoanPaymentFromInput=async function(){
   const btn=document.getElementById('btn-add-loan-pay');
   btn.disabled=true;btn.textContent='저장 중...';
   try{
+    const pairId=uid(); // loanPayments↔expenses 짝 연결(삭제 시 양쪽 제거용)
     // loanPayments에 저장 (isInterestOnly 플래그)
     await setDoc(doc(db,up('loanPayments'),uid()),{
       loanId,amount,date,desc,broker,payType,
       isInterestOnly:payType==='interest',
-      createdAt:Date.now()
+      pairId,createdAt:Date.now()
     });
     // expenses에도 저장
     await setDoc(doc(db,up('expenses'),uid()),{
@@ -1339,7 +1342,7 @@ window.addLoanPaymentFromInput=async function(){
       loanId,broker,
       isLoanPayment:true,
       isInterestOnly:payType==='interest',
-      payType
+      payType,pairId
     });
     document.getElementById('loan-pay-desc-inp').value='';
     document.getElementById('loan-pay-amount-inp').value='';
@@ -1347,7 +1350,7 @@ window.addLoanPaymentFromInput=async function(){
     updateLoanPayInfo();
     showToast(`🏦 ${loan?.name||'대출'} ${typeLabel} 납입됐어요 ✓`,'success');
     if(document.getElementById('panel-home').classList.contains('active'))renderHome();
-  }catch(e){showToast('저장 실패','error');}
+  }catch(e){console.error(e);showToast('저장 실패','error');}
   finally{btn.disabled=false;btn.textContent='+ 상환 입력';}
 };
 
@@ -1378,7 +1381,7 @@ window.addInvestmentFromInput=async function(){
     document.getElementById('inv-broker-inp').value='';
     showToast(`📈 ${name} 투자가 추가됐어요 ✓`,'success');
     if(document.getElementById('panel-home').classList.contains('active'))renderHome();
-  }catch(e){showToast('저장 실패','error');}
+  }catch(e){console.error(e);showToast('저장 실패','error');}
   finally{btn.disabled=false;btn.textContent='+ 투자 추가';}
 };
 
@@ -1496,8 +1499,9 @@ window.setCalcSrc=function(src){
 
 function getCalcAmount(){
   const cs=getCalcSettings();
-  const tS=expenses.reduce((s,e)=>s+e.amount,0);
-  const tB=Object.values(budgets).reduce((s,v)=>s+(Number(v)||0),0);
+  const tS=expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment&&!isExcludedBiz(e)).reduce((s,e)=>s+e.amount,0);
+  const bizKeys=bizBudgetKeys();
+  const tB=Object.entries(budgets).reduce((s,[k,v])=>(!inclBiz&&bizKeys.has(k))?s:s+(Number(v)||0),0);
   const savedAmt=tB>tS?tB-tS:0;
   if(cs.src==='manual')return Math.round(Number(document.getElementById('calc-amount')?.value))||cs.manualAmt||0;
   return savedAmt;
@@ -1920,7 +1924,7 @@ function renderList(){
       div.innerHTML=`
         <div class="cat-dot" style="background:rgba(107,181,255,.15)">🏦</div>
         <div class="exp-info">
-          <div class="exp-desc">${e.desc||loan?.name||'대출상환'}
+          <div class="exp-desc">${esc(e.desc||loan?.name||'대출상환')}
             <span style="font-size:9px;color:${e.isInterestOnly?'#ffb347':'var(--accent3)'};background:${e.isInterestOnly?'rgba(255,179,71,.15)':'rgba(107,181,255,.15)'};padding:2px 5px;border-radius:99px">${e.isInterestOnly?'이자':'원금'}</span>
           </div>
           <div class="exp-meta">${e.date}${loan?` · ${loan.name}`:''}</div>
@@ -2004,7 +2008,7 @@ function renderList(){
         <div style="display:flex;align-items:center;gap:10px">
           <div class="cat-dot" style="background:${cat.color}22;font-size:18px">${cat.emoji}</div>
           <div style="flex:1">
-            <div class="exp-desc">${first.desc||cat.name}
+            <div class="exp-desc">${esc(first.desc||cat.name)}
               ${subCatObj?`<span style="font-size:9px;color:var(--text3);background:var(--surface2);padding:1px 5px;border-radius:99px">${subCatObj.name}</span>`:''}
               ${isDone?'<span style="font-size:9px;background:rgba(200,240,74,.15);color:var(--accent);padding:2px 5px;border-radius:99px">✅ 완납</span>':''}
               ${first.excludeStats?'<span style="font-size:9px;background:rgba(148,163,184,.15);color:var(--text3);padding:2px 5px;border-radius:99px;border:1px solid var(--border)">실적제외</span>':''}
@@ -2040,7 +2044,7 @@ function renderList(){
       div.innerHTML=`
         <div class="cat-dot" style="background:${color}22;color:${color};font-size:11px;font-weight:700">${inv.type||'투자'}</div>
         <div class="exp-info">
-          <div class="exp-desc">${inv.name}${inv.broker?` <span style="font-size:9px;color:var(--text3);background:var(--surface2);padding:1px 5px;border-radius:99px">${inv.broker}</span>`:''}</div>
+          <div class="exp-desc">${esc(inv.name)}${inv.broker?` <span style="font-size:9px;color:var(--text3);background:var(--surface2);padding:1px 5px;border-radius:99px">${esc(inv.broker)}</span>`:''}</div>
           <div class="exp-meta">${inv.date||''} · ${inv.type||''}</div>
         </div>
         <div class="exp-amt" style="color:${color}">-${fmt(inv.amount)}</div>
@@ -2084,7 +2088,7 @@ function renderList(){
     div.innerHTML=`
       <div class="cat-dot" style="background:${cat.color}22">${cat.emoji}</div>
       <div class="exp-info">
-        <div class="exp-desc">${e.desc||cat.name} ${ib}${rb}${pb}${lb}${subCatBadge}${excB}</div>
+        <div class="exp-desc">${esc(e.desc||cat.name)} ${ib}${rb}${pb}${lb}${subCatBadge}${excB}</div>
         <div class="exp-meta">${e.date} · ${cat.name}${subCatObj?' > '+subCatObj.name:''}</div>
       </div>
       <div class="exp-amt">-${fmt(e.amount)}</div>
@@ -2151,7 +2155,7 @@ function openCalModal(ds,day){
     items.forEach(e=>{
       const cat=CATS.find(c=>c.id===e.cat)||CATS[CATS.length-1];
       const div=document.createElement('div');div.className='expense-item';div.style.marginBottom='7px';
-      div.innerHTML=`<div class="cat-dot" style="background:${cat.color}22">${cat.emoji}</div><div class="exp-info"><div class="exp-desc">${e.desc||cat.name}</div><div class="exp-meta">${cat.name}</div></div><div class="exp-amt">-${fmt(e.amount)}</div>`;
+      div.innerHTML=`<div class="cat-dot" style="background:${cat.color}22">${cat.emoji}</div><div class="exp-info"><div class="exp-desc">${esc(e.desc||cat.name)}</div><div class="exp-meta">${esc(cat.name)}</div></div><div class="exp-amt">-${fmt(e.amount)}</div>`;
       list.appendChild(div);
     });
     const tot=document.createElement('div');
@@ -2192,7 +2196,7 @@ function renderBudget(){
     // 고정 항목 행들 HTML
     const fiRows=(meta.fixedItems||[]).map((fi,i)=>`
       <div class="fixed-item">
-        <input class="fi-name" type="text" placeholder="항목명 (예: 넷플릭스)" value="${fi.name||''}"
+        <input class="fi-name" type="text" placeholder="항목명 (예: 넷플릭스)" value="${esc(fi.name)}"
           onblur="updateFixedItem('${cat.id}',${i},'name',this.value)">
         <input class="fi-amt" type="number" placeholder="0" value="${fi.amt||''}"
           onblur="updateFixedItem('${cat.id}',${i},'amt',this.value)">
@@ -2271,7 +2275,7 @@ function renderBudget(){
         <button class="btn-add-fixed" onclick="addFixedItem('${cat.id}')">+ 예상 지출 추가</button>
         <div class="memo-label">📝 메모</div>
         <textarea class="budget-memo" placeholder="예산 배정 이유, 참고 지수 등 자유롭게 메모하세요"
-          onblur="updateMemo('${cat.id}',this.value)">${meta.memo||''}</textarea>
+          onblur="updateMemo('${cat.id}',this.value)">${esc(meta.memo)}</textarea>
       </div>`;
     le.appendChild(div);
 
@@ -2310,7 +2314,7 @@ function refreshFixedItems(catId){
   const meta=budgetMeta[catId]||{fixedItems:[],memo:''};
   fiEl.innerHTML=(meta.fixedItems||[]).map((fi,i)=>`
     <div class="fixed-item">
-      <input class="fi-name" type="text" placeholder="항목명 (예: 넷플릭스)" value="${fi.name||''}"
+      <input class="fi-name" type="text" placeholder="항목명 (예: 넷플릭스)" value="${esc(fi.name)}"
         onblur="updateFixedItem('${catId}',${i},'name',this.value)">
       <input class="fi-amt" type="number" placeholder="0" value="${fi.amt||''}"
         onblur="updateFixedItem('${catId}',${i},'amt',this.value)">
@@ -2455,10 +2459,12 @@ window.applyClawback=function(catId,total){
     setSyncStatus('syncing');
     try{
       for(const p of plan){await addCarryOverToMonth(p.mo,catId,p.add);}
+      // 이중 적용 방지: 적용한 초과분은 비워서 버튼이 사라지게
+      if(prevOverspend)prevOverspend[catId]=0;
       setSyncStatus('online');
       showToast(`${plan.length}개월 분할 차감 적용됐어요 ✓`,'success');
       renderBudget();
-    }catch(e){setSyncStatus('offline');showToast('적용 실패','error');}
+    }catch(e){console.error(e);setSyncStatus('offline');showToast('적용 실패','error');}
   },'분할 적용','#378ADD');
 };
 
@@ -2790,7 +2796,7 @@ function renderCatManage(){
     div.innerHTML=`
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
         <div class="emoji-box" style="background:${cat.color}22;flex-shrink:0" onclick="openEmojiPicker(${i})">${cat.emoji}</div>
-        <input class="cat-name-inp" value="${cat.name}" oninput="CATS[${i}].name=this.value;" style="flex:1">
+        <input class="cat-name-inp" value="${esc(cat.name)}" oninput="CATS[${i}].name=this.value;" style="flex:1">
         <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--text3);cursor:pointer;white-space:nowrap;flex-shrink:0">
           <input type="checkbox" ${cat.isFixed?'checked':''} onchange="CATS[${i}].isFixed=this.checked" style="width:11px;height:11px;accent-color:#ffb347">
           고정비
@@ -2811,7 +2817,7 @@ function renderCatManage(){
       row.style.cssText='display:flex;align-items:center;gap:5px;margin-bottom:5px';
       row.innerHTML=`
         <span style="font-size:11px;color:var(--text3);width:10px">└</span>
-        <input value="${sub.name}" oninput="CATS[${i}].subs[${j}].name=this.value"
+        <input value="${esc(sub.name)}" oninput="CATS[${i}].subs[${j}].name=this.value"
           style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;color:var(--text);font-size:11px;outline:none">
         <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--text3);cursor:pointer;white-space:nowrap;flex-shrink:0">
           <input type="checkbox" ${sub.isFixed?'checked':''} onchange="CATS[${i}].subs[${j}].isFixed=this.checked" style="width:11px;height:11px;accent-color:#ffb347">
@@ -2879,7 +2885,7 @@ window.saveCats=async function(){
     renderBudget();
     renderList();
     showToast('카테고리가 저장됐어요 ✓','success');
-  }catch(e){setSyncStatus('offline');showToast('저장 실패: '+e.message,'error');}
+  }catch(e){console.error(e);setSyncStatus(offline);showToast('저장 실패: '+e.message,'error');}
   finally{setTimeout(()=>{catSaving=false;},1000);}
 };
 window.openEmojiPicker=function(i){
@@ -2912,13 +2918,13 @@ window.addRecurring=async function(){
     document.getElementById('rec-desc').value='';
     document.getElementById('rec-amount').value='';
     showToast('정기 지출이 추가됐어요 ✓','success');
-  }catch(e){showToast('저장 실패','error');}
+  }catch(e){console.error(e);showToast('저장 실패','error');}
 };
 window.deleteRecurring=async function(id){
   const r=recurring.find(x=>x.id===id);
   showConfirm(`"${r?.desc||'정기 지출'}" (${fmt(r?.amount||0)})을 삭제할까요?`,async()=>{
     try{await deleteDoc(doc(db,up('recurring'),id));showToast('삭제됐어요','');}
-    catch(e){showToast('삭제 실패','error');}
+    catch(e){console.error(e);showToast('삭제 실패','error');}
   });
 };
 window.applyRecurring=async function(silent=false){
@@ -2937,7 +2943,7 @@ window.applyRecurring=async function(silent=false){
     await batch.commit();
     if(!silent)showToast(`${count}개 정기 지출이 추가됐어요 ✓`,'success');
     else showToast(`🔄 ${count}개 정기 지출이 자동 적용됐어요`,'success');
-  }catch(e){showToast('적용 실패','error');}
+  }catch(e){console.error(e);showToast('적용 실패','error');}
 };
 
 // ── 지출 수정 ─────────────────────────────────────────────
@@ -2970,7 +2976,7 @@ window.saveEdit=async function(){
   try{
     await updateDoc(doc(db,up('expenses'),editId),{date,cat,subCat,desc,amount,month:date.slice(0,7),payId,excludeStats,tag});
     closeModal('edit-modal');editId=null;showToast('수정됐어요 ✓','success');
-  }catch(e){showToast('수정 실패','error');}
+  }catch(e){console.error(e);showToast('수정 실패','error');}
 };
 
 // ── 액션 ──────────────────────────────────────────────────
@@ -3023,16 +3029,32 @@ window.addExpense=async function(){
     }
     document.getElementById('inp-desc').value='';document.getElementById('inp-amount').value='';
     const excl=document.getElementById('inp-exclude-stats');if(excl)excl.checked=false;
-  }catch(e){showToast('저장 실패','error');setSyncStatus('offline');}
+  }catch(e){console.error(e);showToast('저장 실패','error');setSyncStatus('offline');}
   finally{btn.disabled=false;btn.textContent='+ 지출 추가';}
 };
 
+// 대출납입 짝(loanPayments↔expenses) 문서 ref 찾기 (pairId 우선, 레거시는 loanId+금액+날짜)
+async function findLoanPairRefs(coll,src){
+  if(!src)return [];
+  if(src.pairId){
+    const s=await getDocs(query(collection(db,up(coll)),where('pairId','==',src.pairId)));
+    if(s.size)return s.docs.map(d=>d.ref);
+  }
+  if(!src.loanId)return [];
+  const s=await getDocs(query(collection(db,up(coll)),where('loanId','==',src.loanId)));
+  return s.docs.filter(d=>{const x=d.data();return x.amount===src.amount&&x.date===src.date&&(coll!=='expenses'||x.isLoanPayment);}).map(d=>d.ref);
+}
 window.deleteExpense=async function(id){
   const e=expenses.find(x=>x.id===id);
   const label=e?`"${e.desc||'지출 항목'}" (${fmt(e.amount)})`:'이 지출';
   showConfirm(`${label}을 삭제할까요?`,async()=>{
-    try{await deleteDoc(doc(db,up('expenses'),id));showToast('삭제됐어요','');}
-    catch(e){showToast('삭제 실패','error');}
+    try{
+      const batch=writeBatch(db);
+      batch.delete(doc(db,up('expenses'),id));
+      // 대출납입 mirror면 짝 loanPayments도 함께 삭제
+      if(e&&e.isLoanPayment){(await findLoanPairRefs('loanPayments',e)).forEach(r=>batch.delete(r));}
+      await batch.commit();showToast('삭제됐어요','');
+    }catch(err){console.error(err);showToast('삭제 실패','error');}
   });
 };
 window.deleteGroup=async function(gid){
@@ -3154,7 +3176,7 @@ function renderPayManageList(){
     div.innerHTML=`
       <span class="drag-handle" title="드래그해서 순서 변경">⠿</span>
       <div class="pay-emoji-box" style="background:${p.color||'#6bb5ff'}22" onclick="openPayEmojiPickerLocal(${i})">${p.emoji||'💳'}</div>
-      <input class="pay-name-inp" type="text" value="${p.name||''}" placeholder="카드/계좌 이름"
+      <input class="pay-name-inp" type="text" value="${esc(p.name)}" placeholder="카드/계좌 이름"
         oninput="payMethodsLocal[${i}].name=this.value">
       <input class="pay-goal-inp" type="number" value="${p.goal||''}" placeholder="실적목표"
         oninput="payMethodsLocal[${i}].goal=parseInt(this.value)||0" title="월 실적 목표금액">
@@ -3234,7 +3256,7 @@ window.savePayMethods=async function(){
     await batch.commit();
     setSyncStatus('online');
     showToast('결제수단이 저장됐어요 ✓','success');
-  }catch(e){setSyncStatus('offline');showToast('저장 실패: '+e.message,'error');}
+  }catch(e){console.error(e);setSyncStatus(offline);showToast('저장 실패: '+e.message,'error');}
 };
 
 // ── 자산 탭 ───────────────────────────────────────────────
@@ -3590,8 +3612,9 @@ async function renderAsset(){
 function updateHomeSavingHint(){
   const el=document.getElementById('saving-hint');
   if(!el)return;
-  const tS=expenses.reduce((s,e)=>s+e.amount,0);
-  const tB=Object.values(budgets).reduce((s,v)=>s+(Number(v)||0),0);
+  const tS=expenses.filter(e=>!e.isLoanPayment&&!e.loanId&&!e.isInvestment&&!isExcludedBiz(e)).reduce((s,e)=>s+e.amount,0);
+  const bizKeys=bizBudgetKeys();
+  const tB=Object.entries(budgets).reduce((s,[k,v])=>(!inclBiz&&bizKeys.has(k))?s:s+(Number(v)||0),0);
   const saved=tB>tS?tB-tS:0;
   if(saved>0&&tB>0){
     el.style.display='block';
@@ -3623,13 +3646,13 @@ window.addInvestment=async function(){
     document.getElementById('inv-amount').value='';
     if(document.getElementById('inv-broker-asset'))document.getElementById('inv-broker-asset').value='';
     showToast('투자 내역이 추가됐어요 ✓','success');
-  }catch(e){showToast('저장 실패','error');}
+  }catch(e){console.error(e);showToast('저장 실패','error');}
 };
 window.deleteInvestment=async function(id){
   const inv=investments.find(x=>x.id===id);
   showConfirm(`"${inv?.name||'투자 항목'}" (${fmt(inv?.amount||0)})을 삭제할까요?`,async()=>{
     try{await deleteDoc(doc(db,up('investments'),id));showToast('삭제됐어요','');}
-    catch(e){showToast('삭제 실패','error');}
+    catch(e){console.error(e);showToast('삭제 실패','error');}
   });
 };
 
@@ -3654,7 +3677,7 @@ window.addLoan=async function(){
     document.getElementById('loan-principal').value='';
     document.getElementById('loan-maturity').value='';
     showToast('대출이 등록됐어요 ✓','success');
-  }catch(e){showToast('저장 실패','error');}
+  }catch(e){console.error(e);showToast('저장 실패','error');}
 };
 window.deleteLoan=async function(id){
   const loan=loans.find(l=>l.id===id);
@@ -3665,7 +3688,7 @@ window.deleteLoan=async function(id){
       const batch=writeBatch(db);snap.docs.forEach(d=>batch.delete(d.ref));
       await batch.commit();
       showToast('삭제됐어요','');
-    }catch(e){showToast('삭제 실패','error');}
+    }catch(e){console.error(e);showToast('삭제 실패','error');}
   });
 };
 window.addLoanPayment=async function(loanId){
@@ -3675,22 +3698,28 @@ window.addLoanPayment=async function(loanId){
   if(!amount){showToast('납입금액을 입력해주세요','warning');return;}
   const loan=loans.find(l=>l.id===loanId);
   try{
-    await setDoc(doc(db,up('loanPayments'),uid()),{loanId,amount,date,broker,createdAt:Date.now()});
+    const pairId=uid();
+    await setDoc(doc(db,up('loanPayments'),uid()),{loanId,amount,date,broker,pairId,createdAt:Date.now()});
     await setDoc(doc(db,up('expenses'),uid()),{
       date,cat:'etc',desc:loan?.name||'대출상환',
       amount,month:(date||curMonth).slice(0,7),
-      loanId,broker,isLoanPayment:true
+      loanId,broker,isLoanPayment:true,pairId
     });
     document.getElementById(`lp-amount-${loanId}`).value='';
     if(document.getElementById(`lp-broker-${loanId}`))document.getElementById(`lp-broker-${loanId}`).value='';
     showToast('납입 기록이 추가됐어요 ✓','success');
-  }catch(e){showToast('저장 실패','error');}
+  }catch(e){console.error(e);showToast('저장 실패','error');}
 };
 window.deleteLoanPayment=async function(id){
   const p=loanPayments.find(x=>x.id===id);
   showConfirm(`납입 기록 (${fmt(p?.amount||0)})을 삭제할까요?`,async()=>{
-    try{await deleteDoc(doc(db,up('loanPayments'),id));showToast('삭제됐어요','');}
-    catch(e){showToast('삭제 실패','error');}
+    try{
+      const batch=writeBatch(db);
+      batch.delete(doc(db,up('loanPayments'),id));
+      // 짝 expenses(mirror)도 함께 삭제
+      (await findLoanPairRefs('expenses',p)).forEach(r=>batch.delete(r));
+      await batch.commit();showToast('삭제됐어요','');
+    }catch(e){console.error(e);showToast('삭제 실패','error');}
   });
 };
 
@@ -3725,7 +3754,7 @@ window.saveLoanEdit=async function(){
   try{
     await updateDoc(doc(db,up('loans'),editLoanId),{name,rate,principal,start,maturity,term});
     closeModal('loan-edit-modal');editLoanId=null;showToast('수정됐어요 ✓','success');
-  }catch(e){showToast('수정 실패','error');}
+  }catch(e){console.error(e);showToast('수정 실패','error');}
 };
 
 // 투자 수정
@@ -3750,7 +3779,7 @@ window.saveInvEdit=async function(){
   try{
     await updateDoc(doc(db,up('investments'),editInvId),{name,type,amount,date,broker});
     closeModal('inv-edit-modal');editInvId=null;showToast('수정됐어요 ✓','success');
-  }catch(e){showToast('수정 실패','error');}
+  }catch(e){console.error(e);showToast('수정 실패','error');}
 };
 
 // 포트폴리오 종목 수정
@@ -3793,7 +3822,7 @@ window.savePortEdit=async function(){
   try{
     await updateDoc(doc(db,up('portfolio'),editPortId),{name,symbol,market,catId,qty,buyPrice,currentPrice,broker,rate,maturity});
     closeModal('port-edit-modal');editPortId=null;showToast('수정됐어요 ✓','success');
-  }catch(e){showToast('수정 실패','error');}
+  }catch(e){console.error(e);showToast('수정 실패','error');}
 };
 
 // 마이너스통장 CRUD
@@ -3811,7 +3840,7 @@ window.addMinusAccount=async function(){
       const el=document.getElementById(id);if(el)el.value='';
     });
     showToast('마이너스통장이 추가됐어요 ✓','success');
-  }catch(e){showToast('저장 실패','error');}
+  }catch(e){console.error(e);showToast('저장 실패','error');}
 };
 window.openMinusEdit=function(id){
   const m=minusAccounts.find(x=>x.id===id);if(!m)return;
@@ -3833,13 +3862,13 @@ window.saveMinusEdit=async function(){
   try{
     await updateDoc(doc(db,up('minusAccounts'),editMinusId),{name,rate,limit,used,bank});
     closeModal('minus-edit-modal');editMinusId=null;showToast('수정됐어요 ✓','success');
-  }catch(e){showToast('수정 실패','error');}
+  }catch(e){console.error(e);showToast('수정 실패','error');}
 };
 window.deleteMinusAccount=async function(id){
   const m=minusAccounts.find(x=>x.id===id);
   showConfirm(`"${m?.name||'마이너스통장'}"을 삭제할까요?`,async()=>{
     try{await deleteDoc(doc(db,up('minusAccounts'),id));showToast('삭제됐어요','');}
-    catch(e){showToast('삭제 실패','error');}
+    catch(e){console.error(e);showToast('삭제 실패','error');}
   });
 };
 // 할부 그룹 수정
@@ -3920,7 +3949,7 @@ window.saveInstEdit=async function(){
     setSyncStatus('online');
     showToast('할부 전체가 수정됐어요 ✓','success');
     renderList();
-  }catch(e){setSyncStatus('offline');showToast('수정 실패','error');}
+  }catch(e){console.error(e);setSyncStatus(offline);showToast('수정 실패','error');}
 };
 
 async function renderBackup(){
@@ -4038,14 +4067,14 @@ window.cleanupAmounts=async function(){
       setSyncStatus('online');
       showToast(fixed>0?`${fixed}개 항목이 정리됐어요 ✓`:'오류 항목이 없어요 ✅','success');
       renderBackup();
-    }catch(e){setSyncStatus('offline');showToast('정리 실패: '+e.message,'error');}
+    }catch(e){console.error(e);setSyncStatus(offline);showToast('정리 실패: '+e.message,'error');}
   });
 };
 window.createBackup=async function(isAuto=false){
   setSyncStatus('syncing');
   try{
     // 모든 데이터 수집
-    const [expSnap,invSnap,loanSnap,lpSnap,budgetSnap,catSnap,recSnap,paySnap]=await Promise.all([
+    const [expSnap,invSnap,loanSnap,lpSnap,budgetSnap,catSnap,recSnap,paySnap,portSnap,portSetSnap,minusSnap]=await Promise.all([
       getDocs(collection(db,up('expenses'))),
       getDocs(collection(db,up('investments'))),
       getDocs(collection(db,up('loans'))),
@@ -4054,6 +4083,9 @@ window.createBackup=async function(isAuto=false){
       getDocs(collection(db,up('settings'))),
       getDocs(collection(db,up('recurring'))),
       getDocs(collection(db,up('payMethods'))),
+      getDocs(collection(db,up('portfolio'))),
+      getDocs(collection(db,up('portSettings'))),
+      getDocs(collection(db,up('minusAccounts'))),
     ]);
     const backupData={
       createdAt:Date.now(),
@@ -4069,6 +4101,9 @@ window.createBackup=async function(isAuto=false){
       settings:catSnap.docs.map(d=>({id:d.id,...d.data()})),
       recurring:recSnap.docs.map(d=>({id:d.id,...d.data()})),
       payMethods:paySnap.docs.map(d=>({id:d.id,...d.data()})),
+      portfolio:portSnap.docs.map(d=>({id:d.id,...d.data()})),
+      portSettings:portSetSnap.docs.map(d=>({id:d.id,...d.data()})),
+      minusAccounts:minusSnap.docs.map(d=>({id:d.id,...d.data()})),
     };
     const backupId=`${isAuto?'auto':'manual'}_${Date.now()}`;
     await setDoc(doc(db,up('backups'),backupId),backupData);
@@ -4089,8 +4124,12 @@ window.restoreBackup=async function(backupId){
       const backup=snap.docs.find(d=>d.id===backupId)?.data();
       if(!backup){showToast('백업 데이터를 찾을 수 없어요','error');return;}
 
+      // 복구 전 현재 상태를 자동 스냅샷(되돌릴 안전장치)
+      await createBackup(true);
+      setSyncStatus('syncing');
+
       // 현재 데이터 삭제 후 복구
-      const collections=['expenses','investments','loans','loanPayments','recurring','payMethods'];
+      const collections=['expenses','investments','loans','loanPayments','recurring','payMethods','portfolio','portSettings','minusAccounts'];
       for(const col of collections){
         const s=await getDocs(collection(db,up(col)));
         if(s.size){
@@ -4107,6 +4146,9 @@ window.restoreBackup=async function(backupId){
         loanPayments:backup.loanPayments||[],
         recurring:backup.recurring||[],
         payMethods:backup.payMethods||[],
+        portfolio:backup.portfolio||[],
+        portSettings:backup.portSettings||[],
+        minusAccounts:backup.minusAccounts||[],
       };
       for(const [col,items] of Object.entries(dataMap)){
         if(!items.length)continue;
@@ -4144,7 +4186,7 @@ window.deleteBackup=async function(id){
       await deleteDoc(doc(db,up('backups'),id));
       showToast('백업이 삭제됐어요','');
       renderBackup();
-    }catch(e){showToast('삭제 실패','error');}
+    }catch(e){console.error(e);showToast('삭제 실패','error');}
   });
 };
 
@@ -4467,7 +4509,7 @@ window.savePortCats=async function(){
     setSyncStatus('online');
     showToast('카테고리가 저장됐어요 ✓','success');
     renderPortfolio();
-  }catch(e){setSyncStatus('offline');showToast('저장 실패','error');}
+  }catch(e){console.error(e);setSyncStatus(offline);showToast('저장 실패','error');}
 };
 
 window.addPortItem=async function(){
@@ -4499,14 +4541,14 @@ window.addPortItem=async function(){
     });
     showToast(`${name} 종목이 추가됐어요 ✓`,'success');
     setSyncStatus('online');
-  }catch(e){showToast('저장 실패','error');setSyncStatus('offline');}
+  }catch(e){console.error(e);showToast('저장 실패','error');setSyncStatus('offline');}
 };
 
 window.deletePortItem=async function(id){
   const p=portfolio.find(x=>x.id===id);
   showConfirm(`"${p?.name||'종목'}"을 포트폴리오에서 삭제할까요?`,async()=>{
     try{await deleteDoc(doc(db,up('portfolio'),id));showToast('삭제됐어요','');}
-    catch(e){showToast('삭제 실패','error');}
+    catch(e){console.error(e);showToast('삭제 실패','error');}
   });
 };
 
