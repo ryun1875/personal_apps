@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0f0f13">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="출퇴근기록">
 <title>출퇴근 기록부</title>
@@ -1089,6 +1092,10 @@ body {
     <div class="settings-row"><span class="lbl">권한</span><span style="font-size:12px;color:var(--text3)" id="settingsRole">-</span></div>
   </div>
   <button class="btn-logout" id="logoutBtn">로그아웃</button>
+  <div style="text-align:center;margin-top:18px">
+    <button id="forceRefreshBtn" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 16px;font-size:12px;color:var(--text2);cursor:pointer">🔄 최신 버전으로 새로고침</button>
+    <div style="font-size:11px;color:var(--text3);margin-top:8px" id="appVersionLabel">버전 -</div>
+  </div>
 </div>
 
 <!-- 직원 정보 수정 모달 -->
@@ -1112,8 +1119,9 @@ body {
     <div class="modal-handle"></div>
     <h3>🔗 직원 계정 연결</h3>
     <div style="background:var(--surface2);border-radius:10px;padding:12px;margin-bottom:14px;font-size:12px;color:var(--text2);line-height:1.7">
-      Firebase → Authentication 탭에서<br>직원 이메일 옆의 <b>UID</b>를 복사해서 입력해주세요.<br>
-      임시 기록이 실제 계정으로 이전돼요.
+      직원이 이 이메일로 <b>한 번 로그인</b>하면 UID가 자동으로 채워져요.<br>
+      비어 있으면 직원에게 먼저 로그인을 요청하세요.<br>
+      연결하면 임시 기록이 실제 계정으로 이전돼요.
     </div>
     <div class="form-group"><label>사전등록 직원</label><input type="text" id="linkStaffName" readonly style="opacity:.6"></div>
     <div class="form-group"><label>직원 실제 UID</label><input type="text" id="linkStaffUid" placeholder="Firebase Authentication의 UID"></div>
@@ -1251,6 +1259,18 @@ function setSyncStatus(status, text) {
 lightMode = localStorage.getItem('lightMode') === 'true';
 applyTheme();
 
+// ── 앱 버전 표시 + 캐시 강제 새로고침 ──
+const APP_VERSION = '2026.07.05';
+(() => {
+  const lbl = document.getElementById('appVersionLabel');
+  if (lbl) lbl.textContent = `버전 ${APP_VERSION}`;
+  const btn = document.getElementById('forceRefreshBtn');
+  if (btn) btn.addEventListener('click', () => {
+    // 쿼리를 새로 붙여 캐시를 무조건 우회하고 최신 파일을 받음
+    location.href = location.pathname + '?v=' + Date.now();
+  });
+})();
+
 // ── Auth ──
 document.getElementById('loginBtn').addEventListener('click', async () => {
   try { await signInWithPopup(auth, new GoogleAuthProvider()); }
@@ -1326,41 +1346,8 @@ onAuthStateChanged(auth, async user => {
     document.getElementById('wageBanner').style.cursor = 'default';
     // 직원용 탭 표시
     document.querySelectorAll('.staff-only').forEach(el => el.style.display = 'flex');
-    // 사전등록 이메일 매칭: preregistered/{email} → staff/{uid} 연결
-    try {
-      const emailKey = user.email.replace(/\./g,'_').replace(/@/g,'__at__');
-      const preDoc = await getDoc(doc(db, 'preregistered', emailKey));
-      if (preDoc.exists() && !preDoc.data().linkedUid) {
-        const preUid = 'pre_' + emailKey;
-        // 사전등록 staff 문서에 설정돼 있던 시급/목표 가져오기 (연결 후에도 유지)
-        let preStaffData = null;
-        try { const ps = await getDoc(doc(db, 'staff', preUid)); if (ps.exists()) preStaffData = ps.data(); } catch(e) {}
-        // 1. preregistered에 실제 uid 연결 표시
-        await setDoc(doc(db, 'preregistered', emailKey), { linkedUid: user.uid }, { merge: true });
-        // 2. 실제 uid로 staff 문서 생성
-        const linkedStaff = {
-          uid: user.uid, email: user.email,
-          name: preDoc.data().name || user.displayName || '이름없음',
-          photo: user.photoURL || '', status: 'approved',
-          linkedAt: new Date().toISOString()
-        };
-        if (preStaffData?.hourlyWage) linkedStaff.hourlyWage = preStaffData.hourlyWage;
-        if (preStaffData?.monthlyGoal) linkedStaff.monthlyGoal = preStaffData.monthlyGoal;
-        await setDoc(doc(db, 'staff', user.uid), linkedStaff, { merge: true });
-        // 3. 임시 uid(pre_)로 저장된 기록을 실제 uid로 이전
-        try {
-          const oldSnap = await getDocs(collection(db, `users/${preUid}/workRecords`));
-          if (!oldSnap.empty) {
-            for (const d of oldSnap.docs) {
-              await setDoc(doc(db, `users/${user.uid}/workRecords`, d.id), d.data());
-              await deleteDoc(doc(db, `users/${preUid}/workRecords`, d.id));
-            }
-          }
-          // 4. 임시 staff 문서 삭제
-          await deleteDoc(doc(db, 'staff', preUid));
-        } catch(e) {}
-      }
-    } catch(e) {}
+    // 사전등록 직원 연결/기록이전은 보안 규칙상 직원 본인이 할 수 없어(권한 없음)
+    // 관리자가 직원관리 화면의 "🔗 계정 연결"로 처리합니다. (여기서 자동연결 시도 제거)
     await loadMyDisputes();
   }
 
@@ -1494,13 +1481,15 @@ document.getElementById('calDetailClose').addEventListener('click', () => {
 document.getElementById('rejectConfirm').addEventListener('click', async () => {
   const reason = document.getElementById('rejectReason').value.trim();
   if (!reason) return alert('반려 사유를 입력해주세요');
-  await updateDoc(doc(db, 'disputes', rejectingDisputeId), {
-    status: 'rejected', rejectReason: reason,
-    processedAt: new Date().toISOString()
-  });
-  document.getElementById('rejectModal').classList.remove('show');
-  await loadAllDisputes();
-  renderDisputeList();
+  try {
+    await updateDoc(doc(db, 'disputes', rejectingDisputeId), {
+      status: 'rejected', rejectReason: reason,
+      processedAt: new Date().toISOString()
+    });
+    document.getElementById('rejectModal').classList.remove('show');
+    await loadAllDisputes();
+    renderDisputeList();
+  } catch(e) { alert('반려 처리 실패: ' + e.message); }
 });
 
 // ── 이의제기 로드 ──
@@ -1578,12 +1567,14 @@ function renderDisputeList() {
 
 window.approveDispute = async (disputeId, ownerUid, recordId) => {
   if (!confirm('이 이의제기를 승인할까요? 직원이 해당 기록을 1회 수정할 수 있게 돼요.')) return;
-  await updateDoc(doc(db, `users/${ownerUid}/workRecords`, recordId), { disputeApproved: true });
-  await updateDoc(doc(db, 'disputes', disputeId), {
-    status: 'approved', processedAt: new Date().toISOString()
-  });
-  await loadAllDisputes();
-  alert('승인됐어요! 직원이 해당 기록을 수정할 수 있어요.');
+  try {
+    await updateDoc(doc(db, `users/${ownerUid}/workRecords`, recordId), { disputeApproved: true });
+    await updateDoc(doc(db, 'disputes', disputeId), {
+      status: 'approved', processedAt: new Date().toISOString()
+    });
+    await loadAllDisputes();
+    alert('승인됐어요! 직원이 해당 기록을 수정할 수 있어요.');
+  } catch(e) { alert('승인 처리 실패: ' + e.message); }
 };
 
 window.openRejectModal = (disputeId) => {
@@ -1646,7 +1637,11 @@ window.openLinkStaffModal = (preUid) => {
   const name = s?.name || '';
   linkingStaff = { preUid, name };
   document.getElementById('linkStaffName').value = name;
-  document.getElementById('linkStaffUid').value = '';
+  // 같은 이메일로 이미 로그인한 실제 계정(대기 상태)을 찾아 UID 자동 입력
+  const real = allStaff.find(x =>
+    x.uid !== preUid && !String(x.uid).startsWith('pre_') &&
+    x.email && s?.email && x.email.toLowerCase() === s.email.toLowerCase());
+  document.getElementById('linkStaffUid').value = real ? real.uid : '';
   document.getElementById('linkStaffModal').classList.add('show');
 };
 document.getElementById('linkStaffCancel').addEventListener('click', () =>
@@ -1710,13 +1705,17 @@ document.getElementById('linkStaffConfirm').addEventListener('click', async () =
 });
 
 window.approveStaff = async (uid) => {
-  await setDoc(doc(db, 'staff', uid), { status: 'approved' }, { merge: true });
-  await loadAllStaff();
+  try {
+    await setDoc(doc(db, 'staff', uid), { status: 'approved' }, { merge: true });
+    await loadAllStaff();
+  } catch(e) { alert('승인 실패: ' + e.message); }
 };
 window.revokeStaff = async (uid) => {
   if (!confirm('이 직원의 접근 권한을 취소할까요?')) return;
-  await setDoc(doc(db, 'staff', uid), { status: 'pending' }, { merge: true });
-  await loadAllStaff();
+  try {
+    await setDoc(doc(db, 'staff', uid), { status: 'pending' }, { merge: true });
+    await loadAllStaff();
+  } catch(e) { alert('취소 실패: ' + e.message); }
 };
 
 // ── Settings ──
@@ -1738,7 +1737,7 @@ async function saveSettings() {
     const data = { hourlyWage, taxEnabled };
     if (snap.empty) await addDoc(collection(db, `users/${currentUser.uid}/settings`), data);
     else await updateDoc(snap.docs[0].ref, data);
-  } catch(e) {}
+  } catch(e) { console.error('설정 저장 실패', e); }
 }
 
 function applySettings() {
@@ -1769,7 +1768,7 @@ document.getElementById('goalConfirm').addEventListener('click', async () => {
   const targetUid = (isAdmin && selectedStaffUid) ? selectedStaffUid : currentUser.uid;
   try {
     await setDoc(doc(db, 'staff', targetUid), { monthlyGoal: v }, { merge: true });
-  } catch(e) {}
+  } catch(e) { alert('목표 저장 실패: ' + e.message); }
   document.getElementById('goalModal').classList.remove('show');
   renderGoalCard();
 });
@@ -2247,7 +2246,7 @@ async function loadRecords() {
       records = snap.docs.map(d => ({ id: d.id, ownerUid: currentUser.uid, ownerName: myInfo?.name || '', ...d.data() }));
     }
   } catch(e) { loadFailed = true; setSyncStatus('offline', '연결 끊김'); }
-  if (!loadFailed) setSyncStatus('online', '실시간 연동 중');
+  if (!loadFailed) setSyncStatus('online', '연동됨');
   renderRecords();
   renderStats();
   renderWeekSummary();
