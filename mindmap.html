@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>마인드맵</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
 <style>
   :root {
     --bg: #0f0f13;
@@ -328,7 +329,7 @@
   </div>
 </div>
 
-<div id="hint" style="display:none">더블탭 편집 · Tab 자식추가 · Enter 형제 · Del 삭제 · Shift+클릭 다중선택</div>
+<div id="hint" style="display:none">더블탭 편집 · Tab 자식추가 · Enter 형제 · Del 삭제 · Ctrl+Z 실행취소 · ? 도움말</div>
 <div id="toast"></div>
 
 <!-- Help modal -->
@@ -344,7 +345,8 @@
         <div class="help-row"><b>화면 이동</b><span>빈 곳을 끌기 · 모바일은 한 손가락 드래그</span></div>
         <div class="help-row"><b>확대 / 축소</b><span>마우스 휠 · 모바일은 <em>두 손가락 핀치</em></span></div>
         <div class="help-row"><b>화면 맞춤</b><span>상단 ⊡ — 전체 맵이 한눈에 들어오게</span></div>
-        <div class="help-row"><b>노드 선택</b><span>탭/클릭 · 여러 개는 <em>Shift(또는 ⌘/Ctrl)+클릭</em></span></div>
+        <div class="help-row"><b>노드 선택</b><span>탭/클릭 · 여러 개는 <em>Shift(또는 ⌘/Ctrl)+클릭</em> · 모바일은 하단 <em>☑ 다중 선택</em> 켜고 탭</span></div>
+        <div class="help-row"><b>실행 취소</b><span>하단 ↩ / ↪ 버튼 또는 <em>Ctrl+Z / Ctrl+Y</em> — 실수로 지워도 되돌릴 수 있어요</span></div>
       </div>
       <div class="help-sec">
         <div class="help-sec-t">✏️ 노드 편집</div>
@@ -377,7 +379,8 @@
         <div class="help-sec-t">☁️ 저장 &amp; 동기화</div>
         <div class="help-row"><b>자동 저장</b><span>변경 시 자동 저장 (상단에 ✓ 저장됨 표시)</span></div>
         <div class="help-row"><b>기기 간 동기화</b><span>같은 계정으로 로그인하면 PC·모바일이 <em>실시간</em>으로 같은 맵 공유</span></div>
-        <div class="help-row"><b>여러 맵</b><span>좌측 ☰ 메뉴에서 맵 추가/전환/삭제</span></div>
+        <div class="help-row"><b>여러 맵</b><span>좌측 ☰ 메뉴에서 맵 추가/전환/삭제 (목록도 기기 간 실시간 동기화)</span></div>
+        <div class="help-row"><b>맵 이름 변경</b><span>루트(중심) 노드의 글자를 수정하면 맵 이름이 함께 바뀜</span></div>
       </div>
       <div class="help-sec">
         <div class="help-sec-t">⌨️ 단축키</div>
@@ -385,6 +388,8 @@
         <div class="help-row"><b>Enter</b><span>형제 추가</span></div>
         <div class="help-row"><b>F2</b><span>이름 편집</span></div>
         <div class="help-row"><b>Del / Backspace</b><span>삭제</span></div>
+        <div class="help-row"><b>Ctrl+Z / Ctrl+Y</b><span>실행 취소 / 다시 실행</span></div>
+        <div class="help-row"><b>Ctrl+V</b><span>클립보드 이미지를 선택한 노드에 첨부</span></div>
         <div class="help-row"><b>Esc</b><span>선택 해제 · 패널/모드 닫기</span></div>
       </div>
     </div>
@@ -408,9 +413,13 @@
 </div>
 
 <div id="toolbar" style="display:none">
+  <button class="tb-btn" id="btn-undo" title="실행 취소 (Ctrl+Z)">↩</button>
+  <button class="tb-btn" id="btn-redo" title="다시 실행 (Ctrl+Y)">↪</button>
+  <div class="tb-sep"></div>
   <button class="tb-btn" id="btn-child" title="자식 추가 (Tab)">＋ 자식</button>
   <button class="tb-btn" id="btn-sibling" title="형제 추가 (Enter)">↕ 형제</button>
   <div class="tb-sep"></div>
+  <button class="tb-btn" id="btn-multi" title="다중 선택 모드 (모바일용)">☑</button>
   <button class="tb-btn" id="btn-note" title="노트·이미지·태그">📝 노트</button>
   <button class="tb-btn" id="btn-style" title="연결선·모양">✦ 스타일</button>
   <button class="tb-btn" id="btn-relate" title="관계선 연결">⤳ 관계</button>
@@ -463,7 +472,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, deleteDoc, onSnapshot }
+import { getFirestore, doc, setDoc, collection, getDocs, deleteDoc, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -502,11 +511,14 @@ let view = { x: 0, y: 0, z: 1 };
 let nodeCounter = 0;
 let isDark = true;
 let linkMode = null;       // 'relate' | null
+let multiSel = false;      // sticky multi-select mode (mobile-friendly)
 let multiTouch = false;    // 2+ fingers down → pinch wins over node/resize drag
-let mapUnsub = null;       // onSnapshot unsubscribe
+let mapUnsub = null;       // map doc onSnapshot unsubscribe
+let listUnsub = null;      // map list onSnapshot unsubscribe
 let lastSavedAt = 0;       // updatedAt we last wrote/loaded
 let interacting = false;   // dragging/editing → defer remote sync
 let saveTimer = null, saveIndicatorTimer = null;
+let undoStack = [], redoStack = [];   // per-map history of serialized states
 
 // ── DOM refs ───────────────────────────────────────────
 const $ = id => document.getElementById(id);
@@ -535,23 +547,36 @@ onAuthStateChanged(auth, async user => {
   } else {
     uid = null; currentMapId = null;
     if (mapUnsub) { mapUnsub(); mapUnsub = null; }
+    if (listUnsub) { listUnsub(); listUnsub = null; }
+    clearTimeout(saveTimer); saveTimer = null;
+    undoStack.length = 0; redoStack.length = 0;
+    closeNotePanel();
     loginScreen.style.display = 'flex';
     topbar.style.display = 'none'; viewport.style.display = 'none'; toolbar.style.display = 'none';
   }
 });
 
-// ── Map list ───────────────────────────────────────────
-async function loadMapList() {
-  mapList.innerHTML = '';
-  try {
-    const snap = await getDocs(collection(db, 'users', uid, 'mindmaps'));
+// ── Map list (realtime — creations/renames on other devices appear live) ──
+let creatingMap = false;
+function loadMapList() {
+  if (listUnsub) listUnsub();
+  let first = true;
+  listUnsub = onSnapshot(collection(db, 'users', uid, 'mindmaps'), snap => {
     const maps = [];
     snap.forEach(d => maps.push({ id: d.id, title: d.data().title, updatedAt: d.data().updatedAt || 0 }));
     maps.sort((a, b) => b.updatedAt - a.updatedAt);
-    if (!maps.length) { await createNewMap(); return; }
+    mapList.innerHTML = '';
     maps.forEach(m => addMapItem(m.id, m.title || '새 마인드맵'));
-    if (!currentMapId) openMap(maps[0].id);
-  } catch (e) { console.error(e); await createNewMap(); }
+    if (first) {
+      first = false;
+      if (!maps.length) createNewMap();
+      else if (!currentMapId) openMap(maps[0].id);
+    } else if (currentMapId && !maps.some(m => m.id === currentMapId)) {
+      // current map deleted (possibly on another device)
+      if (maps.length) openMap(maps[0].id);
+      else if (!creatingMap) createNewMap();
+    }
+  }, err => console.error('map list', err));
 }
 
 function addMapItem(id, title) {
@@ -560,37 +585,52 @@ function addMapItem(id, title) {
   el.dataset.id = id;
   el.innerHTML = `<span class="map-item-name">${escHtml(title)}</span><span class="map-item-del" title="삭제">✕</span>`;
   el.querySelector('.map-item-name').addEventListener('click', () => { openMap(id); closeDrawer(); });
-  el.querySelector('.map-item-del').addEventListener('click', async e => {
+  el.querySelector('.map-item-del').addEventListener('click', e => {
     e.stopPropagation();
-    if (!confirm('이 마인드맵을 삭제할까요?')) return;
-    try { await deleteDoc(doc(db, 'users', uid, 'mindmaps', id)); } catch (err) { console.error(err); }
+    if (!confirm('이 마인드맵을 삭제할까요?\n(첨부된 이미지도 함께 삭제됩니다)')) return;
     el.remove();
-    if (currentMapId === id) {
-      currentMapId = null;
-      const first = mapList.querySelector('.map-item');
-      if (first) openMap(first.dataset.id); else createNewMap();
-    }
+    deleteMap(id);   // list listener reopens another map if this was the current one
   });
   mapList.appendChild(el);
 }
 
+// delete map doc AND its assets subcollection (subcollections don't cascade in Firestore)
+async function deleteMap(id) {
+  if (id === currentMapId) { clearTimeout(saveTimer); saveTimer = null; }  // don't resurrect it via pending save
+  try {
+    const aSnap = await getDocs(collection(db, 'users', uid, 'mindmaps', id, 'assets'));
+    await Promise.all(aSnap.docs.map(d => deleteDoc(d.ref)));
+    await deleteDoc(doc(db, 'users', uid, 'mindmaps', id));
+  } catch (e) { console.error(e); toastMsg('맵 삭제 실패'); }
+}
+
 async function createNewMap() {
-  const title = '새 마인드맵 ' + (mapList.children.length + 1);
-  const id = 'map_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-  const data = {
-    title, updatedAt: Date.now(), clientId: CLIENT_ID, layout: 'map',
-    nodes: { n1: { id: 'n1', label: title, x: 0, y: 0, parentId: null, color: '#7c6af7' } },
-    relations: [], boundaries: []
-  };
-  try { await setDoc(doc(db, 'users', uid, 'mindmaps', id), data); } catch (e) { console.error(e); }
-  addMapItem(id, title);
-  openMap(id);
-  closeDrawer();
+  if (creatingMap) return;
+  creatingMap = true;
+  try {
+    const title = '새 마인드맵 ' + (mapList.children.length + 1);
+    const id = 'map_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    const data = {
+      title, updatedAt: Date.now(), clientId: CLIENT_ID, layout: 'map',
+      nodes: { n1: { id: 'n1', label: title, x: 0, y: 0, parentId: null, color: '#7c6af7' } },
+      relations: [], boundaries: []
+    };
+    await setDoc(doc(db, 'users', uid, 'mindmaps', id), data);
+    addMapItem(id, title);
+    await openMap(id);
+    closeDrawer();
+  } catch (e) { console.error(e); toastMsg('맵 생성 실패'); }
+  finally { creatingMap = false; }
 }
 
 // ── Open map + realtime sync ───────────────────────────
 async function openMap(id) {
+  if (id === currentMapId) return;
+  // flush any pending save of the PREVIOUS map before switching — otherwise the
+  // debounced saveMap could fire after the switch and write stale/empty data
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; await saveMap(); }
   if (mapUnsub) { mapUnsub(); mapUnsub = null; }
+  undoStack.length = 0; redoStack.length = 0; updateUndoUI();   // history is per-map
   currentMapId = id;
   document.querySelectorAll('.map-item').forEach(el => el.classList.toggle('active', el.dataset.id === id));
   clearCanvas();
@@ -650,12 +690,14 @@ function showSave(status, msg) {
 function scheduleSave() {
   clearTimeout(saveTimer);
   showSave('saving', '저장 중...');
-  saveTimer = setTimeout(saveMap, 800);
+  const mapId = currentMapId;                       // bind the save to THIS map
+  saveTimer = setTimeout(() => saveMap(mapId), 800);
 }
-async function saveMap() {
-  if (!uid || !currentMapId) return;
+async function saveMap(mapId = currentMapId) {
+  if (!uid || !mapId || mapId !== currentMapId) return;   // map switched → drop stale save
+  if (!Object.keys(nodes).length) return;                  // never overwrite a map with nothing
   const title = nodes['n1']?.label || rootNode()?.label || '마인드맵';
-  const item = document.querySelector(`.map-item[data-id="${currentMapId}"] .map-item-name`);
+  const item = document.querySelector(`.map-item[data-id="${mapId}"] .map-item-name`);
   if (item) item.textContent = title;
   const clean = {};
   Object.entries(nodes).forEach(([id, n]) => {
@@ -663,14 +705,14 @@ async function saveMap() {
   });
   const now = Date.now();
   try {
-    await setDoc(doc(db, 'users', uid, 'mindmaps', currentMapId),
+    await setDoc(doc(db, 'users', uid, 'mindmaps', mapId),
       { title, updatedAt: now, clientId: CLIENT_ID, layout: layoutType, nodes: clean, relations, boundaries });
     lastSavedAt = now;
     showSave('saved', '✓ 저장됨');
   } catch (e) {
     console.error('저장 실패', e);
     showSave('error', '저장 실패 — 재시도');
-    setTimeout(saveMap, 3000);
+    setTimeout(() => saveMap(mapId), 3000);
   }
 }
 function stripNode(n) {
@@ -687,6 +729,41 @@ function stripNode(n) {
   return o;
 }
 const r2 = v => Math.round(v * 10) / 10;
+
+// ── Undo / Redo (snapshot-based, per map) ──────────────
+function serializeState() {
+  const clean = {};
+  Object.entries(nodes).forEach(([id, n]) => { clean[id] = stripNode(n); });
+  return JSON.stringify({ nodes: clean, relations, boundaries, layout: layoutType });
+}
+function undoPushRaw(s) {
+  undoStack.push(s);
+  if (undoStack.length > 50) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoUI();
+}
+function pushUndo() { undoPushRaw(serializeState()); }
+function restoreState(json) {
+  closeNotePanel();
+  applyMapData(JSON.parse(json), false);
+  scheduleSave();
+}
+function undo() {
+  if (!undoStack.length) { toastMsg('되돌릴 작업이 없어요'); return; }
+  redoStack.push(serializeState());
+  restoreState(undoStack.pop());
+  updateUndoUI(); toastMsg('↩ 실행 취소');
+}
+function redo() {
+  if (!redoStack.length) { toastMsg('다시 실행할 작업이 없어요'); return; }
+  undoStack.push(serializeState());
+  restoreState(redoStack.pop());
+  updateUndoUI(); toastMsg('↪ 다시 실행');
+}
+function updateUndoUI() {
+  $('btn-undo').style.opacity = undoStack.length ? '1' : '.35';
+  $('btn-redo').style.opacity = redoStack.length ? '1' : '.35';
+}
 
 // ── Helpers ────────────────────────────────────────────
 function rootNode() { return Object.values(nodes).find(n => !n.parentId); }
@@ -855,10 +932,12 @@ function renameBoundary(id) {
   const b = boundaries.find(x => x.id === id); if (!b) return;
   const v = prompt('경계 이름', b.label || '그룹');
   if (v === null) return;
+  pushUndo();
   b.label = v.trim() || '그룹';
   renderBoundaries(); scheduleSave();
 }
 function deleteBoundary(id) {
+  pushUndo();
   boundaries = boundaries.filter(b => b.id !== id);
   renderBoundaries(); scheduleSave(); toastMsg('경계 삭제됨');
 }
@@ -958,7 +1037,7 @@ function renderLinks() {
     hit.setAttribute('d', d); hit.setAttribute('fill', 'none');
     hit.setAttribute('stroke', 'transparent'); hit.setAttribute('stroke-width', '14');
     hit.setAttribute('class', 'hit');
-    hit.addEventListener('click', e => { e.stopPropagation(); if (confirm('이 관계선을 삭제할까요?')) { relations = relations.filter(r => r.id !== rel.id); renderLinks(); scheduleSave(); } });
+    hit.addEventListener('click', e => { e.stopPropagation(); if (confirm('이 관계선을 삭제할까요?')) { pushUndo(); relations = relations.filter(r => r.id !== rel.id); renderLinks(); scheduleSave(); } });
     frag.appendChild(hit);
     const path = document.createElementNS(NS, 'path');
     path.setAttribute('d', d); path.setAttribute('fill', 'none');
@@ -995,12 +1074,12 @@ function fitToScreen() {
 }
 
 // ── Layout (tidy tree) ─────────────────────────────────
-function visibleChildren(id) { return childrenOf(id).filter(c => true); } // collapsed handled by hidden render
 const H_GAP = 64, V_GAP = 22, DOWN_VGAP = 70, DOWN_HGAP = 26;
 
 function runLayout(save = true) {
   const root = rootNode();
   if (!root) return;
+  if (save) pushUndo();   // one-shot tidy is user-initiated → undoable
   if (layoutType === 'map') layoutBalanced(root);
   else if (layoutType === 'right') layoutH(root, 1);
   else if (layoutType === 'left') layoutH(root, -1);
@@ -1182,13 +1261,13 @@ function updateToolbar() {
 // ── Node interaction ───────────────────────────────────
 function setupNodeEvents(id) {
   const n = nodes[id], el = n.el;
-  let sx, sy, starts, moved, pid;
+  let sx, sy, starts, moved, pid, preDrag;
 
   el.addEventListener('pointerdown', e => {
     if (e.target.classList.contains('resize-handle') || e.target.classList.contains('node-collapse')) return;
     e.stopPropagation();
     if (linkMode === 'relate') { handleRelateClick(id); return; }
-    if (e.shiftKey || e.ctrlKey || e.metaKey) { selectNode(id, true); return; }
+    if (e.shiftKey || e.ctrlKey || e.metaKey || multiSel) { selectNode(id, true); return; }
     if (!selectedIds.has(id)) selectNode(id, false);
     // begin drag of all selected nodes together with their whole subtrees,
     // so a parent carries its children at fixed relative positions
@@ -1196,6 +1275,7 @@ function setupNodeEvents(id) {
     const moveSet = new Set();
     selectedIds.forEach(s => collect(s, moveSet));
     starts = {}; moveSet.forEach(s => { if (nodes[s]) starts[s] = { x: nodes[s].x, y: nodes[s].y }; });
+    preDrag = serializeState();
     interacting = true;
     el.setPointerCapture(pid);
     el.addEventListener('pointermove', onMove);
@@ -1213,7 +1293,7 @@ function setupNodeEvents(id) {
   function onUp() {
     el.removeEventListener('pointermove', onMove);
     interacting = false;
-    if (moved) scheduleSave();
+    if (moved) { undoPushRaw(preDrag); scheduleSave(); }
   }
 
   // double tap/click → edit
@@ -1233,6 +1313,8 @@ function setupResize(handle, id, dir) {
     e.stopPropagation();
     const n = nodes[id], box = n.el.querySelector('.node-box');
     const sx = e.clientX, sw = box.offsetWidth;
+    const preResize = serializeState();
+    let resized = false;
     interacting = true;
     handle.setPointerCapture(e.pointerId);
     function mv(e2) {
@@ -1241,18 +1323,25 @@ function setupResize(handle, id, dir) {
       let nw = dir.includes('e') ? sw + dx : sw - dx;
       nw = Math.max(54, nw);
       box.style.width = nw + 'px';
-      n.w = nw; n.h = box.offsetHeight; n.fixed = true;   // user-pinned width
+      n.w = nw; n.h = box.offsetHeight; n.fixed = true; resized = true;  // user-pinned width
       positionNode(id); renderLinks();
     }
-    function up() { handle.removeEventListener('pointermove', mv); handle.removeEventListener('pointerup', up); interacting = false; scheduleSave(); }
+    function up() {
+      handle.removeEventListener('pointermove', mv); handle.removeEventListener('pointerup', up);
+      interacting = false;
+      if (resized) { undoPushRaw(preResize); scheduleSave(); }
+    }
     handle.addEventListener('pointermove', mv);
     handle.addEventListener('pointerup', up);
   });
 }
 
 function startEdit(id) {
-  const n = nodes[id], box = n.el.querySelector('.node-box');
+  const n = nodes[id]; if (!n || !n.el) return;         // node may have been removed by a remote sync
+  const box = n.el.querySelector('.node-box');
   const lbl = box.querySelector('.node-label');
+  if (lbl.contentEditable === 'true') return;           // already editing (dblclick + double-tap both fire)
+  const preEdit = serializeState(), oldLabel = n.label;
   interacting = true;
   lbl.contentEditable = 'true';
   lbl.focus();
@@ -1264,6 +1353,7 @@ function startEdit(id) {
     lbl.textContent = n.label;
     lbl.removeEventListener('blur', finish); lbl.removeEventListener('keydown', onKey);
     interacting = false;
+    if (n.label !== oldLabel) undoPushRaw(preEdit);
     requestAnimationFrame(() => { n.w = box.offsetWidth; n.h = box.offsetHeight; positionNode(id); renderLinks(); scheduleSave(); });
   }
   function onKey(e) {
@@ -1292,6 +1382,7 @@ function newChildPos(parentId) {
 }
 function addChild(parentId) {
   const parent = nodes[parentId]; if (!parent) return;
+  pushUndo();
   const wasCollapsed = parent.collapsed;
   if (parent.collapsed) parent.collapsed = false;
   const id = 'n' + (++nodeCounter);
@@ -1308,6 +1399,7 @@ function addChild(parentId) {
 function addSibling(sibId) {
   const sib = nodes[sibId];
   if (!sib.parentId) return addChild(sibId);
+  pushUndo();
   const id = 'n' + (++nodeCounter);
   const node = { id, label: '새 항목', parentId: sib.parentId, color: sib.color, x: sib.x, y: sib.y + (sib.h || 34) + 26 };
   nodes[id] = node;
@@ -1332,6 +1424,7 @@ function deleteSelected() {
   const toDelete = new Set();
   selectedIds.forEach(id => { if (nodes[id]?.parentId) collect(id, toDelete); });
   if (!toDelete.size) { toastMsg('루트는 삭제할 수 없어요'); return; }
+  pushUndo();
   toDelete.forEach(id => { if (nodes[id]?.el) nodes[id].el.remove(); delete nodes[id]; });
   relations = relations.filter(r => !toDelete.has(r.from) && !toDelete.has(r.to));
   boundaries = boundaries.map(b => ({ ...b, nodeIds: b.nodeIds.filter(id => !toDelete.has(id)) })).filter(b => b.nodeIds.length);
@@ -1343,6 +1436,7 @@ function deleteSelected() {
 function collect(id, set) { set.add(id); childrenOf(id).forEach(c => collect(c.id, set)); }
 
 function toggleCollapse(id) {
+  pushUndo();
   nodes[id].collapsed = !nodes[id].collapsed;
   rerenderStructure();
   Object.keys(nodes).forEach(k => { if (!isHidden(k)) positionNode(k); });
@@ -1352,6 +1446,7 @@ function toggleCollapse(id) {
 // ── Color / shape / line ───────────────────────────────
 function setColor(color) {
   if (!selectedIds.size) return;
+  pushUndo();
   selectedIds.forEach(id => {
     const n = nodes[id]; n.color = color;
     const box = n.el?.querySelector('.node-box');
@@ -1375,12 +1470,14 @@ const stylePop = $('style-pop');
 $('btn-style').addEventListener('click', e => { e.stopPropagation(); if (!primaryId()) return; closePopovers(stylePop); stylePop.classList.toggle('open'); updateToolbar(); });
 document.querySelectorAll('#line-row .pop-opt').forEach(o => o.addEventListener('click', () => {
   const id = primaryId(); if (!id) return;
+  pushUndo();
   nodes[id].lineStyle = o.dataset.line;
   document.querySelectorAll('#line-row .pop-opt').forEach(x => x.classList.toggle('active', x === o));
   renderLinks(); scheduleSave();
 }));
 document.querySelectorAll('#shape-row .pop-opt').forEach(o => o.addEventListener('click', () => {
   const id = primaryId(); if (!id) return;
+  pushUndo();
   nodes[id].shape = o.dataset.shape;
   document.querySelectorAll('#shape-row .pop-opt').forEach(x => x.classList.toggle('active', x === o));
   rerenderStructure(); Object.keys(nodes).forEach(k => { if (!isHidden(k)) positionNode(k); }); renderLinks(); scheduleSave();
@@ -1398,6 +1495,7 @@ $('btn-relate').addEventListener('click', () => {
 function handleRelateClick(id) {
   if (!relateFrom) { relateFrom = id; nodes[id].el.querySelector('.node-box').classList.add('selected'); return; }
   if (relateFrom === id) { relateFrom = null; updateToolbar(); return; }
+  pushUndo();
   relations.push({ id: 'r' + Date.now().toString(36), from: relateFrom, to: id });
   nodes[relateFrom].el.querySelector('.node-box').classList.remove('selected');
   relateFrom = null; renderLinks(); scheduleSave(); toastMsg('관계선 추가됨');
@@ -1409,6 +1507,7 @@ $('btn-boundary').addEventListener('click', () => {
   const ids = [...selectedIds].filter(id => nodes[id]);
   // toggle: if an identical boundary exists, remove it
   const same = boundaries.find(b => b.nodeIds.length === ids.length && b.nodeIds.every(x => ids.includes(x)));
+  pushUndo();
   if (same) { boundaries = boundaries.filter(b => b !== same); toastMsg('경계 해제'); }
   else { boundaries.push({ id: 'b' + Date.now().toString(36), nodeIds: ids, color: nodes[ids[0]].color || '#7c6af7', label: '그룹' }); toastMsg('경계 생성 — 이름은 라벨 클릭'); }
   renderLinks(); scheduleSave();
@@ -1441,6 +1540,7 @@ function fillNotePanel(id) {
     const b = document.createElement('button'); b.className = 'marker-btn' + (cur.includes(m) ? ' active' : '');
     b.textContent = m;
     b.addEventListener('click', () => {
+      pushUndo();
       const set = new Set(nodes[id].markers || []);
       if (set.has(m)) set.delete(m); else set.add(m);
       nodes[id].markers = [...set];
@@ -1471,6 +1571,7 @@ function commitLink() {
   const v = normalizeUrl($('np-link-input').value);
   $('np-link-input').value = v;
   if ((nodes[id].link || '') === v) return;
+  pushUndo();
   nodes[id].link = v || '';
   if (!v) delete nodes[id].link;
   refreshNode(id); scheduleSave();
@@ -1484,6 +1585,7 @@ function renderTagChips(id) {
     const c = document.createElement('div'); c.className = 'tag-chip';
     c.innerHTML = `#${escHtml(t)} <span>✕</span>`;
     c.querySelector('span').addEventListener('click', () => {
+      pushUndo();
       nodes[id].tags = (nodes[id].tags || []).filter(x => x !== t);
       renderTagChips(id); refreshNode(id); scheduleSave();
     });
@@ -1497,17 +1599,30 @@ $('np-tag-input').addEventListener('keydown', e => {
   const v = e.target.value.trim().replace(/^#/, '');
   if (!v) return;
   const tags = nodes[id].tags || [];
-  if (!tags.includes(v)) tags.push(v);
+  if (tags.includes(v)) { e.target.value = ''; return; }
+  pushUndo();
+  tags.push(v);
   nodes[id].tags = tags; e.target.value = '';
   renderTagChips(id); refreshNode(id); scheduleSave();
 });
+let notePreEdit = null, noteOldValue = '';
+$('np-note').addEventListener('focus', () => {
+  notePreEdit = serializeState();
+  noteOldValue = notePanelId ? (nodes[notePanelId]?.note || '') : '';
+});
 $('np-note').addEventListener('input', () => { const id = notePanelId; if (!id) return; nodes[id].note = $('np-note').value; });
-$('np-note').addEventListener('blur', () => { const id = notePanelId; if (!id) return; nodes[id].note = $('np-note').value; refreshNode(id); scheduleSave(); });
+$('np-note').addEventListener('blur', () => {
+  const id = notePanelId; if (!id) return;
+  const v = $('np-note').value;
+  if (v !== noteOldValue && notePreEdit) undoPushRaw(notePreEdit);
+  notePreEdit = null;
+  nodes[id].note = v;
+  refreshNode(id); scheduleSave();
+});
 
 // re-render a single node in place (after marker/tag/image/note change)
 function refreshNode(id) {
-  const n = nodes[id]; if (!n.el) return;
-  const wasSel = selectedIds.has(id);
+  const n = nodes[id]; if (!n || !n.el) return;
   delete n.el; const old = document.getElementById('node-' + id); if (old) old.remove();
   renderNode(n);
   requestAnimationFrame(() => { measureNode(id); positionNode(id); renderLinks(); });
@@ -1527,7 +1642,9 @@ async function attachImage(id, fileOrBlob) {
     const dataUrl = await downscaleImage(fileOrBlob, 1000, 0.82);
     const assetId = 'img_' + Date.now().toString(36);
     await setDoc(doc(db, 'users', uid, 'mindmaps', currentMapId, 'assets', assetId), { data: dataUrl, createdAt: Date.now() });
-    if (nodes[id].imageId) { const old = nodes[id].imageId; deleteDoc(doc(db, 'users', uid, 'mindmaps', currentMapId, 'assets', old)).catch(() => {}); delete assets[old]; }
+    pushUndo();
+    // old asset doc is kept (not deleted) so undo can restore it; all assets are
+    // purged together when the map itself is deleted
     assets[assetId] = dataUrl;
     nodes[id].imageId = assetId;
     if (notePanel.classList.contains('open') && notePanelId === id) fillNotePanel(id);
@@ -1548,9 +1665,8 @@ document.addEventListener('paste', e => {
   attachImage(id, blob);
 });
 function removeImage(id) {
-  const old = nodes[id].imageId;
-  if (old) { deleteDoc(doc(db, 'users', uid, 'mindmaps', currentMapId, 'assets', old)).catch(() => {}); delete assets[old]; }
-  delete nodes[id].imageId;
+  pushUndo();
+  delete nodes[id].imageId;   // unlink only — asset doc stays so undo can restore it
   fillNotePanel(id); refreshNode(id); scheduleSave();
 }
 function downscaleImage(file, maxDim, quality) {
@@ -1576,29 +1692,45 @@ function downscaleImage(file, maxDim, quality) {
 $('btn-child').addEventListener('click', () => { const id = primaryId() || rootNode()?.id; if (id) addChild(id); });
 $('btn-sibling').addEventListener('click', () => { const id = primaryId(); if (id) addSibling(id); });
 $('btn-delete').addEventListener('click', deleteSelected);
+$('btn-undo').addEventListener('click', undo);
+$('btn-redo').addEventListener('click', redo);
+$('btn-multi').addEventListener('click', () => {
+  multiSel = !multiSel;
+  $('btn-multi').classList.toggle('on', multiSel);
+  toastMsg(multiSel ? '다중 선택 모드 — 노드를 탭해서 추가/제거' : '다중 선택 종료');
+});
 
 // ── Keyboard ───────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.isContentEditable || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
   const id = primaryId();
-  if (e.key === 'Tab') { e.preventDefault(); if (id) addChild(id); }
+  const k = e.key.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+  else if ((e.ctrlKey || e.metaKey) && (k === 'y' || (k === 'z' && e.shiftKey))) { e.preventDefault(); redo(); }
+  else if (e.key === 'Tab') { e.preventDefault(); if (id) addChild(id); }
   else if (e.key === 'Enter') { e.preventDefault(); if (id) addSibling(id); }
   else if (e.key === 'Delete' || e.key === 'Backspace') { if (selectedIds.size) { e.preventDefault(); deleteSelected(); } }
   else if (e.key === 'F2') { if (id) startEdit(id); }
-  else if (e.key === 'Escape') { helpOverlay.classList.remove('open'); clearSelection(); closePopovers(); closeNotePanel(); if (linkMode) $('btn-relate').click(); }
+  else if (e.key === 'Escape') {
+    helpOverlay.classList.remove('open'); clearSelection(); closePopovers(); closeNotePanel();
+    if (linkMode) $('btn-relate').click();
+    if (multiSel) $('btn-multi').click();
+  }
 });
 
 // ── Viewport pan/zoom ──────────────────────────────────
-let panState = null;
+let panState = null, panMoved = false;
 viewport.addEventListener('pointerdown', e => {
   if (e.target !== viewport && e.target !== world && e.target.id !== 'links') return;
   if (linkMode === 'relate') { return; }
   panState = { mx: e.clientX, my: e.clientY, ox: view.x, oy: view.y, id: e.pointerId };
+  panMoved = false;
   viewport.classList.add('grabbing');
   try { viewport.setPointerCapture(e.pointerId); } catch (_) {}
 });
 viewport.addEventListener('pointermove', e => {
   if (!panState || e.pointerId !== panState.id) return;
+  if (Math.abs(e.clientX - panState.mx) + Math.abs(e.clientY - panState.my) > 4) panMoved = true;
   view.x = panState.ox + (e.clientX - panState.mx);
   view.y = panState.oy + (e.clientY - panState.my);
   applyView();
@@ -1607,8 +1739,9 @@ function endPan() { panState = null; viewport.classList.remove('grabbing'); }
 viewport.addEventListener('pointerup', endPan);
 viewport.addEventListener('pointercancel', endPan);
 
-// click empty → deselect / close
+// click empty → deselect / close (but not right after a pan drag)
 viewport.addEventListener('click', e => {
+  if (panMoved) { panMoved = false; return; }
   if (e.target === viewport || e.target === world || e.target.id === 'links') {
     clearSelection(); closePopovers(); closeNotePanel();
   }
@@ -1682,7 +1815,10 @@ overlay.addEventListener('click', closeDrawer);
 function closeDrawer() { drawer.classList.remove('open'); overlay.classList.remove('open'); }
 $('new-map-btn').addEventListener('click', createNewMap);
 
+updateUndoUI();
 window.addEventListener('resize', () => { Object.keys(nodes).forEach(k => { if (!isHidden(k)) positionNode(k); }); renderLinks(); });
+// flush any pending edit before the tab closes
+window.addEventListener('beforeunload', () => { if (saveTimer) { clearTimeout(saveTimer); saveMap(); } });
 </script>
 </body>
 </html>
