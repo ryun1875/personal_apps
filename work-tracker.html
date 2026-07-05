@@ -1948,6 +1948,9 @@ document.getElementById('settingsOpenBtn').addEventListener('click', () => {
 function closeSettings() {
   document.getElementById('settingsPanel').classList.remove('open');
   document.getElementById('settingsBd').classList.remove('show');
+  // 인라인 시급 편집기는 접어둠 (다음에 열 때 펼쳐진 채로 남지 않도록)
+  const ed = document.getElementById('wageInlineEditor');
+  if (ed) ed.style.display = 'none';
 }
 document.getElementById('settingsCloseBtn').addEventListener('click', closeSettings);
 document.getElementById('settingsBd').addEventListener('click', closeSettings);
@@ -2834,6 +2837,11 @@ function showCalDetail(dateStr, cellEl) {
 function renderWeekSummary() {
   const container = document.getElementById('wsDays');
   if (!container) return;
+
+  // 관리자 전체보기: 여러 직원 근무가 섞여 의미가 없으므로 주간 요약 숨김
+  const wrap = document.getElementById('weekSummary');
+  if (isAdmin && !selectedStaffUid) { if (wrap) wrap.style.display = 'none'; return; }
+  if (wrap) wrap.style.display = 'block';
 
   // 오늘 로컬 날짜
   const now = new Date();
