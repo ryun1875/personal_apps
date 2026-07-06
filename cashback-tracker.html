@@ -335,14 +335,14 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <div class="form-group">
         <label>최소 사용 금액</label>
         <div class="amount-input-wrap">
-          <input id="f-min" type="number" placeholder="0">
+          <input id="f-min" type="number" min="0" placeholder="0">
           <span class="amount-unit">원</span>
         </div>
       </div>
       <div class="form-group">
         <label>캐시백 금액</label>
         <div class="amount-input-wrap">
-          <input id="f-cashback" type="number" placeholder="0">
+          <input id="f-cashback" type="number" min="0" placeholder="0">
           <span class="amount-unit">원</span>
         </div>
       </div>
@@ -351,7 +351,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     <div class="form-group">
       <label>현재 달성 금액</label>
       <div class="amount-input-wrap">
-        <input id="f-current" type="number" placeholder="현재까지 사용한 금액">
+        <input id="f-current" type="number" min="0" placeholder="현재까지 사용한 금액">
         <span class="amount-unit">원</span>
       </div>
       <div class="form-hint">입력하면 진행 게이지가 표시돼요</div>
@@ -468,7 +468,11 @@ function esc(s) {
 }
 
 // ── 날짜 유틸 ──────────────────────────────────
-function today() { return new Date().toISOString().slice(0, 10); }
+function pad2(n) { return String(n).padStart(2, '0'); }
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; // 로컬 날짜 (UTC 밀림 방지)
+}
 function daysDiff(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   const t = new Date(today() + 'T00:00:00');
@@ -477,7 +481,8 @@ function daysDiff(dateStr) {
 function fmtDate(d) {
   if (!d) return '-';
   const [y, m, dd] = d.split('-');
-  return `${m}/${dd}`;
+  const curY = String(new Date().getFullYear());
+  return y === curY ? `${Number(m)}/${Number(dd)}` : `${y.slice(2)}.${Number(m)}/${Number(dd)}`;
 }
 function fmtAmt(n) {
   if (!n) return '0';
@@ -509,7 +514,7 @@ function render() {
 function renderSummary() {
   const t = today();
   const active = events.filter(e => e.start <= t && e.end >= t);
-  const done = events.filter(e => isAchieved(e) && e.end >= t);
+  const done = events.filter(isAchieved); // "달성완료" 탭과 동일 기준
   document.getElementById('sum-total').textContent = events.length;
   document.getElementById('sum-active').textContent = active.length;
   document.getElementById('sum-done').textContent = done.length;
@@ -545,6 +550,10 @@ function renderList() {
     const sa = getStatus(a), sb = getStatus(b);
     const order = { active: 0, upcoming: 1, ended: 2 };
     if (order[sa] !== order[sb]) return order[sa] - order[sb];
+    if (sa === 'active') { // 진행중 내에서는 미달성(급한 것)을 위로
+      const ac = (isAchieved(a) ? 1 : 0) - (isAchieved(b) ? 1 : 0);
+      if (ac !== 0) return ac;
+    }
     return a.end.localeCompare(b.end);
   });
 
@@ -598,9 +607,9 @@ function eventCardHTML(e) {
     statusBadge = `<span class="badge badge-status not-started">${achieved ? '달성' : '미달성'} 종료</span>`;
   }
 
-  // 게이지
+  // 게이지 (종료된 이벤트도 최종 달성률 표시)
   let gaugeHTML = '';
-  if (e.minAmount && status !== 'ended') {
+  if (e.minAmount) {
     const pct = Math.min(100, Math.round((Number(e.currentAmount || 0) / Number(e.minAmount)) * 100));
     const fillClass = pct >= 100 ? 'full' : pct >= 70 ? 'warn' : '';
     gaugeHTML = `
@@ -621,7 +630,7 @@ function eventCardHTML(e) {
   if (e.images && e.images.length) {
     const shown = e.images.slice(0, 3);
     thumbHTML = `<div class="event-thumb">
-      ${shown.map(src => `<img src="${src}" onclick="event.stopPropagation();openLightbox('${src}')">`).join('')}
+      ${shown.map(src => `<img src="${src}" onclick="event.stopPropagation();openLightbox(this.src)">`).join('')}
       ${e.images.length > 3 ? `<div class="more-img">+${e.images.length - 3}</div>` : ''}
     </div>`;
   }
@@ -747,7 +756,7 @@ function openDetail(id) {
       <div class="form-row" style="align-items:flex-end">
         <div class="form-group" style="margin-bottom:0;flex:1">
           <div class="amount-input-wrap">
-            <input id="quick-amt" type="number" value="${Number(ev.currentAmount || 0)}">
+            <input id="quick-amt" type="number" min="0" value="${Number(ev.currentAmount || 0)}">
             <span class="amount-unit">원</span>
           </div>
         </div>
@@ -765,7 +774,7 @@ function openDetail(id) {
     <div class="detail-section">
       <div class="detail-section-title">첨부 이미지</div>
       <div class="detail-images">
-        ${ev.images.map(src => `<img src="${src}" onclick="openLightbox('${src}')">`).join('')}
+        ${ev.images.map(src => `<img src="${src}" onclick="openLightbox(this.src)">`).join('')}
       </div>
     </div>` : ''}
 
@@ -791,6 +800,9 @@ function saveEvent() {
   if (!name) { showToast('이벤트명을 입력해주세요', 'error'); return; }
   if (!start || !end) { showToast('기간을 입력해주세요', 'error'); return; }
   if (end < start) { showToast('종료일이 시작일보다 앞서요', 'error'); return; }
+  if ([minAmount, cashbackAmount, currentAmount].some(v => v !== '' && Number(v) < 0)) {
+    showToast('금액은 0 이상이어야 해요', 'error'); return;
+  }
 
   const existing = editingId ? events.find(e => e.id === editingId) : null;
   const ev = { id: editingId || uid(), bank, cardName, name, start, end, minAmount, cashbackAmount, currentAmount, memo, images: [...uploadedImages], notifDeadline, notifStart, doneManual, createdAt: existing ? existing.createdAt : Date.now() };
@@ -805,6 +817,7 @@ function saveEvent() {
   rebuildNotifications(ev); // 추가·수정 모두 알림 재예약
   if (!save()) return;      // 저장 실패 시 모달 유지 (이미지 줄이고 재시도)
   showToast(editingId ? '수정됐어요 ✓' : '이벤트가 추가됐어요 ✓', 'success');
+  maybeRequestNotif();      // 사용자 동작(저장) 시점에 알림 권한 요청
   checkDueNotifications();
   render();
   closeModal('edit-modal-bg');
@@ -899,6 +912,10 @@ async function requestNotifPermission() {
   if (Notification.permission === 'denied') return false;
   const perm = await Notification.requestPermission();
   return perm === 'granted';
+}
+// 로드 시 자동 요청 대신, 사용자 동작(저장) 시점에만 권한 요청
+function maybeRequestNotif() {
+  if ('Notification' in window && Notification.permission === 'default') requestNotifPermission();
 }
 
 // 이벤트의 알림을 현재 데이터 기준으로 재생성 (추가·수정 공통).
@@ -1017,7 +1034,11 @@ function openSettingsModal() {
       <div class="detail-section-title">알림 권한</div>
       <div class="detail-info-item" style="margin-bottom:8px">현재 상태: <strong>${permText}</strong></div>
       ${perm === 'default' ? `<button class="btn-save" onclick="requestNotifPermission().then(()=>openSettingsModal())">알림 허용하기</button>` : ''}
-      <div class="form-hint" style="margin-top:8px">정적 웹앱이라 앱이 닫혀 있을 땐 알림이 즉시 오지 않고, 다음에 앱을 열 때 놓친 알림을 모아서 알려줘요.</div>
+      <div class="form-hint" style="margin-top:8px;line-height:1.7">
+        • 정적 웹앱이라 앱이 닫혀 있으면 알림이 즉시 오지 않고, 다음에 열 때 놓친 알림을 모아 알려줘요.<br>
+        • 아이폰(사파리)은 <b>공유 → 홈 화면에 추가</b>로 설치해야 알림·전체화면이 동작해요.<br>
+        • 로컬 파일(file://)로 열면 알림이 제한될 수 있어요 — https 주소로 여는 걸 권장해요.
+      </div>
     </div>
     <div class="detail-section">
       <div class="detail-section-title">데이터</div>
@@ -1077,12 +1098,31 @@ function showToast(msg, type = '') {
   toastTimer = setTimeout(() => { el.classList.remove('show'); }, 2500);
 }
 
+// PWA 매니페스트를 이 파일 안에서 자기참조로 주입 (공용 manifest.json은 가계부용이라 미사용)
+function setupPWA() {
+  const icon = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="40" fill="#0f0f13"/><text x="30" y="140" font-size="118">💳</text></svg>');
+  const mf = {
+    name: '캐시백 트래커', short_name: '캐시백', description: '신용카드 캐시백 이벤트 추적',
+    start_url: '.', scope: '.', display: 'standalone', orientation: 'portrait',
+    background_color: '#0f0f13', theme_color: '#0f0f13',
+    icons: [
+      { src: icon, sizes: '192x192', type: 'image/svg+xml', purpose: 'any' },
+      { src: icon, sizes: '512x512', type: 'image/svg+xml', purpose: 'any' }
+    ]
+  };
+  const ml = document.createElement('link');
+  ml.rel = 'manifest';
+  ml.href = 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify(mf));
+  document.head.appendChild(ml);
+  const al = document.createElement('link');
+  al.rel = 'apple-touch-icon';
+  al.href = icon;
+  document.head.appendChild(al);
+}
+
 // ── 초기화 ────────────────────────────────────
-async function init() {
-  // 알림 권한 요청
-  if ('Notification' in window && Notification.permission === 'default') {
-    await requestNotifPermission();
-  }
+function init() {
+  setupPWA();
 
   // 저장된 이벤트들의 미발사 알림을 현재 데이터 기준으로 동기화
   events.forEach(rebuildNotifications);
