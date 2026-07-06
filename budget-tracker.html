@@ -1933,8 +1933,9 @@ window.toggleDoneInst=function(){
 };
 
 async function loadAllInstallments(){
-  // installmentTotal이 있는 지출 전체 로드
-  const snap=await getDocs(query(collection(db,up('expenses')),where('installmentGroupId','!=','')));
+  // 할부 지출 전체 로드. installmentTotal(핵심 필드) 기준으로 조회 →
+  // installmentGroupId 필드가 없는 옛 레코드도 누락 없이 포함 (그룹키는 installmentGroupId||id 폴백)
+  const snap=await getDocs(query(collection(db,up('expenses')),where('installmentTotal','>',0)));
   allInstallments=snap.docs.map(d=>({id:d.id,...d.data()}));
 }
 
@@ -2944,7 +2945,7 @@ window.saveCats=async function(){
     renderBudget();
     renderList();
     showToast('카테고리가 저장됐어요 ✓','success');
-  }catch(e){console.error(e);setSyncStatus(offline);showToast('저장 실패: '+e.message,'error');}
+  }catch(e){console.error(e);setSyncStatus('offline');showToast('저장 실패: '+e.message,'error');}
   finally{setTimeout(()=>{catSaving=false;},1000);}
 };
 window.openEmojiPicker=function(i){
@@ -3320,7 +3321,7 @@ window.savePayMethods=async function(){
     await batch.commit();
     setSyncStatus('online');
     showToast('결제수단이 저장됐어요 ✓','success');
-  }catch(e){console.error(e);setSyncStatus(offline);showToast('저장 실패: '+e.message,'error');}
+  }catch(e){console.error(e);setSyncStatus('offline');showToast('저장 실패: '+e.message,'error');}
 };
 
 // ── 자산 탭 ───────────────────────────────────────────────
@@ -4013,7 +4014,7 @@ window.saveInstEdit=async function(){
     setSyncStatus('online');
     showToast('할부 전체가 수정됐어요 ✓','success');
     renderList();
-  }catch(e){console.error(e);setSyncStatus(offline);showToast('수정 실패','error');}
+  }catch(e){console.error(e);setSyncStatus('offline');showToast('수정 실패','error');}
 };
 
 async function renderBackup(){
@@ -4131,7 +4132,7 @@ window.cleanupAmounts=async function(){
       setSyncStatus('online');
       showToast(fixed>0?`${fixed}개 항목이 정리됐어요 ✓`:'오류 항목이 없어요 ✅','success');
       renderBackup();
-    }catch(e){console.error(e);setSyncStatus(offline);showToast('정리 실패: '+e.message,'error');}
+    }catch(e){console.error(e);setSyncStatus('offline');showToast('정리 실패: '+e.message,'error');}
   });
 };
 window.createBackup=async function(isAuto=false){
@@ -4180,8 +4181,12 @@ window.createBackup=async function(isAuto=false){
   }
 };
 
+let restoreInProgress=false;
 window.restoreBackup=async function(backupId){
+  if(restoreInProgress){showToast('복구가 진행 중이에요','warning');return;}
   showConfirm('백업 데이터로 복구하면 현재 데이터가 모두 덮어써져요. 정말 복구할까요?',async()=>{
+    if(restoreInProgress)return;
+    restoreInProgress=true;
     setSyncStatus('syncing');
     try{
       const snap=await getDocs(collection(db,up('backups')));
@@ -4238,8 +4243,11 @@ window.restoreBackup=async function(backupId){
       setSyncStatus('online');
       showToast('복구가 완료됐어요 ✓','success');
     }catch(e){
+      console.error(e);
       setSyncStatus('offline');
-      showToast('복구 실패: '+e.message,'error');
+      showToast('복구 실패 — 데이터가 일부만 바뀌었을 수 있어요. 방금 만든 자동 스냅샷(직전 상태)으로 복구하세요.','error');
+    }finally{
+      restoreInProgress=false;
     }
   });
 };
@@ -4559,7 +4567,7 @@ window.savePortCats=async function(){
     setSyncStatus('online');
     showToast('카테고리가 저장됐어요 ✓','success');
     renderPortfolio();
-  }catch(e){console.error(e);setSyncStatus(offline);showToast('저장 실패','error');}
+  }catch(e){console.error(e);setSyncStatus('offline');showToast('저장 실패','error');}
 };
 
 window.addPortItem=async function(){
@@ -4674,7 +4682,9 @@ window.exportCSV=function(){
     const pay=payMethods.find(p=>p.id===e.payId);
     rows.push([e.date,cat?.name||e.cat,e.desc||'',e.amount,pay?.name||'',e.installmentTotal?`${e.installmentCurrent}/${e.installmentTotal}`:'',e.isRecurring?'O':'']);
   });
-  const csv='\uFEFF'+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  // CSV \uC140: \uC218\uC2DD \uC778\uC81D\uC158 \uBC29\uC9C0(=,+,-,@ \uB85C \uC2DC\uC791\uD558\uBA74 \uC55E\uC5D0 ' \uBD99\uC784) + \uB530\uC634\uD45C \uC774\uC2A4\uCF00\uC774\uD504
+  const cell=v=>{let s=String(v);if(/^[=+\-@]/.test(s))s="'"+s;return `"${s.replace(/"/g,'""')}"`;};
+  const csv='\uFEFF'+rows.map(r=>r.map(cell).join(',')).join('\n');
   const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'})),download:`가계부_${curMonth}.csv`});
   a.click();showToast('CSV 저장됐어요 📥','success');
 };
