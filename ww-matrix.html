@@ -47,6 +47,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .tab{padding:6px 11px;font-size:13px;cursor:pointer;border:none;border-bottom:2px solid transparent;color:var(--text2);background:none;font-family:inherit}
 .tab.active{border-bottom-color:var(--accent);color:var(--text);font-weight:500}
 .pane{display:none}.pane.active{display:block}
+.spin{display:inline-block;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a1d2a;color:var(--text);border:0.5px solid var(--border2);padding:8px 18px;border-radius:var(--radius);font-size:13px;z-index:300;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
 .toast.show{opacity:1}
 /* mobile swipe dots */
@@ -227,6 +229,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   </div>
 
   <div class="season-bar" id="seasonBar"></div>
+
+  <div id="loadingScreen" style="display:none;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:10px">
+    <i class="ti ti-loader-2 spin" style="font-size:26px;color:var(--accent)"></i>
+    <p style="color:var(--text3);font-size:13px">데이터 불러오는 중...</p>
+  </div>
 
   <div id="noSeason" style="display:none;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:16px">
     <p style="color:var(--text3);font-size:14px">아직 등록된 시즌이 없어요</p>
@@ -588,8 +595,6 @@ let _uid = null;
 // coll: uColl('seasons')       → users/{uid}/ww_seasons  (컬렉션, 홀수 세그먼트)
 const uDoc  = (...p) => { if(!_uid) throw new Error('not-authenticated'); return doc(db,'users',_uid,'ww_data',...p); };
 const uColl = (name) => { if(!_uid) throw new Error('not-authenticated'); return collection(db,'users',_uid,'ww_'+name); };
-const uSubColl = (sid, name) => { if(!_uid) throw new Error('not-authenticated'); return collection(db,'users',_uid,'ww_seasons',sid,name); };
-const uSubDoc  = (sid, ...p)  => { if(!_uid) throw new Error('not-authenticated'); return doc(db,'users',_uid,'ww_seasons',sid,...p); };
 
 // ── FB API를 window에 노출 (일반 스크립트에서 호출 가능) ──
 window.FB = {
@@ -627,9 +632,6 @@ window.FB = {
     const q = query(uColl('saves'), orderBy('ts','desc'));
     const s = await getDocs(q);
     return s.docs.map(d=>({id:d.id,...d.data()}));
-  },
-  async addSave(data){
-    await addDoc(uColl('saves'),{...data, ts:serverTimestamp()});
   },
   async deleteSave(id){ await deleteDoc(doc(db,'users',_uid,'ww_saves',id)); },
   async loadAllSeasonData(sids){
@@ -814,6 +816,8 @@ function processImage(file, cb){
 
 // ── 초기화 ──
 async function appInit(){
+  const ld=document.getElementById('loadingScreen');
+  ld.style.display='flex';
   try {
     const saved = await window.FB.loadChars();
     chars = saved || DC.map(c=>({...c}));
@@ -831,6 +835,7 @@ async function appInit(){
     seasons = [];
     showToast('데이터 로딩 중 오류 발생');
   }
+  ld.style.display='none';
   renderSeasonBar();
   renderAll();
 }
@@ -884,10 +889,30 @@ async function loadSeasonData(sid){
     await saveSeason();   // 새 형식(activeBuffs/activeBosses)으로 시즌 재저장
   }
 }
-async function saveSeason(){ if(curSid) await window.FB.saveSeasonData(curSid,{parties,activeBuffs,activeBosses}); }
-async function saveChars(){ await window.FB.saveChars(chars); }
-async function saveBuffs(){ await window.FB.saveBuffs(buffs); }
-async function saveBosses(){ await window.FB.saveBosses(bosses); }
+// Firestore 문서 1MB 한도 — 이미지(base64)가 쌓이면 근접할 수 있어 저장 전에 경고
+function warnDocSize(list,label){
+  const size=JSON.stringify(list).length;
+  if(size>800000) showToast(`${label} 데이터가 ${Math.round(size/1024)}KB로 한도(1MB)에 근접했어요. 이미지 일부를 정리해 주세요`);
+}
+async function saveSeason(){
+  if(!curSid) return;
+  try{ await window.FB.saveSeasonData(curSid,{parties,activeBuffs,activeBosses}); }
+  catch(e){ console.error('saveSeason:',e); showToast('시즌 저장 실패: '+(e.code||e.message)); }
+}
+async function saveChars(){
+  warnDocSize(chars,'공명자');
+  try{ await window.FB.saveChars(chars); }
+  catch(e){ console.error('saveChars:',e); showToast('공명자 저장 실패: '+(e.code||e.message)); }
+}
+async function saveBuffs(){
+  try{ await window.FB.saveBuffs(buffs); }
+  catch(e){ console.error('saveBuffs:',e); showToast('버프 저장 실패: '+(e.code||e.message)); }
+}
+async function saveBosses(){
+  warnDocSize(bosses,'보스');
+  try{ await window.FB.saveBosses(bosses); }
+  catch(e){ console.error('saveBosses:',e); showToast('보스 저장 실패: '+(e.code||e.message)); }
+}
 
 // 디바운스 — 텍스트 입력(이름/점수/HP)이 키 입력마다 Firestore에 쓰지 않도록 모아서 저장
 function debounce(fn, ms){
@@ -1239,7 +1264,12 @@ function charDragEnd(){
 }
 
 async function addParty(){ parties.push({name:`파티 ${parties.length+1}`,slots:[null,null,null],buffId:null,bossIds:[],score:'',hp:'',memo:''}); renderAll(); await saveSeason(); }
-async function rmParty(pi){ parties.splice(pi,1); renderAll(); await saveSeason(); }
+async function rmParty(pi){
+  const p=parties[pi];
+  const hasData=p&&(p.slots.some(s=>s!==null)||p.score||p.hp||p.memo||(p.bossIds&&p.bossIds.length));
+  if(hasData&&!confirm(`"${p.name}" 파티를 삭제할까요?`)) return;
+  parties.splice(pi,1); renderAll(); await saveSeason();
+}
 function renameParty(pi,v){ parties[pi].name=v; saveSeasonDebounced(); }
 async function rmSlot(pi,si){ parties[pi].slots[si]=null; renderAll(); await saveSeason(); }
 async function setPartyBuff(pi,v){ parties[pi].buffId=v===''?null:v; renderAll(); await saveSeason(); }
@@ -1247,14 +1277,14 @@ async function togglePartyBoss(pi,bid){
   if(!parties[pi].bossIds) parties[pi].bossIds=[];
   const arr=parties[pi].bossIds, idx=arr.indexOf(bid);
   if(idx>=0) arr.splice(idx,1); else arr.push(bid);
-  renderParties(); renderInfo(); renderScorePanel(); await saveSeason();
+  renderParties(); renderInfo(); await saveSeason();
 }
 function setPartyScore(pi,v){
   parties[pi].score=v;
-  renderInfo(); renderScorePanel(); saveSeasonDebounced();
+  renderInfo(); saveSeasonDebounced();
 }
 function setPartyHp(pi,v){
-  parties[pi].hp=v; saveSeasonDebounced();
+  parties[pi].hp=v; renderScorePanel(); saveSeasonDebounced();
 }
 
 // ── 슬롯 선택 ──
@@ -1589,7 +1619,7 @@ async function doSave(){
   }catch(e){
     showToast('저장 오류: '+(e.code||e.message));
   }finally{
-    if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-download"></i> 저장';}
+    if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-device-floppy"></i> 전체 백업';}
   }
 }
 async function renderSavesList(){
@@ -1613,32 +1643,31 @@ async function renderSavesList(){
 async function loadSave(id){
   const d=await window.FB.restoreFullBackup(id);
   if(!d){showToast('불러오기 실패');return;}
+  if(d.type!=='full'){showToast('지원하지 않는 구버전 백업입니다. 새로 백업을 만들어 주세요');return;}
   if(!confirm(`"${d.name}" 백업을 복원할까요?
 현재 캐릭터 설정과 모든 시즌이 백업 시점 상태로 교체됩니다.
 (백업 이후 추가/변경한 시즌은 사라집니다)`)) return;
   showToast('복원 중...');
   try{
-    if(d.type==='full'){
-      // 캐릭터 + 전역 버프/보스 풀 복원
-      chars=(d.chars||[]).map(c=>({attr:'회절',owned:true,memo:'',...c}));
-      buffs=Array.isArray(d.buffs)?d.buffs:[];
-      bosses=Array.isArray(d.bosses)?d.bosses:[];
-      await window.FB.saveChars(chars);
-      await window.FB.saveBuffs(buffs);
-      await window.FB.saveBosses(bosses);
-      // 모든 시즌 + 시즌별 데이터 복원 (원본 id 유지)
-      // (구버전 백업은 시즌 안에 buffs/bosses가 있어 loadSeasonData가 전역 풀로 자동 마이그레이션)
-      if(Array.isArray(d.seasons)&&d.seasons.length){
-        await window.FB.restoreAllSeasons(d.seasons, d.allSeasonData||{});
-        seasons = await window.FB.loadSeasons();
-        curSid = seasons[0]?.id || null;
-        if(curSid) await loadSeasonData(curSid);
-        else { parties=[]; activeBuffs=[]; activeBosses=[]; }
-      } else {
-        seasons=[]; curSid=null; parties=[]; activeBuffs=[]; activeBosses=[];
-      }
-      renderSeasonBar();
+    // 캐릭터 + 전역 버프/보스 풀 복원
+    chars=(d.chars||[]).map(c=>({attr:'회절',owned:true,memo:'',...c}));
+    buffs=Array.isArray(d.buffs)?d.buffs:[];
+    bosses=Array.isArray(d.bosses)?d.bosses:[];
+    await window.FB.saveChars(chars);
+    await window.FB.saveBuffs(buffs);
+    await window.FB.saveBosses(bosses);
+    // 모든 시즌 + 시즌별 데이터 복원 (원본 id 유지)
+    // (구버전 백업은 시즌 안에 buffs/bosses가 있어 loadSeasonData가 전역 풀로 자동 마이그레이션)
+    if(Array.isArray(d.seasons)&&d.seasons.length){
+      await window.FB.restoreAllSeasons(d.seasons, d.allSeasonData||{});
+      seasons = await window.FB.loadSeasons();
+      curSid = seasons[0]?.id || null;
+      if(curSid) await loadSeasonData(curSid);
+      else { parties=[]; activeBuffs=[]; activeBosses=[]; }
+    } else {
+      seasons=[]; curSid=null; parties=[]; activeBuffs=[]; activeBosses=[];
     }
+    renderSeasonBar();
     closeM('savesModal');renderAll();showToast('복원 완료');
   }catch(e){console.error('restore error:',e);showToast('복원 오류: '+(e.code||e.message));}
 }
@@ -1649,6 +1678,15 @@ function closeM(id){ document.getElementById(id).classList.remove('open'); }
 function showToast(msg){ const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200); }
 
 document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); }));
+
+// ESC로 위에 뜬 모달부터 닫기
+document.addEventListener('keydown', e=>{
+  if(e.key!=='Escape') return;
+  const open=[...document.querySelectorAll('.modal-bg.open')];
+  if(!open.length) return;
+  open.sort((a,b)=>((parseInt(getComputedStyle(b).zIndex)||0)-(parseInt(getComputedStyle(a).zIndex)||0)));
+  open[0].classList.remove('open');
+});
 
 // ── 이미지 붙여넣기 (Ctrl+V) — 열려있는 편집/추가 모달에 스크린샷 적용 ──
 function isOpen(id){ const el=document.getElementById(id); return el&&el.classList.contains('open'); }
