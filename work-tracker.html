@@ -1179,7 +1179,7 @@ body {
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js';
-import { getFirestore, collection, doc, addDoc, getDocs, deleteDoc, updateDoc, setDoc, getDoc, query, orderBy, where }
+import { getFirestore, collection, doc, addDoc, getDocs, deleteDoc, updateDoc, setDoc, getDoc, query, orderBy, where, writeBatch }
   from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 // ── Firebase 설정 ──
@@ -1260,7 +1260,7 @@ lightMode = localStorage.getItem('lightMode') === 'true';
 applyTheme();
 
 // ── 앱 버전 표시 + 캐시 강제 새로고침 ──
-const APP_VERSION = '2026.07.05 (2)';
+const APP_VERSION = '2026.07.05 (3)';
 (() => {
   const lbl = document.getElementById('appVersionLabel');
   if (lbl) lbl.textContent = `버전 ${APP_VERSION}`;
@@ -1366,7 +1366,7 @@ async function loadAllStaff() {
     allStaff = snap.docs.map(d => d.data());
     renderStaffTabs();
     renderStaffManage();
-  } catch(e) {}
+  } catch(e) { console.error('직원 목록 로드 실패', e); setSyncStatus('offline', '일부 데이터 로드 실패'); }
 }
 
 function renderStaffTabs() {
@@ -1409,13 +1409,13 @@ function renderStaffManage() {
         ${s.preRegistered
           ? `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
                <span style="font-size:11px;color:var(--accent4);padding:3px 8px;border-radius:8px;background:rgba(255,179,71,.1);border:1px solid rgba(255,179,71,.3)">⏳ 로그인 대기</span>
-               <button class="btn-link-staff" onclick="openLinkStaffModal('${s.uid}')">🔗 계정 연결</button>
+               <button class="btn-link-staff" data-action="link-staff" data-uid="${escapeHtml(s.uid)}">🔗 계정 연결</button>
              </div>`
           : s.status === 'approved'
-            ? `<button class="btn-revoke" onclick="revokeStaff('${s.uid}')">승인 취소</button>`
-            : `<button class="btn-approve" onclick="approveStaff('${s.uid}')">승인</button>`
+            ? `<button class="btn-revoke" data-action="revoke-staff" data-uid="${escapeHtml(s.uid)}">승인 취소</button>`
+            : `<button class="btn-approve" data-action="approve-staff" data-uid="${escapeHtml(s.uid)}">승인</button>`
         }
-        <button style="padding:4px 10px;border-radius:6px;font-size:11px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer" onclick="openEditStaffModal('${s.uid}')">수정</button>
+        <button style="padding:4px 10px;border-radius:6px;font-size:11px;border:1px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer" data-action="edit-staff" data-uid="${escapeHtml(s.uid)}">수정</button>
       </div>
     </div>
   `).join('');
@@ -1503,7 +1503,7 @@ async function loadMyDisputes() {
       where('staffUid', '==', currentUser.uid)));
     myDisputes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderMyDisputeList();
-  } catch(e) {}
+  } catch(e) { console.error('이의제기 로드 실패', e); setSyncStatus('offline', '일부 데이터 로드 실패'); }
 }
 
 async function loadAllDisputes() {
@@ -1515,7 +1515,7 @@ async function loadAllDisputes() {
     const badge = document.getElementById('disputeBadge');
     if (badge) { badge.textContent = pending; badge.style.display = pending ? 'block' : 'none'; }
     renderDisputeList();
-  } catch(e) {}
+  } catch(e) { console.error('이의제기(관리자) 로드 실패', e); setSyncStatus('offline', '일부 데이터 로드 실패'); }
 }
 
 function renderMyDisputeList() {
@@ -1562,8 +1562,8 @@ function renderDisputeList() {
         <b>사유:</b> ${escapeHtml(d.reason)}
       </div>
       <div class="d-actions">
-        <button class="btn-approve-d" onclick="approveDispute('${d.id}','${d.ownerUid}','${d.recordId}')">✅ 승인</button>
-        <button class="btn-reject-d" onclick="openRejectModal('${d.id}')">❌ 반려</button>
+        <button class="btn-approve-d" data-action="approve-dispute" data-id="${escapeHtml(d.id)}" data-owner="${escapeHtml(d.ownerUid)}" data-record="${escapeHtml(d.recordId)}">✅ 승인</button>
+        <button class="btn-reject-d" data-action="reject-dispute" data-id="${escapeHtml(d.id)}">❌ 반려</button>
       </div>
     </div>
   `).join('');
@@ -1666,16 +1666,37 @@ document.getElementById('linkStaffConfirm').addEventListener('click', async () =
       return;
     }
 
-    // 2. 실제 uid로 복사
-    let count = 0;
-    for (const d of oldSnap.docs) {
-      await setDoc(doc(db, `users/${realUid}/workRecords`, d.id), d.data());
-      count++;
+    // 2. 실제 uid로 복사 (배치 · 500개 제한 고려해 청크 분할).
+    //    복사 배치가 전부 성공해야만 아래 삭제로 진행 → 반쯤 이전된 상태 방지.
+    const srcDocs = oldSnap.docs;
+    const count = srcDocs.length;
+    const CHUNK = 450;
+    try {
+      for (let i = 0; i < srcDocs.length; i += CHUNK) {
+        const batch = writeBatch(db);
+        for (const d of srcDocs.slice(i, i + CHUNK)) {
+          batch.set(doc(db, `users/${realUid}/workRecords`, d.id), d.data());
+        }
+        await batch.commit();
+      }
+    } catch(e) {
+      // 복사 실패: 원본은 아직 그대로라 데이터 유실 없음. 재시도 안내.
+      alert('기록 복사 중 오류가 났어요. 원본은 그대로 두었으니 다시 시도해주세요.\n' + e.message);
+      return;
     }
 
-    // 3. 원본 삭제
-    for (const d of oldSnap.docs) {
-      await deleteDoc(doc(db, `users/${linkingStaff.preUid}/workRecords`, d.id));
+    // 3. 복사 성공 후에만 원본 삭제 (배치 · 청크 분할).
+    try {
+      for (let i = 0; i < srcDocs.length; i += CHUNK) {
+        const batch = writeBatch(db);
+        for (const d of srcDocs.slice(i, i + CHUNK)) {
+          batch.delete(doc(db, `users/${linkingStaff.preUid}/workRecords`, d.id));
+        }
+        await batch.commit();
+      }
+    } catch(e) {
+      // 복사는 됐지만 임시본 삭제 실패: 복사본이 있어 데이터 유실은 없고 임시본만 남음.
+      alert('기록은 이전됐지만 임시본 정리에 실패했어요. 잠시 후 "계정 연결"을 한 번 더 눌러주세요.\n' + e.message);
     }
 
     // 4. staff 문서 업데이트 (preRegistered 해제, 실제 uid로 교체)
@@ -1697,7 +1718,7 @@ document.getElementById('linkStaffConfirm').addEventListener('click', async () =
     try {
       const emailKey = (oldStaff?.email || '').replace(/\./g,'_').replace(/@/g,'__at__');
       await setDoc(doc(db, 'preregistered', emailKey), { linkedUid: realUid }, { merge: true });
-    } catch(e) {}
+    } catch(e) { console.warn('preregistered linkedUid 갱신 실패(치명적 아님)', e); }
 
     document.getElementById('linkStaffModal').classList.remove('show');
     alert(`✅ 완료! ${count}개 기록이 이전됐어요.`);
@@ -1730,7 +1751,7 @@ async function loadSettings() {
       const data = d.data();
       if (data.hourlyWage) hourlyWage = data.hourlyWage;
     });
-  } catch(e) {}
+  } catch(e) { console.error('설정 로드 실패', e); setSyncStatus('offline', '일부 데이터 로드 실패'); }
   applySettings();
 }
 
@@ -1740,7 +1761,7 @@ async function loadGlobalConfig() {
   try {
     const snap = await getDoc(doc(db, 'shared', 'work-tracker', 'config', 'global'));
     if (snap.exists() && snap.data().taxEnabled !== undefined) taxEnabled = snap.data().taxEnabled;
-  } catch(e) {}
+  } catch(e) { console.error('전역 설정 로드 실패', e); }
 }
 
 async function saveSettings() {
@@ -1795,7 +1816,7 @@ async function loadGoal() {
   try {
     const snap = await getDoc(doc(db, 'staff', targetUid));
     if (snap.exists()) data = snap.data();
-  } catch(e) {}
+  } catch(e) { console.error('목표/시급 로드 실패', e); }
   monthlyGoal = (data && data.monthlyGoal) ? data.monthlyGoal : 0;
   // ── 직원별 시급 ──
   // staff 문서에 시급이 설정돼 있으면 그 직원의 시급을 사용.
@@ -1885,7 +1906,7 @@ async function runSaveSelectedFlow(v) {
       // 본인(관리자) 시급은 개인 설정에 저장
       await saveSettings();
     }
-  } catch(e) {}
+  } catch(e) { alert('시급 저장 실패: ' + e.message); }
   applySettings();
   return true;
 }
@@ -2146,6 +2167,29 @@ document.getElementById('nextMonth').addEventListener('click', () => {
   updateMonthDisplay(); loadRecords();
 });
 updateMonthDisplay();
+
+// ── 이벤트 위임 ──
+// 인라인 onclick에 사용자 값(uid/id/날짜 등)을 직접 넣으면 값에 따옴표가 섞였을 때
+// 핸들러가 깨지거나 스크립트가 주입될 수 있음(escapeHtml은 JS 문자열 컨텍스트를 막지 못함).
+// 값은 data-* 속성으로만 전달하고 여기서 dataset으로 안전하게 읽어 처리함.
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const d = el.dataset;
+  switch (d.action) {
+    case 'link-staff':      openLinkStaffModal(d.uid); break;
+    case 'revoke-staff':    revokeStaff(d.uid); break;
+    case 'approve-staff':   approveStaff(d.uid); break;
+    case 'edit-staff':      openEditStaffModal(d.uid); break;
+    case 'approve-dispute': approveDispute(d.id, d.owner, d.record); break;
+    case 'reject-dispute':  openRejectModal(d.id); break;
+    case 'toggle-week':     toggleWeekGroup(d.mon); break;
+    case 'del-record':      delRecord(d.id, d.owner); break;
+    case 'edit-record':     editById(d.id, d.owner); break;
+    case 'dispute-record':  openDisputeModal(d.id, d.owner, d.date, d.start, d.end); break;
+    case 'stats-filter':    setStatsFilter(d.uid ? d.uid : null); break;
+  }
+});
 
 // ── 급여 계산 ──
 function calcPay(startTime, endTime, breakMin, extraMin=0) {
@@ -2606,7 +2650,7 @@ function renderRecords() {
     const recordsHtml = wkList.map(r => renderRecordItem(r)).join('');
 
     return `<div class="week-group">
-      <div class="week-group-header ${isOpen?'open':''}" onclick="toggleWeekGroup('${monKey}')">
+      <div class="week-group-header ${isOpen?'open':''}" data-action="toggle-week" data-mon="${escapeHtml(monKey)}">
         <div class="wg-left">
           <div class="wg-title">${wk}주차</div>
           <div class="wg-sub">${range} · ${wkDays}일 근무 · ${wkH}시간${wkM?wkM+'분':''}${wkBreakStr}</div>
@@ -2651,7 +2695,7 @@ function renderSingleRecord(r) {
       </div>
       <div class="right">
         <div class="actions">
-          ${isAdmin ? `<button onclick='delRecord("${r.id}","${r.ownerUid}")'>삭제</button>` : ''}
+          ${isAdmin ? `<button data-action="del-record" data-id="${escapeHtml(r.id)}" data-owner="${escapeHtml(r.ownerUid)}">삭제</button>` : ''}
         </div>
       </div>
     </div>`;
@@ -2671,10 +2715,10 @@ function renderSingleRecord(r) {
       <div class="hours">${wh}시간${wm?' '+wm+'분':''} 근무</div>
       <div class="actions">
         ${isAdmin ? `
-          <button class="btn-edit" onclick='editById("${r.id}","${r.ownerUid}")'>수정</button>
-          <button onclick='delRecord("${r.id}","${r.ownerUid}")'>삭제</button>
+          <button class="btn-edit" data-action="edit-record" data-id="${escapeHtml(r.id)}" data-owner="${escapeHtml(r.ownerUid)}">수정</button>
+          <button data-action="del-record" data-id="${escapeHtml(r.id)}" data-owner="${escapeHtml(r.ownerUid)}">삭제</button>
         ` : (!myDispute || myDispute.status==='rejected') ? `
-          <button class="dispute-btn" onclick='openDisputeModal("${r.id}","${r.ownerUid}","${r.date}","${r.start}","${r.end}")'>이의제기</button>
+          <button class="dispute-btn" data-action="dispute-record" data-id="${escapeHtml(r.id)}" data-owner="${escapeHtml(r.ownerUid)}" data-date="${escapeHtml(r.date)}" data-start="${escapeHtml(r.start)}" data-end="${escapeHtml(r.end)}">이의제기</button>
         ` : ''}
       </div>
     </div>
@@ -2741,15 +2785,15 @@ function renderStatsFilter() {
   const tabs = document.getElementById('statsStaffTabs');
   const approved = allStaff.filter(s => s.status === 'approved' && !s.preRegistered);
   tabs.innerHTML = `
-    <div class="staff-tab ${!statsFilterUid ? 'active' : ''}" onclick="setStatsFilter(null)">전체 보기</div>
+    <div class="staff-tab ${!statsFilterUid ? 'active' : ''}" data-action="stats-filter">전체 보기</div>
     ${approved.map(s => `
-      <div class="staff-tab ${statsFilterUid === s.uid ? 'active' : ''}" onclick="setStatsFilter('${s.uid}')">
+      <div class="staff-tab ${statsFilterUid === s.uid ? 'active' : ''}" data-action="stats-filter" data-uid="${escapeHtml(s.uid)}">
         ${s.photo ? `<img src="${escapeHtml(s.photo)}" style="width:18px;height:18px;border-radius:50%">` : ''}
         ${escapeHtml(s.name)}
       </div>
     `).join('')}
     ${allStaff.filter(s => s.preRegistered && s.status === 'approved').map(s => `
-      <div class="staff-tab ${statsFilterUid === s.uid ? 'active' : ''}" onclick="setStatsFilter('${s.uid}')">
+      <div class="staff-tab ${statsFilterUid === s.uid ? 'active' : ''}" data-action="stats-filter" data-uid="${escapeHtml(s.uid)}">
         ${escapeHtml(s.name)} ⏳
       </div>
     `).join('')}
@@ -2773,7 +2817,7 @@ function renderStatsStaffSummary() {
     const days = sRecs.length;
     const mins = sRecs.reduce((sum,r) => sum + r.workMin, 0);
     const h = Math.floor(mins/60), m = mins%60;
-    return `<div class="stats-staff-card ${statsFilterUid === s.uid ? 'active' : ''}" onclick="setStatsFilter('${s.uid}')">
+    return `<div class="stats-staff-card ${statsFilterUid === s.uid ? 'active' : ''}" data-action="stats-filter" data-uid="${escapeHtml(s.uid)}">
       <div class="ssc-left">
         ${s.photo ? `<img src="${escapeHtml(s.photo)}">` : `<div style="width:28px;height:28px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:12px">👤</div>`}
         <div>
