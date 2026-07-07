@@ -836,6 +836,7 @@ function quickUpdateAmount(id) {
 
 function deleteEvent() {
   if (!editingId) return;
+  if (!confirm('이 이벤트를 삭제할까요? 첨부 이미지와 알림도 함께 삭제됩니다.')) return;
   events = events.filter(e => e.id !== editingId);
   notifications = notifications.filter(n => n.evId !== editingId);
   save();
@@ -985,8 +986,8 @@ function openNotifPanel() {
       <div class="notif-item ${n.read ? '' : 'unread'}" onclick="markRead('${n.id}')">
         <div class="notif-dot ${n.read ? 'read' : ''}"></div>
         <div class="notif-content">
-          <div class="notif-title">${n.msg}</div>
-          <div class="notif-time">${n.triggerDate}</div>
+          <div class="notif-title">${esc(n.msg)}</div>
+          <div class="notif-time">${esc(n.triggerDate)}</div>
         </div>
       </div>
     `).join('');
