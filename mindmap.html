@@ -127,10 +127,16 @@
   .mm-boundary .bnd-label .bnd-x:hover { opacity: 1; }
 
   /* ── Node ──────────────────────────────────────────── */
+  /* width:max-content — the node is absolutely positioned inside a zero-width layer,
+     so without this the browser shrinks it to min-content and text stacks one glyph
+     per line. It now grows sideways with the text and wraps only at --node-max. */
   .mm-node { position: absolute; display: flex; flex-direction: column; align-items: stretch;
+    width: max-content; max-width: var(--node-max, 280px);
     user-select: none; -webkit-user-select: none; touch-action: none; }
-  .node-box { min-width: 54px; min-height: 30px; padding: 7px 13px; border-radius: 18px;
-    font-size: 13px; font-weight: 600; text-align: center; border: 2px solid; word-break: break-word;
+  .mm-node.wide { --node-max: 420px; }
+  .mm-node.fixed-w { width: auto; max-width: none; }   /* user-resized → explicit width wins */
+  .node-box { min-width: 54px; min-height: 30px; max-width: 100%; padding: 7px 13px; border-radius: 18px;
+    font-size: 13px; font-weight: 600; text-align: center; border: 2px solid; overflow-wrap: anywhere;
     line-height: 1.4; position: relative; white-space: pre-wrap; cursor: grab; display: flex;
     flex-direction: column; align-items: center; gap: 5px; transition: box-shadow .15s; }
   .node-box:active { cursor: grabbing; }
@@ -933,7 +939,7 @@ function renderNode(n) {
   box.style.color = col;
   const sh = box.dataset.shape;
   box.style.background = (sh === 'underline' || sh === 'none') ? 'transparent' : (COLOR_BG[col] || COLOR_BG['#7c6af7']);
-  if (n.fixed && n.w) box.style.width = n.w + 'px';   // only pin width when user resized
+  if (n.fixed && n.w) { div.classList.add('fixed-w'); box.style.width = n.w + 'px'; }  // user-pinned width
 
   // image thumb
   if (n.imageId && assets[n.imageId]) {
@@ -987,6 +993,7 @@ function renderNode(n) {
 
   nodesEl.appendChild(div);
   nodes[n.id].el = div;
+  applyWidthClass(n);
   setupNodeEvents(n.id);
   if (selectedIds.has(n.id)) markSelected(n.id, true);
 }
@@ -995,6 +1002,14 @@ function shapeOf(n) {
   if (!n.parentId) return 'pill';
   const p = nodes[n.parentId];
   return (p && p.shape) || 'pill';
+}
+
+// a long label (pasted sentence) gets a wider wrap limit so it spreads sideways
+// instead of becoming a tall narrow column
+const WIDE_AT = 60;
+function applyWidthClass(n) {
+  if (!n || !n.el) return;
+  n.el.classList.toggle('wide', !n.fixed && (n.label || '').length > WIDE_AT);
 }
 
 function measureAll() {
@@ -1448,6 +1463,7 @@ function setupResize(handle, id, dir) {
       const dx = (e2.clientX - sx) / view.z;
       let nw = dir.includes('e') ? sw + dx : sw - dx;
       nw = Math.max(54, nw);
+      n.el.classList.add('fixed-w');
       box.style.width = nw + 'px';
       n.w = nw; n.h = box.offsetHeight; n.fixed = true; resized = true;  // user-pinned width
       positionNode(id); renderLinks();
@@ -1478,9 +1494,17 @@ function startEdit(id) {
     n.label = (lbl.textContent.trim() || n.label);
     lbl.textContent = n.label;
     lbl.removeEventListener('blur', finish); lbl.removeEventListener('keydown', onKey);
+    lbl.removeEventListener('input', onInput);
     interacting = false;
+    applyWidthClass(n);
     if (n.label !== oldLabel) undoPushRaw(preEdit);
     requestAnimationFrame(() => { n.w = box.offsetWidth; n.h = box.offsetHeight; positionNode(id); renderLinks(); scheduleSave(); });
+  }
+  // keep the node centred and the edges attached while the text grows
+  function onInput() {
+    n.el.classList.toggle('wide', !n.fixed && lbl.textContent.length > WIDE_AT);
+    n.w = box.offsetWidth; n.h = box.offsetHeight;
+    positionNode(id); renderLinks();
   }
   function onKey(e) {
     e.stopPropagation();
@@ -1489,6 +1513,7 @@ function startEdit(id) {
   }
   lbl.addEventListener('blur', finish);
   lbl.addEventListener('keydown', onKey);
+  lbl.addEventListener('input', onInput);
 }
 
 // ── Add / delete / collapse (always position-preserving — never reflow) ──
@@ -1780,10 +1805,29 @@ async function attachImage(id, fileOrBlob) {
 }
 // paste an image from the clipboard onto the selected node
 document.addEventListener('paste', e => {
-  const items = e.clipboardData && e.clipboardData.items; if (!items) return;
+  const cd = e.clipboardData; if (!cd) return;
+  const items = cd.items || [];
   let blob = null;
   for (const it of items) { if (it.type && it.type.indexOf('image') === 0) { blob = it.getAsFile(); break; } }
-  if (!blob) return;   // no image in clipboard → let normal (text) paste proceed
+  if (!blob) {
+    // text into a node label: insert as PLAIN text so pasted markup can't leak in
+    // and line breaks survive (textContent would otherwise join the lines)
+    const ae = document.activeElement;
+    if (ae && ae.isContentEditable) {
+      const txt = cd.getData('text/plain');
+      if (txt) {
+        e.preventDefault();
+        if (!document.execCommand('insertText', false, txt)) {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount) {
+            const r = sel.getRangeAt(0); r.deleteContents();
+            r.insertNode(document.createTextNode(txt)); r.collapse(false);
+          }
+        }
+      }
+    }
+    return;   // otherwise let the normal paste proceed (note/tag/link fields)
+  }
   e.preventDefault();
   const id = (notePanel.classList.contains('open') && notePanelId) ? notePanelId : primaryId();
   if (!id) { toastMsg('붙여넣을 노드를 먼저 선택하세요'); return; }
