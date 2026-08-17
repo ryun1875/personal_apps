@@ -63,17 +63,26 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .top-bar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
 .top-bar h1{font-size:17px;font-weight:700;flex:1;min-width:0}
 .user-avatar{width:26px;height:26px;border-radius:50%;object-fit:cover}
-/* season bar */
-.season-bar{display:flex;align-items:center;gap:6px;margin-bottom:10px;overflow-x:auto;padding-bottom:2px;flex-wrap:wrap;flex-shrink:0}
+/* season bar — 항상 한 줄. 탭 스트립만 가로 스크롤해서 아래 레이아웃 높이를 잠식하지 않음 */
+.season-bar{display:flex;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:nowrap;flex-shrink:0;min-width:0}
+.s-tabs{display:flex;align-items:center;gap:6px;overflow-x:auto;flex:1;min-width:0;padding-bottom:2px;position:relative}
 .s-tab{padding:5px 14px;border:0.5px solid var(--border2);border-radius:20px;font-size:13px;cursor:pointer;background:var(--bg3);color:var(--text2);white-space:nowrap;font-family:inherit;flex-shrink:0;transition:all .15s}
 .s-tab:hover{color:var(--text)}
 .s-tab.active{background:var(--accent2);border-color:var(--accent);color:#fff;font-weight:500}
+.s-nav{width:26px;height:26px;flex-shrink:0;border:0.5px solid var(--border2);border-radius:50%;background:var(--bg3);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;padding:0;font-family:inherit}
+.s-nav:hover:not(:disabled){color:var(--text);background:var(--bg4)}
+.s-nav:disabled{opacity:.28;cursor:default}
+.season-pick-row{cursor:pointer;align-items:center}
+.season-pick-row:hover{background:var(--bg3)}
 /* 3-column layout */
 .main-layout{display:grid;grid-template-columns:470px 1fr 400px;gap:12px;height:calc(100vh - 120px);min-height:0}
 @media(max-width:900px){
   #app{height:100dvh;padding:10px 0 0}
   .top-bar{padding:0 12px;margin-bottom:10px}
   .season-bar{padding:0 12px;margin-bottom:10px}
+  /* 좁은 화면에선 관리 버튼을 아이콘만 남겨 탭 스트립 폭을 확보 */
+  .s-mgr-label{display:none}
+  .s-mgr{padding:5px 10px}
   .main-layout{display:block;height:calc(100dvh - 110px);position:relative;overflow:hidden}
   .mobile-swipe-wrap{display:flex;height:100%;transition:transform .32s cubic-bezier(.4,0,.2,1);will-change:transform}
   .col{flex:0 0 100vw;width:100vw;height:100%;overflow:hidden}
@@ -372,6 +381,18 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       </div>
       <button class="btn btn-accent" style="justify-content:center" onclick="saveSeasonEdit()"><i class="ti ti-device-floppy"></i> 저장</button>
     </div>
+  </div>
+</div>
+
+<!-- 시즌 선택 (검색) -->
+<div class="modal-bg" id="seasonPickModal">
+  <div class="modal">
+    <div style="display:flex;align-items:center;margin-bottom:10px">
+      <span class="modal-title">시즌 선택</span>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="closeM('seasonPickModal')">닫기</button>
+    </div>
+    <input class="field" id="seasonSearch" placeholder="시즌 이름 검색" oninput="renderSeasonPick()" style="margin-bottom:10px">
+    <div id="seasonPickList"></div>
   </div>
 </div>
 
@@ -826,7 +847,7 @@ async function appInit(){
     bosses = (await window.FB.loadBosses()) || [];
     seasons = await window.FB.loadSeasons();
     if(seasons.length>0){
-      curSid = seasons[0].id;
+      curSid = pickDefaultSeason();
       await loadSeasonData(curSid);
     }
   } catch(e) {
@@ -937,14 +958,89 @@ function renderAll(){
 // renderPool은 공명자 관리 모달에서 직접 열 때도 쓰이므로 분리 유지
 
 // ── 시즌바 ──
+// seasons는 ts asc(오래된 순). 바에는 시간순 그대로 깔고, 선택기 목록은 최신순으로 뒤집어 보여준다.
+function todayStr(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function isLive(s){ const t=todayStr(); return !!(s.start&&s.end&&s.start<=t&&t<=s.end); }
+// 기본 선택: 오늘이 기간에 포함된 시즌 → 없으면 가장 최근 시즌
+function pickDefaultSeason(){
+  if(!seasons.length) return null;
+  return (seasons.find(isLive) || seasons[seasons.length-1]).id;
+}
+
 function renderSeasonBar(){
   const bar = document.getElementById('seasonBar');
+  const mgr = `<button class="s-tab s-mgr" style="border-style:dashed;color:var(--text3)" onclick="openSeasonMgr()"><i class="ti ti-plus"></i><span class="s-mgr-label"> ${seasons.length?'시즌 관리':'시즌 추가'}</span></button>`;
+  if(!seasons.length){ bar.innerHTML = mgr; return; }
+  const i = seasons.findIndex(s=>s.id===curSid);
+  const nav = seasons.length>1
+    ? `<button class="s-nav" onclick="stepSeason(-1)"${i<=0?' disabled':''} title="이전 시즌"><i class="ti ti-chevron-left"></i></button>`
+    : '';
+  const navR = seasons.length>1
+    ? `<button class="s-nav" onclick="stepSeason(1)"${(i<0||i>=seasons.length-1)?' disabled':''} title="다음 시즌"><i class="ti ti-chevron-right"></i></button>`
+    : '';
+  // 시즌이 많아지면 검색 가능한 선택기를 노출
+  const pick = seasons.length>6
+    ? `<button class="s-tab" style="flex-shrink:0" onclick="openSeasonPick()" title="시즌 검색"><i class="ti ti-list-search"></i> ${seasons.length}</button>`
+    : '';
   const tabs = seasons.map(s=>{
     const period = s.start&&s.end ? ` <span style="font-size:10px;opacity:.65">${s.start.slice(5)}~${s.end.slice(5)}</span>` : '';
     return `<button class="s-tab${s.id===curSid?' active':''}" onclick="switchSeason('${s.id}')">${esc(s.name)}${period}</button>`;
   }).join('');
-  const mgr = `<button class="s-tab" style="border-style:dashed;color:var(--text3)" onclick="openSeasonMgr()"><i class="ti ti-plus"></i> ${seasons.length?'시즌 관리':'시즌 추가'}</button>`;
-  bar.innerHTML = tabs + mgr;
+  bar.innerHTML = nav + `<div class="s-tabs" id="sTabs">${tabs}</div>` + navR + pick + mgr;
+  scrollActiveTabIntoView();
+}
+
+// 활성 탭을 스트립 가운데로. scrollIntoView는 페이지 전체를 움직일 수 있어 scrollLeft를 직접 계산.
+// (scrollLeft는 브라우저가 0~maxScroll로 자동 클램프하므로 상한 계산은 불필요)
+function centerActiveTab(){
+  const wrap = document.getElementById('sTabs');
+  const el = wrap && wrap.querySelector('.s-tab.active');
+  if(!wrap || !el || !wrap.clientWidth) return;   // 폭이 0이면 계산이 무의미하므로 건너뜀
+  // 탭이 스트립보다 넓으면(긴 이름 + 좁은 화면) 가운데 대신 왼쪽을 맞춰 이름 앞부분을 보여준다
+  wrap.scrollLeft = el.offsetWidth >= wrap.clientWidth
+    ? el.offsetLeft
+    : Math.max(0, el.offsetLeft - (wrap.clientWidth - el.offsetWidth)/2);
+}
+function scrollActiveTabIntoView(){
+  centerActiveTab();
+  // 웹폰트(Noto Sans KR·tabler)가 늦게 로드되면 탭 폭이 바뀌어 위치가 어긋나므로 준비 후 한 번 더 보정
+  if(document.fonts && document.fonts.status!=='loaded') document.fonts.ready.then(centerActiveTab);
+}
+
+async function stepSeason(d){
+  const i = seasons.findIndex(s=>s.id===curSid);
+  const n = i + d;
+  if(i<0 || n<0 || n>=seasons.length) return;
+  await switchSeason(seasons[n].id);
+}
+
+// ── 시즌 선택기 (검색) ──
+function openSeasonPick(){
+  document.getElementById('seasonSearch').value='';
+  renderSeasonPick();
+  document.getElementById('seasonPickModal').classList.add('open');
+  setTimeout(()=>document.getElementById('seasonSearch').focus(),80);
+}
+function renderSeasonPick(){
+  const q = (document.getElementById('seasonSearch').value||'').trim().toLowerCase();
+  const list = seasons.slice().reverse().filter(s=>!q||(s.name||'').toLowerCase().includes(q));
+  document.getElementById('seasonPickList').innerHTML = list.length
+    ? list.map(s=>{
+      const on = s.id===curSid;
+      const period = s.start&&s.end ? `${s.start} ~ ${s.end}` : '기간 미설정';
+      return `<div class="season-row season-pick-row"${on?' style="background:rgba(108,142,245,0.08)"':''} onclick="pickSeason('${s.id}')">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500">${esc(s.name)}${isLive(s)?' <span style="font-size:10px;color:var(--accent)">진행중</span>':''}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${period}</div>
+        </div>
+        ${on?'<i class="ti ti-check" style="color:var(--accent);flex-shrink:0"></i>':''}
+      </div>`;
+    }).join('')
+    : '<p style="font-size:13px;color:var(--text3);padding:8px 0">검색 결과 없음</p>';
+}
+async function pickSeason(sid){
+  closeM('seasonPickModal');
+  if(sid!==curSid) await switchSeason(sid);
 }
 
 async function switchSeason(sid){
@@ -966,11 +1062,12 @@ function openSeasonMgr(){
 function renderSeasonList(){
   const el = document.getElementById('seasonList');
   if(!seasons.length){ el.innerHTML='<p style="font-size:13px;color:var(--text3)">등록된 시즌 없음</p>'; return; }
-  el.innerHTML = seasons.map(s=>{
+  // 최신 시즌이 위 — 시즌이 쌓이면 최근 것부터 보는 게 자연스러움
+  el.innerHTML = seasons.slice().reverse().map(s=>{
     const period = s.start&&s.end ? `<span style="font-size:11px;color:var(--text3);display:block;margin-top:2px">${s.start} ~ ${s.end}</span>` : '';
     return `<div class="season-row">
       <div style="flex:1;min-width:0">
-        <span style="font-size:13px;font-weight:500">${esc(s.name)}</span>${period}
+        <span style="font-size:13px;font-weight:500">${esc(s.name)}</span>${isLive(s)?' <span style="font-size:10px;color:var(--accent)">진행중</span>':''}${period}
       </div>
       <button class="btn btn-sm btn-icon" onclick="openSeasonEdit('${s.id}')" title="편집"><i class="ti ti-edit"></i></button>
       <button class="btn btn-sm btn-icon" onclick="deleteSeason('${s.id}')" title="삭제"><i class="ti ti-trash"></i></button>
@@ -989,10 +1086,10 @@ async function addSeason(){
     const id = await window.FB.addSeason({name, start:start||'', end:end||''});
     const newS = {id, name, start:start||'', end:end||''};
     seasons.push(newS);
-    if(!curSid){
-      curSid = id;
-      await loadSeasonData(id);
-    }
+    // 새로 만든 시즌으로 바로 이동 (입력 중이던 현재 시즌 변경은 먼저 저장)
+    await saveSeasonDebounced.flush();
+    curSid = id;
+    await loadSeasonData(id);
     document.getElementById('newSName').value='';
     document.getElementById('newSStart').value='';
     document.getElementById('newSEnd').value='';
@@ -1034,7 +1131,7 @@ async function deleteSeason(sid){
   await window.FB.deleteSeason(sid);
   seasons = seasons.filter(s=>s.id!==sid);
   if(curSid===sid){
-    curSid = seasons[0]?.id||null;
+    curSid = pickDefaultSeason();
     if(curSid) await loadSeasonData(curSid);
     else { parties=[]; activeBuffs=[]; activeBosses=[]; }
   }
@@ -1661,7 +1758,7 @@ async function loadSave(id){
     if(Array.isArray(d.seasons)&&d.seasons.length){
       await window.FB.restoreAllSeasons(d.seasons, d.allSeasonData||{});
       seasons = await window.FB.loadSeasons();
-      curSid = seasons[0]?.id || null;
+      curSid = pickDefaultSeason();
       if(curSid) await loadSeasonData(curSid);
       else { parties=[]; activeBuffs=[]; activeBosses=[]; }
     } else {
