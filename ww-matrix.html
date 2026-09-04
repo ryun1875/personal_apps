@@ -127,6 +127,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .drag-handle{cursor:grab;color:var(--text3);padding:0 4px;font-size:14px;flex-shrink:0;touch-action:none}
 .drag-handle:hover{color:var(--text2)}
 .drag-handle:active{cursor:grabbing}
+.party-order-btn{background:none;border:none;color:var(--text3);cursor:pointer;padding:2px;font-size:13px;line-height:1;flex-shrink:0}
+.party-order-btn:hover:not(:disabled){color:var(--text)}
+.party-order-btn:disabled{opacity:.2;cursor:default}
 .party-row{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--radius);padding:8px 10px;max-width:420px}
 .party-header{display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .party-name-input{border:0.5px solid var(--border);border-radius:6px;padding:2px 7px;font-size:12px;background:var(--bg3);color:var(--text);width:100px;font-family:inherit}
@@ -278,6 +281,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <h2><i class="ti ti-sword" style="margin-right:4px"></i>파티 편성</h2>
           <div style="display:flex;gap:6px;align-items:center">
             <span id="info" style="font-size:11px;color:var(--text2)"></span>
+            <button class="btn btn-sm" onclick="openPartyImport()" title="다른 시즌의 공명자 편성 가져오기"><i class="ti ti-copy"></i> 가져오기</button>
             <button class="btn btn-accent btn-sm" onclick="addParty()"><i class="ti ti-plus"></i> 추가</button>
           </div>
         </div>
@@ -393,6 +397,18 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     </div>
     <input class="field" id="seasonSearch" placeholder="시즌 이름 검색" oninput="renderSeasonPick()" style="margin-bottom:10px">
     <div id="seasonPickList"></div>
+  </div>
+</div>
+
+<!-- 다른 시즌의 공명자 편성 가져오기 -->
+<div class="modal-bg" id="partyImportModal">
+  <div class="modal-sm">
+    <div style="display:flex;align-items:center;margin-bottom:10px">
+      <span class="modal-title">다른 시즌 편성 가져오기</span>
+      <button class="btn btn-sm" style="margin-left:auto" onclick="closeM('partyImportModal')">닫기</button>
+    </div>
+    <p style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:10px">가져올 시즌을 선택하세요. 파티 이름·순서·공명자 배치만 복사하며, 현재 시즌의 보스·버프 목록은 유지됩니다.</p>
+    <div id="partyImportList"></div>
   </div>
 </div>
 
@@ -1050,6 +1066,37 @@ async function switchSeason(sid){
   renderSeasonBar(); renderAll();
 }
 
+function openPartyImport(){
+  const list=document.getElementById('partyImportList');
+  const sources=seasons.filter(s=>s.id!==curSid).slice().reverse();
+  list.innerHTML=sources.length?sources.map(s=>{
+    const period=s.start&&s.end?`<span style="font-size:11px;color:var(--text3);display:block;margin-top:2px">${esc(s.start)} ~ ${esc(s.end)}</span>`:'';
+    return `<button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:7px;text-align:left" onclick="importPartyFormation('${s.id}')">
+      <i class="ti ti-copy" style="flex-shrink:0"></i><span>${esc(s.name)}${period}</span>
+    </button>`;
+  }).join(''):'<p style="font-size:13px;color:var(--text3);padding:8px 0">가져올 다른 시즌이 없습니다</p>';
+  document.getElementById('partyImportModal').classList.add('open');
+}
+
+async function importPartyFormation(sourceSid){
+  const source=seasons.find(s=>s.id===sourceSid);
+  if(!source) return;
+  let d;
+  try{ d=await window.FB.loadSeasonData(sourceSid); }
+  catch(e){ showToast('편성을 불러오지 못했습니다'); return; }
+  if(!d||!Array.isArray(d.parties)||!d.parties.length){ showToast('선택한 시즌에 편성이 없습니다'); return; }
+  if(!confirm(`"${source.name}"의 공명자 편성으로 현재 시즌 파티를 교체할까요?\n보스·버프·점수·HP·메모는 복사하지 않습니다.`)) return;
+  parties=d.parties.map((p,i)=>({
+    name:p.name||`파티 ${i+1}`,
+    slots:Array.isArray(p.slots)?p.slots.slice(0,3).map(s=>Number.isInteger(s)&&chars[s]?s:null):[null,null,null],
+    buffId:null,bossIds:[],score:'',hp:'',memo:''
+  }));
+  closeM('partyImportModal');
+  renderAll();
+  await saveSeason();
+  showToast(`"${source.name}" 편성을 가져왔습니다`);
+}
+
 // ── 시즌 관리 ──
 function openSeasonMgr(){
   document.getElementById('newSName').value='';
@@ -1222,12 +1269,14 @@ function renderParties(){
     const score=p.score||'';
     const hp=p.hp||'';
 
-    return `<div class="party-row" draggable="true" data-pi="${pi}"
-      ondragstart="dragStart(event,${pi})" ondragover="dragOver(event,${pi})"
+    return `<div class="party-row" data-pi="${pi}"
+      ondragover="dragOver(event,${pi})"
       ondragleave="dragLeave(event)" ondrop="dragDrop(event,${pi})" ondragend="dragEnd()">
       <div class="party-header">
-        <span class="drag-handle" title="드래그해서 순서 변경"><i class="ti ti-grip-vertical"></i></span>
+        <span class="drag-handle" draggable="true" ondragstart="dragStart(event,${pi})" ondragend="dragEnd()" title="이 손잡이를 드래그해서 순서 변경"><i class="ti ti-grip-vertical"></i></span>
         <span style="font-size:11px;color:var(--text3);font-weight:500;flex-shrink:0">#${pi+1}</span>
+        <button class="party-order-btn" onclick="moveParty(${pi},-1)" ${pi===0?'disabled':''} title="위로 이동" aria-label="위로 이동"><i class="ti ti-chevron-up"></i></button>
+        <button class="party-order-btn" onclick="moveParty(${pi},1)" ${pi===parties.length-1?'disabled':''} title="아래로 이동" aria-label="아래로 이동"><i class="ti ti-chevron-down"></i></button>
         <input class="party-name-input" value="${esc(p.name)}" oninput="renameParty(${pi},this.value)">
         ${actBuffs.length?`<select class="buff-sel" onchange="setPartyBuff(${pi},this.value)">${buffOpts}</select>`:''}
         <button class="btn btn-sm btn-icon" style="position:relative;flex-shrink:0" onclick="openPartyMemo(${pi})" title="파티 메모">
@@ -1290,7 +1339,8 @@ let dragSrcIdx=null;
 function dragStart(e,pi){
   dragSrcIdx=pi;
   e.dataTransfer.effectAllowed='move';
-  setTimeout(()=>e.currentTarget.classList.add('dragging'),0);
+  const row=e.currentTarget.closest('.party-row');
+  setTimeout(()=>row&&row.classList.add('dragging'),0);
 }
 function dragOver(e,pi){
   e.preventDefault();
@@ -1313,6 +1363,13 @@ function dragEnd(){
   document.querySelectorAll('.party-row').forEach(r=>{
     r.classList.remove('dragging','drag-over');
   });
+}
+async function moveParty(pi,dir){
+  const to=pi+dir;
+  if(to<0||to>=parties.length) return;
+  [parties[pi],parties[to]]=[parties[to],parties[pi]];
+  renderAll();
+  await saveSeason();
 }
 
 // ── 공명자 드래그 정렬 ──
