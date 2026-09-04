@@ -79,7 +79,7 @@
     border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;}
   @keyframes s{to{transform:rotate(360deg);}}
   .preview{background:#0f1113;border:1px dashed var(--line);border-radius:14px;padding:16px;
-    font-size:19px;font-weight:800;letter-spacing:-.2px;line-height:1.5;word-break:keep-all;min-height:30px;}
+    font-size:19px;font-weight:800;letter-spacing:-.2px;line-height:1.5;word-break:keep-all;white-space:pre-wrap;min-height:30px;}
   .hint{font-size:12px;color:var(--sub);margin-top:8px;line-height:1.5;}
   .hint.warn{color:var(--bone);font-weight:700;}
   .totline{font-size:12px;color:var(--sub);margin-top:6px;}
@@ -87,7 +87,7 @@
   .hist .clr{background:none;border:none;color:var(--sub);font-size:12px;text-decoration:underline;}
   .hitem{display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-top:1px solid var(--line);}
   .hitem .ht{flex:none;font-size:11px;color:var(--sub);width:62px;padding-top:2px;}
-  .hitem .hm{flex:1;font-size:14px;font-weight:600;word-break:keep-all;line-height:1.45;}
+  .hitem .hm{flex:1;font-size:14px;font-weight:600;word-break:keep-all;white-space:pre-wrap;line-height:1.45;}
   .hitem .hb{flex:none;display:flex;gap:6px;}
   .hitem .hb button{background:var(--panel2);border:1px solid var(--line);color:var(--sub);border-radius:8px;padding:6px 9px;font-size:12px;}
   .empty{color:var(--sub);font-size:13px;padding:6px 0;}
@@ -226,7 +226,7 @@ const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.par
          set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
 const DEFAULT_MAKERS=["마니커","케이탑푸드","하림","체리부로","사조"];
 const MAX_PER_SEND=10, SIZE_BUDGET=8*1024*1024;   // 브라우저 공유 한계: 1회 10장 · 약 8MB
-const APP_VER="v1.11 (4종 불량·카메라 개선)";
+const APP_VER="v1.12 (총 개수 요약 추가)";
 let makers=LS.get("dr_makers",DEFAULT_MAKERS.slice());
 let history=LS.get("dr_history",[]);
 const KINDS=["북채","통날개","신선육"];
@@ -422,9 +422,9 @@ function toBase64(file){return new Promise((res,rej)=>{const r=new FileReader();
 function buildMsg(){const ip=$("ipgo").value.trim(),gi=$("gihan").value.trim();const h=[];
   if(ip)h.push("입고"+ip);if(gi)h.push("기한"+gi);if(maker)h.push(maker);h.push(kind);
   const d=[];DEFECT_KEYS.forEach(key=>{const cfg=TCFG[key];if(cfg.arr.length)d.push(cfg.tag+cfg.arr.length+"개");});
-  let s=(h.join(" ")+(d.length?" "+d.join(" "):"")).trim();
-  if(bong)s+=" "+bong+"봉";
-  return s;}
+  const s=(h.join(" ")+(d.length?" "+d.join(" "):"")).trim();
+  const summary=["총 "+defectPhotoCount()+"개"];if(bong)summary.push(bong+"봉");
+  return s+"\n\n"+summary.join(", ");}
 function render(){$("preview").textContent=buildMsg()||"—";const tot=totalCount();
   const bad=defectPhotoCount();$("totLine").textContent=tot?`첨부 사진 ${tot}장 · 불량 ${bad}장 · 라벨 ${labels.length}장${labels.length?" — 라벨이 맨 끝":""}`:"";}
 function saveDraft(){LS.set("dr_draft",{ipgo:$("ipgo").value,gihan:$("gihan").value,maker,kind,etc:$("makerEtc").value,bong});}
