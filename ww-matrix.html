@@ -480,9 +480,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <div><p style="font-size:12px;color:var(--text2);margin-bottom:5px">카드 색상</p><div class="swatches" id="bossSwatches"></div></div>
       <textarea class="textarea" id="bossMemo" placeholder="보스 특징, 공략 메모..."></textarea>
       <div>
-        <p style="font-size:12px;color:var(--text2);margin-bottom:6px">속성 저항 (%) · 모든 시즌 공유</p>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:6px">속성 저항 · 모든 시즌 공유</p>
         <div id="bossResistanceFields" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"></div>
-        <p style="font-size:11px;color:var(--text3);margin-top:6px">아는 수치만 입력하세요. 빈칸은 미입력, 0은 저항 0%입니다.</p>
+        <p style="font-size:11px;color:var(--text3);margin-top:6px">저항이 있는 속성을 체크하세요. 여러 개 선택할 수 있어요.</p>
       </div>
       <button class="btn btn-accent" style="justify-content:center" onclick="saveBoss()"><i class="ti ti-device-floppy"></i> 저장</button>
     </div>
@@ -1538,13 +1538,14 @@ async function removeBuff(bid){
 }
 
 // ── 보스 (전역 벤치 + 시즌별 활성화) ──
+function hasBossResistance(value){ return value===true||(Number.isFinite(value)&&value>0); }
 function renderBossResistanceFields(resistances={}){
-  document.getElementById('bossResistanceFields').innerHTML=AK.map((attr,i)=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${ATTRS[attr].text}">
-    ${attr}<input class="field" id="bossResistance-${i}" type="number" step="any" placeholder="미입력" aria-label="${attr} 저항률" value="${esc(Number.isFinite(resistances[attr])?resistances[attr]:'')}" style="min-width:0;padding:5px">%
+  document.getElementById('bossResistanceFields').innerHTML=AK.map((attr,i)=>`<label style="display:flex;align-items:center;gap:8px;padding:9px;border-radius:6px;background:${ATTRS[attr].bg};font-size:12px;color:${ATTRS[attr].text};cursor:pointer">
+    <input id="bossResistance-${i}" type="checkbox" aria-label="${attr} 저항" ${hasBossResistance(resistances[attr])?'checked':''}>${attr}
   </label>`).join('');
 }
 function bossResistanceBadges(b){
-  const badges=AK.filter(attr=>Number.isFinite(b.resistances?.[attr])).map(attr=>`<span style="background:${ATTRS[attr].bg};color:${ATTRS[attr].text};padding:2px 5px;border-radius:4px;font-size:10px;white-space:nowrap">${attr} 저항 ${b.resistances[attr]}%</span>`).join('');
+  const badges=AK.filter(attr=>hasBossResistance(b.resistances?.[attr])).map(attr=>`<span style="background:${ATTRS[attr].bg};color:${ATTRS[attr].text};padding:2px 5px;border-radius:4px;font-size:10px;white-space:nowrap">${attr} 저항</span>`).join('');
   return badges?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">${badges}</div>`:'';
 }
 function renderBossList(){
@@ -1629,12 +1630,7 @@ async function saveBoss(){
   const resistances={};
   for(let i=0;i<AK.length;i++){
     const input=document.getElementById(`bossResistance-${i}`);
-    if(!input.validity.valid){ input.reportValidity();return; }
-    if(input.value.trim()!==''){
-      const value=Number(input.value);
-      if(!Number.isFinite(value)){ showToast('저항률은 숫자로 입력하세요');return; }
-      resistances[AK[i]]=value;
-    }
+    if(input.checked) resistances[AK[i]]=true;
   }
   const data={name,img:url||bossUp||null,color:COLS.indexOf(bossC),memo:document.getElementById('bossMemo').value.trim(),resistances};
   if(editBossId===null){
