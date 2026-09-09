@@ -479,6 +479,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       </div>
       <div><p style="font-size:12px;color:var(--text2);margin-bottom:5px">카드 색상</p><div class="swatches" id="bossSwatches"></div></div>
       <textarea class="textarea" id="bossMemo" placeholder="보스 특징, 공략 메모..."></textarea>
+      <div>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:6px">속성 저항 (%) · 모든 시즌 공유</p>
+        <div id="bossResistanceFields" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px"></div>
+        <p style="font-size:11px;color:var(--text3);margin-top:6px">아는 수치만 입력하세요. 빈칸은 미입력, 0은 저항 0%입니다.</p>
+      </div>
       <button class="btn btn-accent" style="justify-content:center" onclick="saveBoss()"><i class="ti ti-device-floppy"></i> 저장</button>
     </div>
   </div>
@@ -1533,6 +1538,15 @@ async function removeBuff(bid){
 }
 
 // ── 보스 (전역 벤치 + 시즌별 활성화) ──
+function renderBossResistanceFields(resistances={}){
+  document.getElementById('bossResistanceFields').innerHTML=AK.map((attr,i)=>`<label style="display:flex;align-items:center;gap:5px;font-size:12px;color:${ATTRS[attr].text}">
+    ${attr}<input class="field" id="bossResistance-${i}" type="number" step="any" placeholder="미입력" aria-label="${attr} 저항률" value="${esc(Number.isFinite(resistances[attr])?resistances[attr]:'')}" style="min-width:0;padding:5px">%
+  </label>`).join('');
+}
+function bossResistanceBadges(b){
+  const badges=AK.filter(attr=>Number.isFinite(b.resistances?.[attr])).map(attr=>`<span style="background:${ATTRS[attr].bg};color:${ATTRS[attr].text};padding:2px 5px;border-radius:4px;font-size:10px;white-space:nowrap">${attr} 저항 ${b.resistances[attr]}%</span>`).join('');
+  return badges?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:5px">${badges}</div>`:'';
+}
 function renderBossList(){
   const el=document.getElementById('bossList');
   const act=activeBosses.map(id=>bosses.find(b=>b.id===id)).filter(Boolean);
@@ -1551,6 +1565,7 @@ function renderBossList(){
       <div class="boss-card-inner">
         <div class="boss-icon" style="background:${col.bg}">${iconInner}</div>
         <div class="boss-name-label">${esc(b.name)}</div>
+        ${bossResistanceBadges(b)}
         ${b.memo?`<div class="boss-memo-text">${esc(b.memo.split('\n')[0])}</div>`:''}
       </div>
     </div>`;
@@ -1573,7 +1588,7 @@ function renderBossBenchList(){
       return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--border)">
         <button class="dtog${on?' on':''}" style="flex-shrink:0;width:46px" onclick="toggleActiveBoss('${b.id}')" title="이번 시즌 사용">${on?'사용중':'벤치'}</button>
         <div class="boss-icon" style="width:28px;height:28px;border-radius:6px;background:${col.bg}">${icon}</div>
-        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.name)}</div>${b.memo?`<div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.memo.split('\n')[0])}</div>`:''}</div>
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.name)}</div>${bossResistanceBadges(b)}${b.memo?`<div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(b.memo.split('\n')[0])}</div>`:''}</div>
         <button class="btn btn-sm btn-icon" onclick="openEditBoss('${b.id}')"><i class="ti ti-edit"></i></button>
         <button class="btn btn-sm btn-icon" onclick="removeBoss('${b.id}')"><i class="ti ti-trash"></i></button>
       </div>`;
@@ -1588,6 +1603,7 @@ async function toggleActiveBoss(bid){
 }
 function openAddBoss(){
   editBossId=null;bossUp=null;bossC=COLS[0];
+  renderBossResistanceFields();
   document.getElementById('bossMgrTitle').textContent='보스 추가';
   ['bossName','bossUrl','bossMemo'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('bossFile').value='';document.getElementById('bossPrev').style.display='none';
@@ -1595,6 +1611,8 @@ function openAddBoss(){
 }
 function openEditBoss(bid){
   editBossId=bid;bossUp=null; const b=bosses.find(x=>x.id===bid); if(!b) return;
+  renderBossResistanceFields(b.resistances||{});
+  bossUp=b.img?.startsWith('data:')?b.img:null;
   document.getElementById('bossMgrTitle').textContent=`편집: ${b.name}`;
   document.getElementById('bossName').value=b.name;
   document.getElementById('bossUrl').value=b.img&&!b.img.startsWith('data:')?b.img:'';
@@ -1608,7 +1626,17 @@ async function saveBoss(){
   const name=document.getElementById('bossName').value.trim();
   if(!name){showToast('보스 이름을 입력하세요');return;}
   const url=document.getElementById('bossUrl').value.trim();
-  const data={name,img:bossUp||url||null,color:COLS.indexOf(bossC),memo:document.getElementById('bossMemo').value.trim()};
+  const resistances={};
+  for(let i=0;i<AK.length;i++){
+    const input=document.getElementById(`bossResistance-${i}`);
+    if(!input.validity.valid){ input.reportValidity();return; }
+    if(input.value.trim()!==''){
+      const value=Number(input.value);
+      if(!Number.isFinite(value)){ showToast('저항률은 숫자로 입력하세요');return; }
+      resistances[AK[i]]=value;
+    }
+  }
+  const data={name,img:url||bossUp||null,color:COLS.indexOf(bossC),memo:document.getElementById('bossMemo').value.trim(),resistances};
   if(editBossId===null){
     const b={id:genId('boss'),...data}; bosses.push(b); activeBosses.push(b.id);
   } else {
