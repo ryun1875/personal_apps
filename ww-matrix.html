@@ -431,7 +431,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <div id="gfWorkspace" hidden>
     <div class="gf-toolbar"><button class="btn" id="gfSquadTab" onclick="GF.mode('squads')">5인 제대 편성</button><button class="btn" id="gfNoteTab" onclick="GF.mode('notes')">공략 노트</button><button class="btn btn-sm" style="margin-left:auto" id="gfStatus" onclick="retryFailedWrites()" aria-live="polite">서버 저장 완료</button></div>
     <div class="gf-layout">
-      <aside class="gf-pane"><div class="gf-toolbar"><strong>캐릭터</strong><button class="btn btn-sm" onclick="GF.editChar()">+ 등록</button></div><div class="gf-toolbar"><input id="gfCharSearch" class="field" placeholder="이름·분류 검색" aria-label="소녀전선2 캐릭터 검색" oninput="GF.renderRoster()" style="width:100%"></div><div class="gf-scroll" id="gfRosterScroll"><div class="gf-roster" id="gfRoster"></div></div></aside>
+      <aside class="gf-pane"><div class="gf-toolbar"><strong>캐릭터</strong><button class="btn btn-sm" onclick="GF.editChar()">+ 등록</button><button class="btn btn-sm" onclick="GF.catalogInfo()">명단 정보</button></div><div class="gf-toolbar"><input id="gfCharSearch" class="field" placeholder="이름·역할·속성·무기 검색" aria-label="소녀전선2 캐릭터 검색" oninput="GF.renderRoster()" style="width:100%"></div><div class="gf-scroll" id="gfRosterScroll"><div class="gf-roster" id="gfRoster"></div></div></aside>
       <section class="gf-pane"><div id="gfActions" class="gf-toolbar"></div><div id="gfContent" class="gf-scroll"></div></section>
     </div>
   </div>
@@ -1035,20 +1035,62 @@ async function switchGame(game){
   }catch(e){showToast('게임 전환 실패: '+e.message);}
   finally{if(epoch===sessionEpoch){gameSwitchBusy=false;document.getElementById('gameSelect').disabled=false;document.getElementById('gameSelect').value=activeGame;document.getElementById('app').inert=false;}}
 }
+// 기본 명단은 사실 정보만 수록. 공략 본문/이미지는 복제하지 않는다.
+// 출처: 나무위키 소녀전선2: 망명/인형 (공개 미러 확인, 문서 수정 2026-08-20).
+const GF_CATALOG_SOURCE='https://namu.wiki/w/'+encodeURIComponent('소녀전선2: 망명/인형');
+const GF_CATALOG_MIRROR='https://www.namu.moe/w/'+encodeURIComponent('소녀전선2: 망명/인형');
+const GF_CATALOG_DATE='2026-08-20';
+const GF_CATALOG=Object.entries({
+  '권총':[
+    ['콜펜','서포트','탁류'],['나강','서포트','산성'],['크세니아','서포트','연소'],['페이','뱅가드','물리'],
+    ['플로렌스','서포트','탁류'],['바스티','서포트','산성'],['웰로드','불워크','산성',true],['이글레타','센티널','빙결',true]
+  ],
+  '기관단총':[
+    ['치타','서포트','연소'],['수오미','서포트','빙결'],['파파샤','센티널','물리'],['벡터','서포트','연소'],
+    ['조휘','뱅가드','탁류'],['페리','불워크','연소'],['리바','센티널','전도'],['레나','서포트','전도'],
+    ['로벨라','센티널','빙결'],['사쿠라','뱅가드','연소'],['레이니','센티널','물리'],['하프시','뱅가드','산성'],['미틸','센티널','탁류',true]
+  ],
+  '저격소총':[
+    ['네메시스','센티널','산성'],['모신나강','센티널','전도'],['마키아토','센티널','빙결'],['드셰브니','서포트','빙결'],
+    ['스프링필드','서포트','탁류'],['니키타','센티널','탁류'],['로렐라이','서포트','연소'],['샤이엔','센티널','물리'],
+    ['류시','센티널','탁류'],['네메시스·연광','센티널','산성',true]
+  ],
+  '돌격소총':[
+    ['그로자','불워크','물리'],['샤크리','센티널','연소'],['토로로','센티널','탁류'],['경구','센티널','연소'],
+    ['대연','뱅가드','물리'],['센타우레이시','서포트','연소'],['클루카이','센티널','산성'],['미슈티','서포트','산성'],
+    ['유희','서포트','물리'],['비욜카','뱅가드','전도'],['안도리스','불워크','전도'],['강우','서포트','전도'],
+    ['앨바','서포트','빙결'],['보이마스티나','센티널','물리'],['OTs-14','센티널','공진',true],['소프','센티널','빙결',true],
+    ['페일린','센티널','산성',true],['콜레다','뱅가드','탁류',true],['아스테리아','서포트','물리',true]
+  ],
+  '기관총':[['리타라','센티널','물리'],['페리티아','센티널','산성'],['루이스','센티널','연소'],['바틸다','서포트','물리']],
+  '산탄총':[['롯타','센티널','빙결'],['베프리','뱅가드','물리'],['사브리나','불워크','탁류'],['추화','뱅가드','연소'],['린드','센티널','산성'],['헬렌','불워크','빙결']],
+  '도검':[['캐롤릭','뱅가드','연소'],['울리드','뱅가드','물리'],['파에투사','센티널','산성'],['섹스턴스','서포트','전도']]
+}).flatMap(([weapon,rows])=>rows.map(([name,role,element,krPending=false])=>({
+  id:'gfcat_'+Array.from(name,c=>c.codePointAt(0).toString(16)).join('_'),name,role,element,weapon,krPending,
+  group:[role,element,weapon].join(' · '),memo:'',img:null,catalogName:name,catalogDate:GF_CATALOG_DATE
+})));
+function mergeGFCatalog(existing){
+  const nameKey=s=>String(s||'').normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase();
+  const ids=new Set(existing.map(c=>c.id)),names=new Set(existing.flatMap(c=>[nameKey(c.name),nameKey(c.catalogName)]));
+  // tombstone(삭제 기록)도 포함해 사용자가 삭제한 항목을 다시 추가하지 않는다.
+  const additions=GF_CATALOG.filter(c=>!ids.has(c.id)&&!names.has(nameKey(c.name))).map(c=>({...c}));
+  return {chars:[...existing,...additions],added:additions.length};
+}
 // 소녀전선2는 명조 상태/경로를 재사용하지 않는 독립 작업 공간이다.
 const GF={
   chars:[],squads:[],notes:[],loaded:false,view:'squads',selectedChar:null,selectedNote:null,scope:'all',timer:null,editor:null,dragId:null,noteQuery:'',scrolls:{squads:0,notes:0},
   reset(){clearTimeout(this.timer);this.timer=null;this.chars=[];this.squads=[];this.notes=[];this.loaded=false;this.view='squads';this.selectedChar=null;this.selectedNote=null;this.scope='all';this.editor=null;this.dragId=null;this.noteQuery='';this.scrolls={squads:0,notes:0};},
-  async load(){if(this.loaded)return;const epoch=sessionEpoch,data=await window.FB.loadGF();assertSession(epoch);this.chars=data.chars;this.squads=data.squads;this.notes=data.notes;this.loaded=true;},
+  async load(){if(this.loaded)return;const epoch=sessionEpoch,data=await window.FB.loadGF();assertSession(epoch);const merged=mergeGFCatalog(data.chars);this.chars=merged.chars;this.squads=data.squads;this.notes=data.notes;if(merged.added){await this.save();assertSession(epoch);}this.loaded=true;},
   async save(){const snapshot=cloneData({chars:this.chars,squads:this.squads});return queueWrite('gf2:workspace',()=>window.FB.saveGF(snapshot));},
   schedule(){clearTimeout(this.timer);this.timer=setTimeout(()=>{this.timer=null;this.save();},600);updateSaveStatus();},
   async flush(){if(this.timer){clearTimeout(this.timer);this.timer=null;await this.save();}},
+  catalogInfo(){this.editor={type:'catalog'};this.modal('기본 캐릭터 명단',`<p class="note-meta">나무위키 인형 목록 ${GF_CATALOG.length}명 · 문서 기준 ${GF_CATALOG_DATE}<br>직접 접속이 어려워 공개 미러에서 확인한 명단입니다. 실시간 동기화가 아니며, 한국 서버 출시 여부는 현재와 다를 수 있습니다.</p><p class="note-meta">이름·역할·속성·무기 분류만 가져왔습니다. 이미지와 공략 본문은 포함하지 않았습니다. 기존 캐릭터 정보와 삭제 기록은 보존합니다.</p><p><a href="${GF_CATALOG_SOURCE}" target="_blank" rel="noopener noreferrer">나무위키 원문</a> · <a href="${GF_CATALOG_MIRROR}" target="_blank" rel="noopener noreferrer">확인한 미러 문서</a></p><p class="note-meta">문서상 한국 서버 미출시 (${GF_CATALOG_DATE} 기준): ${esc(GF_CATALOG.filter(c=>c.krPending).map(c=>c.name).join(', '))}</p>`);},
   portrait(c){const src=c?.img;return `<div class="gf-portrait">${src?`<img src="${esc(src)}" alt="" onerror="this.hidden=true">`:esc(c?.name?.slice(0,2)||'+')}</div>`;},
   mode(view){this.scrolls[this.view]=document.getElementById('gfContent').scrollTop;this.view=view;this.render();document.getElementById('gfContent').scrollTop=this.scrolls[view]||0;},
   render(){this.renderRoster();this.renderMain();if(this.view==='notes'){document.getElementById('gfNoteSearch').value=this.noteQuery;this.filterNotes(this.noteQuery);}document.getElementById('gfSquadTab').classList.toggle('btn-accent',this.view==='squads');document.getElementById('gfNoteTab').classList.toggle('btn-accent',this.view==='notes');},
   renderRoster(){
     const q=document.getElementById('gfCharSearch').value.trim().toLowerCase();
-    document.getElementById('gfRoster').innerHTML=this.chars.filter(c=>!c.deleted&&(!q||[c.name,c.group].join(' ').toLowerCase().includes(q))).map(c=>`<button class="gf-char" aria-pressed="${this.selectedChar===c.id}" onclick="GF.selectChar('${c.id}')" title="캐릭터 공략 열기">${this.portrait(c)}<small>${esc(c.name)}</small></button>`).join('')||'<p class="note-meta">+ 등록으로 캐릭터를 추가하세요.</p>';
+    document.getElementById('gfRoster').innerHTML=this.chars.filter(c=>!c.deleted&&(!q||[c.name,c.group].join(' ').toLowerCase().includes(q))).map(c=>`<button class="gf-char" aria-pressed="${this.selectedChar===c.id}" onclick="GF.selectChar('${c.id}')" title="${esc([c.name,c.group,c.krPending?'문서상 한국 서버 미출시 ('+c.catalogDate+' 기준)':''].filter(Boolean).join(' · '))}">${this.portrait(c)}<small>${esc(c.name)}${c.krPending?' †':''}</small></button>`).join('')||'<p class="note-meta">검색 결과가 없습니다. + 등록으로 직접 추가할 수 있습니다.</p>';
   },
   selectChar(id){this.selectedChar=id;this.selectedNote=null;this.scope='char';this.noteQuery='';this.mode('notes');},
   setScope(scope){this.scope=scope;this.selectedChar=null;this.selectedNote=null;this.render();},
