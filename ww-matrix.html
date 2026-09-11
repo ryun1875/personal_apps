@@ -2245,7 +2245,11 @@ function renderNotes(){
   if(selectedNoteId&&list.some(n=>n.id===selectedNoteId))renderNoteDetail(notes.find(n=>n.id===selectedNoteId));
   else{selectedNoteId=null;document.getElementById('noteDetail').innerHTML='';}
 }
-function openNote(id){selectedNoteId=id;renderNotes();document.getElementById('noteDetail').scrollIntoView({block:'nearest'});}
+function openNote(id){
+  selectedNoteId=selectedNoteId===id?null:id;
+  renderNotes();
+  if(selectedNoteId)document.getElementById('noteDetail').scrollIntoView({block:'nearest'});
+}
 function renderNoteDetail(n){
   if(!n)return;
   const body=(n.body||'').split('\n').map((line,i)=>{
