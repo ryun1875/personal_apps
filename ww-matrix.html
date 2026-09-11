@@ -104,6 +104,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 }
 .col{display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .col-inner{flex:1;overflow-y:auto;padding-right:2px}
+.char-controls{padding:10px 10px 0;flex-shrink:0}
+.char-scroll{flex:1 1 0;min-height:0;overflow-y:scroll;overscroll-behavior-y:contain;scrollbar-gutter:stable;scrollbar-width:auto;scrollbar-color:var(--text3) var(--bg2);padding:4px 10px 10px}
+.char-scroll::-webkit-scrollbar{width:10px}
+.char-scroll::-webkit-scrollbar-thumb{background:var(--text3);border-radius:8px;border:2px solid var(--bg2)}
+.char-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .col-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 8px;border-bottom:0.5px solid var(--border);flex-shrink:0}
 .col-header h2{font-size:13px;font-weight:600;color:var(--text)}
 .col-wrap{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--radius2);height:100%;display:flex;flex-direction:column;overflow:hidden}
@@ -278,7 +283,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:0 10px">
     <button id="matrixTab" class="btn btn-accent btn-sm" onclick="setAppMode('matrix')">매트릭스 편성</button>
     <button id="notesTab" class="btn btn-sm" onclick="setAppMode('notes')">공략 노트</button>
-    <button id="saveStatus" class="btn btn-sm" style="margin-left:auto" onclick="retryFailedWrites()" aria-live="polite">저장됨</button>
+    <button id="saveStatus" class="btn btn-sm" style="margin-left:auto" onclick="retryFailedWrites()" aria-live="polite" title="서버 저장 상태입니다. 노트 편집 중인 임시 글은 별도입니다.">서버 저장 완료</button>
   </div>
 
   <div id="loadingScreen" style="display:none;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:10px">
@@ -314,12 +319,15 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
             <button class="btn btn-sm note-shortcut" data-note-scope="trash" aria-pressed="false" onclick="selectNoteScope('trash')">휴지통</button>
           </div>
           <h3 id="noteCharHeading" class="note-char-heading">공명자별 공략</h3>
-        <div class="col-inner" style="padding:10px">
+        <div class="char-controls">
           <input id="charSearch" class="fi" style="width:100%;margin-bottom:6px" placeholder="공명자 검색" aria-label="공명자 검색" oninput="renderPool()">
           <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
             <select id="charAttrFilter" class="fi" aria-label="공명자 속성 필터" onchange="renderPool()"><option value="">모든 속성</option><option>응결</option><option>용융</option><option>전도</option><option>기류</option><option>회절</option><option>인멸</option></select>
             <label id="availableFilterLabel" style="font-size:12px"><input type="checkbox" id="charAvailable" onchange="renderPool()"> 배치 가능만</label>
+            <button class="btn btn-sm" style="margin-left:auto;white-space:nowrap" onclick="document.getElementById('charScroll').scrollTop=0" title="공명자 목록 맨 위로">↑ 맨 위</button>
           </div>
+        </div>
+        <div id="charScroll" class="char-scroll" tabindex="0" role="region" aria-label="공명자 초상화 목록">
           <div id="charPoolSection"></div>
         </div>
       </div>
@@ -1128,7 +1136,8 @@ function resetSession(){
 }
 function updateSaveStatus(){
   const el=document.getElementById('saveStatus');
-  el.textContent=failedWrites.size?'저장 실패 · 클릭하여 재시도':writeCount||saveSeasonDebounced.pending()?'저장 중…':'저장됨';
+  el.textContent=failedWrites.size?'서버 저장 실패 · 재시도':writeCount||saveSeasonDebounced.pending()?'서버 저장 중…':'서버 저장 완료';
+  el.title='편성 및 저장 버튼으로 확정한 변경의 서버 저장 상태입니다. 노트 편집 중인 임시 글은 별도입니다.';
   el.style.color=failedWrites.size?'#f58a8a':'';
 }
 function queueWrite(key,fn){
@@ -2301,8 +2310,12 @@ function readNoteEditor(){
 }
 function cacheNoteDraft(){
   noteDraftRevision++;
-  try{localStorage.setItem(draftKey(),JSON.stringify(readNoteEditor()));}catch(_){showToast('기기 임시저장 공간이 부족합니다. 저장 버튼을 눌러 주세요');}
+  try{
+    localStorage.setItem(draftKey(),JSON.stringify(readNoteEditor()));
+    setNoteDraftStatus('기기 임시저장 완료 · 서버 반영은 저장 버튼을 눌러 주세요');
+  }catch(_){setNoteDraftStatus('기기 임시저장 실패 · 서버 저장 버튼을 눌러 주세요');showToast('기기 임시저장 공간이 부족합니다. 저장 버튼을 눌러 주세요');}
 }
+function setNoteDraftStatus(message){const el=document.getElementById('noteDraftStatus');if(el)el.textContent=message;}
 function editNote(id=null,draft=null){
   if(!draft){
     try{
@@ -2330,7 +2343,8 @@ function editNote(id=null,draft=null){
     </div>
     <details style="margin:10px 0" ${(n.charIds||[]).length?'open':''}><summary>관련 공명자 (여러 명 선택)</summary><div id="ntChars" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${chars.filter(c=>!c.deleted).map(c=>`<label><input type="checkbox" value="${c.id}" ${(n.charIds||[]).includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></details>
     <details><summary>관련 보스 (선택 사항)</summary><div id="ntBosses" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${bosses.map(b=>`<label><input type="checkbox" value="${b.id}" ${(n.bossIds||[]).includes(b.id)?'checked':''}> ${esc(b.name)}</label>`).join('')}</div></details>
-    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-accent" id="noteSaveButton" onclick="saveNoteEditor()">저장</button><button class="btn" onclick="cacheNoteDraft();closeM('noteEditorModal')">닫기 · 임시 글 유지</button></div>
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-accent" id="noteSaveButton" onclick="saveNoteEditor()">서버에 저장</button><button class="btn" onclick="cacheNoteDraft();closeM('noteEditorModal')">닫기 · 임시 글 유지</button></div>
+    <p id="noteDraftStatus" class="note-meta" role="status">${draft?'기기 임시 글 복구됨 · 서버 반영은 저장 버튼을 눌러 주세요':existing?'서버에 저장된 노트 · 수정 후 저장 버튼을 눌러 주세요':'새 노트 · 아직 서버에 저장되지 않았습니다'}</p>
     <p class="note-meta">작성 중인 내용은 이 계정의 기기 임시 글로 보관됩니다. 다른 기기에서는 저장 후 볼 수 있어요.</p>
   </div></div>`);
 }
@@ -2343,11 +2357,14 @@ async function saveNoteEditor(){
   const note={pinnedFor:[],createdAt:new Date().toISOString(),...old,...data,updatedAt:new Date().toISOString(),deletedAt:null};
   if(new TextEncoder().encode(JSON.stringify(note)).length>800000){showToast('노트가 너무 큽니다. 나누어 저장해 주세요');return;}
   const button=document.getElementById('noteSaveButton'),revision=noteDraftRevision;button.disabled=true;
+  setNoteDraftStatus('서버에 저장 중…');
   try{
     await persistNote(note);
     if(revision===noteDraftRevision&&editingNoteId===data.id){localStorage.removeItem(draftKey());closeM('noteEditorModal');}
-    selectedNoteId=note.id;renderNotes();showToast('노트 저장됨');
-  }finally{button.disabled=false;}
+    if(editingNoteId===data.id)setNoteDraftStatus(revision===noteDraftRevision?'서버 저장 완료':'이전 내용 서버 저장 완료 · 추가 수정 내용은 다시 저장해 주세요');
+    selectedNoteId=note.id;renderNotes();showToast('노트 서버 저장 완료');
+  }catch(e){if(editingNoteId===data.id)setNoteDraftStatus('서버 저장 실패 · 다시 저장해 주세요');throw e;}
+  finally{button.disabled=false;}
 }
 function recoverNoteDraft(){
   try{
