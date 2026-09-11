@@ -696,8 +696,7 @@ const uColl = (name) => { if(!_uid) throw new Error('not-authenticated'); return
 
 // 큰 이미지는 내용 해시별 별도 문서에 보관하고 목록 문서는 참조만 저장한다.
 const storedImageHashes=new Set();
-async function packImages(list){
-  const uid=_uid;
+async function packImages(list,uid=_uid){
   return Promise.all(list.map(async item=>{
     const c={...item};
     if(typeof c.img==='string'&&c.img.startsWith('data:')){
@@ -715,8 +714,7 @@ async function packImages(list){
     return c;
   }));
 }
-async function unpackImages(list){
-  const uid=_uid;
+async function unpackImages(list,uid=_uid){
   return Promise.all(list.map(async c=>{
     if(!c.imageRef) return c;
     const d=await getDoc(doc(db,'users',uid,'ww_images',c.imageRef));
@@ -730,14 +728,15 @@ window.FB = {
   ready: false,
   get uid(){ return _uid; },
   async loadChars(){
+    const uid=_uid;
     const d = await getDoc(uDoc('chars'));
-    return d.exists() ? unpackImages(d.data().list.map(c=>({attr:'회절',owned:true,memo:'',...c}))) : null;
+    return d.exists() ? unpackImages(d.data().list.map(c=>({attr:'회절',owned:true,memo:'',...c})),uid) : null;
   },
   async saveChars(list){ const ref=uDoc('chars');await setDoc(ref,{list:await packImages(list)}); },
   // 전역 버프/보스 풀 (벤치) — 모든 시즌이 공유, 시즌별로는 활성 id만 저장
   async loadBuffs(){ const d=await getDoc(uDoc('buffs'));  return d.exists()?(d.data().list||[]):null; },
   async saveBuffs(list){ await setDoc(uDoc('buffs'),{list}); },
-  async loadBosses(){ const d=await getDoc(uDoc('bosses')); return d.exists()?unpackImages(d.data().list||[]):null; },
+  async loadBosses(){ const uid=_uid,d=await getDoc(uDoc('bosses')); return d.exists()?unpackImages(d.data().list||[],uid):null; },
   async saveBosses(list){ const ref=uDoc('bosses');await setDoc(ref,{list:await packImages(list)}); },
   async loadNotes(){ const s=await getDocs(uColl('notes')); return s.docs.map(d=>({...d.data(),id:d.id})); },
   async saveNote(note){ await setDoc(doc(uColl('notes'),note.id),note); },
@@ -760,6 +759,16 @@ window.FB = {
     return sd.seasonData || null;
   },
   async saveSeasonData(sid,data){ await updateDoc(doc(db,'users',_uid,'ww_seasons',sid),{seasonData:data}); },
+  async saveMigratedSeason(sid,data,buffList,bossList){
+    const uid=_uid,epoch=sessionEpoch;
+    const packed=await packImages(bossList,uid);
+    if(uid!==_uid||epoch!==sessionEpoch)throw new Error('계정이 변경되어 시즌 변환을 중단했습니다');
+    const batch=writeBatch(db);
+    batch.set(doc(db,'users',uid,'ww_data','buffs'),{list:buffList});
+    batch.set(doc(db,'users',uid,'ww_data','bosses'),{list:packed});
+    batch.update(doc(db,'users',uid,'ww_seasons',sid),{seasonData:data});
+    await batch.commit();
+  },
   async loadSaves(){
     const q = query(uColl('saves'), orderBy('ts','desc'));
     const s = await getDocs(q);
@@ -771,9 +780,10 @@ window.FB = {
     await deleteDoc(ref);
   },
   async loadAllSeasonData(sids){
+    const uid=_uid;
     const results = {};
     for(const sid of sids){
-      const d = await getDoc(doc(db,'users',_uid,'ww_seasons',sid));
+      const d = await getDoc(doc(db,'users',uid,'ww_seasons',sid));
       if(d.exists()) results[sid] = d.data().seasonData || null;
     }
     return results;
@@ -813,7 +823,7 @@ window.FB = {
     const staleSeasons=oldSeasons.docs.filter(d=>!newIds.has(d.id)),staleNotes=oldNotes.docs.filter(d=>!noteIds.has(d.id));
     if(3+data.seasons.length+data.notes.length+staleSeasons.length+staleNotes.length>450)
       throw new Error('안전한 일괄 복원 범위를 넘었습니다. 현재 데이터는 유지됩니다');
-    const packedChars=await packImages(data.chars),packedBosses=await packImages(data.bosses);
+    const packedChars=await packImages(data.chars,uid),packedBosses=await packImages(data.bosses,uid);
     if(_uid!==uid)throw new Error('복원 중 계정이 변경되었습니다');
     const batch=writeBatch(db);
     batch.set(doc(db,'users',uid,'ww_data','chars'),{list:packedChars});
@@ -833,12 +843,13 @@ window.signInGoogle = async () => {
 };
 window.doSignOut = async () => {
   try{ await flushAllWrites(); }catch(_){ showToast('저장 실패를 해결한 뒤 로그아웃해 주세요');return; }
-  await fbSignOut(auth); _uid=null; window.FB.ready=false;
+  await fbSignOut(auth);
   document.getElementById('app').style.display='none';
   document.getElementById('loginScreen').style.display='flex';
 };
 
 onAuthStateChanged(auth, async user => {
+  resetSession();
   if(user){
     _uid = user.uid;
     window.FB.ready = true;
@@ -980,7 +991,7 @@ function processImage(file, cb){
 // ── 초기화 ──
 async function appInit(){
   const ld=document.getElementById('loadingScreen');
-  const uid=window.FB.uid;
+  const uid=window.FB.uid,epoch=sessionEpoch;
   dataReady=false;chars=[];parties=[];buffs=[];bosses=[];notes=[];seasons=[];curSid=null;activeBuffs=[];activeBosses=[];
   selectedNoteChar=null;selectedNoteId=null;selectedNoteBoss=null;noteScope='all';
   ld.style.display='flex';
@@ -988,20 +999,21 @@ async function appInit(){
     const [saved,loadedBuffs,loadedBosses,loadedNotes,loadedSeasons]=await Promise.all([
       window.FB.loadChars(),window.FB.loadBuffs(),window.FB.loadBosses(),window.FB.loadNotes(),window.FB.loadSeasons()
     ]);
-    if(uid!==window.FB.uid)return;
+    if(uid!==window.FB.uid||epoch!==sessionEpoch)return;
     chars = normalizeChars(saved || DC);
     if(!saved||saved.some(c=>!c.id)) await window.FB.saveChars(chars);
-    if(uid!==window.FB.uid)return;
+    if(uid!==window.FB.uid||epoch!==sessionEpoch)return;
     buffs=loadedBuffs||[];bosses=loadedBosses||[];notes=loadedNotes;seasons=loadedSeasons;
     dataReady=true;
     if(seasons.length>0){
       curSid = pickDefaultSeason();
       await loadSeasonData(curSid);
     }
+    if(uid!==window.FB.uid||epoch!==sessionEpoch)return;
     resetPartyHistory();
   } catch(e) {
     console.error('appInit error:', e);
-    if(uid!==window.FB.uid)return;
+    if(uid!==window.FB.uid||epoch!==sessionEpoch)return;
     dataReady=false;
     ld.innerHTML='<p>데이터를 불러오지 못했습니다. 원본은 유지됩니다.</p><button class="btn" onclick="location.reload()">다시 불러오기</button>';
     document.getElementById('mainLayout').style.display='none';
@@ -1013,9 +1025,9 @@ async function appInit(){
 }
 
 async function loadSeasonData(sid){
-  const uid=window.FB.uid;
+  const uid=window.FB.uid,epoch=sessionEpoch;
   const d = await window.FB.loadSeasonData(sid);
-  if(uid!==window.FB.uid)throw new Error('시즌을 읽는 중 계정이 변경되었습니다');
+  if(uid!==window.FB.uid||epoch!==sessionEpoch)throw new Error('시즌을 읽는 중 계정이 변경되었습니다');
   if(!d){
     parties=[{name:'파티 1',slots:[null,null,null],buffId:null,bossIds:[],score:'',hp:'',memo:''}];
     activeBuffs=[]; activeBosses=[];
@@ -1026,6 +1038,7 @@ async function loadSeasonData(sid){
 
   // ── 레거시 버프 마이그레이션: 시즌별 buffs[] → 전역 풀 + activeBuffs(id) ──
   if(Array.isArray(d.buffs)){
+    migrated=true;
     const map = d.buffs.map(ob=>{
       if(!ob||typeof ob!=='object') return null;
       let g = buffs.find(x=>x.name===ob.name && (x.desc||'')===(ob.desc||''));
@@ -1040,10 +1053,12 @@ async function loadSeasonData(sid){
 
   // ── 레거시 보스 마이그레이션: 시즌별 bosses[] → 전역 풀 + activeBosses(id) ──
   if(Array.isArray(d.bosses)){
+    migrated=true;
     const map = d.bosses.map(ob=>{
       if(!ob||typeof ob!=='object') return null;
       let g = bosses.find(x=>x.name===ob.name);
-      if(!g){ g={id:genId('boss'),name:ob.name,img:ob.img||null,color:ob.color||0,memo:ob.memo||''}; bosses.push(g); migrated=true; }
+      if(!g){ g={id:genId('boss'),name:ob.name,img:ob.img||null,color:ob.color||0,memo:ob.memo||'',resistances:ob.resistances||{}}; bosses.push(g); }
+      else if(!Object.keys(g.resistances||{}).length&&ob.resistances)g.resistances=cloneData(ob.resistances);
       return g.id;
     });
     activeBosses = map.filter(Boolean);
@@ -1058,9 +1073,8 @@ async function loadSeasonData(sid){
   activeBosses = activeBosses.filter(bid=>bosses.some(b=>b.id===bid));
 
   if(migrated){
-    await window.FB.saveBuffs(buffs);
-    await window.FB.saveBosses(bosses);
-    await saveSeason();   // 새 형식(activeBuffs/activeBosses)으로 시즌 재저장
+    await window.FB.saveMigratedSeason(sid,cloneData({parties,activeBuffs,activeBosses}),cloneData(buffs),cloneData(bosses));
+    if(uid!==window.FB.uid||epoch!==sessionEpoch)throw new Error('시즌 변환 중 계정이 변경되었습니다');
   }
 }
 async function saveSeason(){
@@ -1081,7 +1095,22 @@ async function saveBosses(){
 
 const cloneData=x=>JSON.parse(JSON.stringify(x));
 let writeTail=Promise.resolve(),writeCount=0;
+let sessionEpoch=0;
+function assertSession(epoch){if(epoch!==sessionEpoch)throw new Error('계정이 변경되어 작업을 중단했습니다');}
 const failedWrites=new Map(),writeVersions=new Map();
+function resetSession(){
+  // 인증 콜백에서 uid를 바꾸기 전에 호출해 작성 중인 글을 원래 계정에 보관한다.
+  if(isOpen('noteEditorModal'))cacheNoteDraft();
+  document.getElementById('noteEditorModal')?.remove();
+  document.querySelectorAll('.modal-bg.open').forEach(el=>el.classList.remove('open'));
+  sessionEpoch++;dataReady=false;seasonSwitchBusy=false;
+  saveSeasonDebounced.cancel();failedWrites.clear();writeVersions.clear();
+  writeTail=Promise.resolve();writeCount=0;updateSaveStatus();
+  document.getElementById('mainLayout').style.display='none';
+  document.getElementById('mainLayout').inert=false;
+  document.getElementById('app').inert=false;
+  document.getElementById('noSeason').style.display='none';
+}
 function updateSaveStatus(){
   const el=document.getElementById('saveStatus');
   el.textContent=failedWrites.size?'저장 실패 · 클릭하여 재시도':writeCount||saveSeasonDebounced.pending()?'저장 중…':'저장됨';
@@ -1089,16 +1118,19 @@ function updateSaveStatus(){
 }
 function queueWrite(key,fn){
   if(!dataReady)return Promise.reject(new Error('데이터를 먼저 다시 불러와 주세요'));
-  const uid=window.FB.uid,version=(writeVersions.get(key)||0)+1;
+  const uid=window.FB.uid,epoch=sessionEpoch,version=(writeVersions.get(key)||0)+1;
   writeVersions.set(key,version);failedWrites.delete(key);writeCount++;updateSaveStatus();
   const run=writeTail.then(async()=>{
-    if(uid!==window.FB.uid) throw new Error('로그인 계정이 변경되었습니다');
+    if(uid!==window.FB.uid||epoch!==sessionEpoch) throw new Error('로그인 계정이 변경되었습니다');
     await fn();
   });
   const result=run.catch(e=>{
-    if(writeVersions.get(key)===version) failedWrites.set(key,{fn,uid});
-    showToast('저장 실패: '+(e.code||e.message));throw e;
-  }).finally(()=>{writeCount--;updateSaveStatus();});
+    if(epoch===sessionEpoch){
+      if(writeVersions.get(key)===version) failedWrites.set(key,{fn,uid});
+      showToast('저장 실패: '+(e.code||e.message));
+    }
+    throw e;
+  }).finally(()=>{if(epoch===sessionEpoch){writeCount--;updateSaveStatus();}});
   writeTail=result.catch(()=>{});
   return result;
 }
@@ -1126,6 +1158,7 @@ function debounce(fn, ms){
   const wrapped=(...a)=>{ lastArgs=a; clearTimeout(t); t=setTimeout(()=>{ t=null; fn(...lastArgs); }, ms); updateSaveStatus(); };
   wrapped.flush=()=>{ if(t){ clearTimeout(t); t=null; return fn(...lastArgs); } };
   wrapped.pending=()=>!!t;
+  wrapped.cancel=()=>{clearTimeout(t);t=null;lastArgs=null;};
   return wrapped;
 }
 const saveSeasonDebounced = debounce(()=>saveSeason(), 600);
@@ -1233,15 +1266,16 @@ async function pickSeason(sid){
 async function switchSeason(sid){
   if(seasonSwitchBusy||sid===curSid) return;
   seasonSwitchBusy=true;
-  const previous=curSid,snapshot=cloneData({parties,activeBuffs,activeBosses});
+  const epoch=sessionEpoch,previous=curSid,snapshot=cloneData({parties,activeBuffs,activeBosses,buffs,bosses});
   document.getElementById('mainLayout').inert=true;
   try{
     await flushAllWrites();
+    if(epoch!==sessionEpoch)throw new Error('시즌 전환 중 계정이 변경되었습니다');
     curSid=sid;await loadSeasonData(sid);resetPartyHistory();
     renderSeasonBar();renderAll();
   }catch(e){
-    curSid=previous;({parties,activeBuffs,activeBosses}=snapshot);throw e;
-  }finally{seasonSwitchBusy=false;document.getElementById('mainLayout').inert=false;}
+    if(epoch===sessionEpoch){curSid=previous;({parties,activeBuffs,activeBosses,buffs,bosses}=snapshot);}throw e;
+  }finally{if(epoch===sessionEpoch){seasonSwitchBusy=false;document.getElementById('mainLayout').inert=false;}}
 }
 let seasonSwitchBusy=false;
 
@@ -1962,14 +1996,16 @@ function cTab(t){
 // ── 파티 저장 ──
 function openSaves(){ renderSavesList(); document.getElementById('savesModal').classList.add('open'); }
 async function doSave(){
+  const epoch=sessionEpoch;
   const name=document.getElementById('saveName').value.trim()||`백업 ${new Date().toLocaleDateString('ko')}`;
   const btn=document.querySelector('#savesModal .btn-accent');
   if(btn){btn.disabled=true;btn.textContent='저장 중...';}
   try{
     // 현재 시즌 데이터 먼저 저장
-    await flushAllWrites();await saveSeason();
+    await flushAllWrites();assertSession(epoch);await saveSeason();assertSession(epoch);
     // 모든 시즌 데이터 로드
     const allSeasonData = await window.FB.loadAllSeasonData(seasons.map(s=>s.id));
+    assertSession(epoch);
     await window.FB.saveFullBackup(name, {
       chars: JSON.parse(JSON.stringify(chars)),
       buffs: JSON.parse(JSON.stringify(buffs)),
@@ -1978,6 +2014,7 @@ async function doSave(){
       notes: cloneData(notes),
       allSeasonData
     });
+    assertSession(epoch);
     document.getElementById('saveName').value='';
     await renderSavesList();
     showToast(`"${name}" 전체 백업 완료`);
@@ -1988,7 +2025,9 @@ async function doSave(){
   }
 }
 async function renderSavesList(){
+  const epoch=sessionEpoch;
   const saves=await window.FB.loadSaves();
+  if(epoch!==sessionEpoch)return;
   const list=document.getElementById('savesList');
   if(!saves.length){list.innerHTML='<p style="font-size:13px;color:var(--text3)">저장된 백업 없음</p>';return;}
   list.innerHTML=saves.map(s=>{
@@ -2006,7 +2045,9 @@ async function renderSavesList(){
   }).join('');
 }
 async function loadSave(id){
+  const epoch=sessionEpoch;
   const d=await window.FB.restoreFullBackup(id);
+  assertSession(epoch);
   if(!d){showToast('불러오기 실패');return;}
   if(d.type!=='full'){showToast('지원하지 않는 구버전 백업입니다. 새로 백업을 만들어 주세요');return;}
   const prepared=validateSnapshot(d);
@@ -2016,20 +2057,25 @@ async function loadSave(id){
   showToast('복원 중...');
   document.getElementById('app').inert=true;
   try{
-    await flushAllWrites();await saveSeason();
-    await window.FB.saveFullBackup('복원 전 자동 안전 백업 '+new Date().toLocaleString('ko'),{
+    await flushAllWrites();assertSession(epoch);await saveSeason();assertSession(epoch);
+    const safety={
       chars:cloneData(chars),buffs:cloneData(buffs),bosses:cloneData(bosses),notes:cloneData(notes),
       seasons:seasons.map(({id,name,start,end})=>({id,name,start:start||'',end:end||''})),
       allSeasonData:await window.FB.loadAllSeasonData(seasons.map(s=>s.id))
-    });
+    };
+    assertSession(epoch);
+    await window.FB.saveFullBackup('복원 전 자동 안전 백업 '+new Date().toLocaleString('ko'),safety);
+    assertSession(epoch);
     await window.FB.replaceSnapshot(prepared);
+    assertSession(epoch);
     chars=prepared.chars;buffs=prepared.buffs;bosses=prepared.bosses;notes=prepared.notes;
     seasons=prepared.seasons;curSid=pickDefaultSeason();
     if(curSid)await loadSeasonData(curSid);else{parties=[];activeBuffs=[];activeBosses=[];}
+    assertSession(epoch);
     resetPartyHistory();selectedNoteId=null;renderSeasonBar();
     closeM('savesModal');renderAll();showToast('복원 완료');
   }catch(e){console.error('restore error:',e);showToast('복원 오류: '+(e.code||e.message));}
-  finally{document.getElementById('app').inert=false;}
+  finally{if(epoch===sessionEpoch)document.getElementById('app').inert=false;}
 }
 function validateSnapshot(raw){
   const d=cloneData(raw);
@@ -2163,9 +2209,11 @@ function renderNoteDetail(n){
     <div class="note-meta">${esc((n.tags||[]).map(t=>'#'+t).join(' '))}</div>`;
 }
 async function persistNote(note){
+  const epoch=sessionEpoch;
   const value=cloneData(note);
   await queueWrite('note:'+note.id,async()=>{
     await window.FB.saveNote(value);
+    if(epoch!==sessionEpoch)throw new Error('노트 저장 중 계정이 변경되었습니다');
     const i=notes.findIndex(n=>n.id===value.id);if(i<0)notes.push(value);else notes[i]=value;
   });
 }
