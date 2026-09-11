@@ -217,6 +217,29 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 /* season edit row */
 .season-row{display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:0.5px solid var(--border)}
 .season-row:last-child{border-bottom:none}
+.notes-col{grid-column:2 / -1}
+@media(min-width:901px) and (max-width:1350px){
+  .main-layout{grid-template-columns:minmax(250px,30%) minmax(350px,1fr) minmax(220px,25%);gap:8px}
+}
+#swipeWrap>.col:nth-child(2) .col-header{gap:6px;flex-wrap:wrap}
+#swipeWrap>.col:nth-child(2) .col-header h2{white-space:nowrap}
+.boss-memo-text a{color:var(--accent);overflow-wrap:anywhere}
+#app.notes-mode #swipeWrap>.col:nth-child(2),#app.notes-mode #swipeWrap>.col:nth-child(3){display:none}
+#app.notes-mode #notesPane{display:flex!important}
+#app.notes-mode #mobileDots .mobile-dot:nth-child(3){display:none}
+.char-card.note-selected{outline:2px solid var(--accent);outline-offset:1px}
+.note-card{padding:12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg3);cursor:pointer}
+.note-card:hover{border-color:var(--accent)}
+.note-meta{font-size:12px;color:var(--text3);margin-top:5px;overflow-wrap:anywhere}
+.note-body{line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;margin:14px 0}
+.note-body a{color:var(--accent)}
+.notes-col a{color:var(--accent);overflow-wrap:anywhere}
+.note-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.note-fields label{font-size:12px;color:var(--text2);display:flex;flex-direction:column;gap:4px}
+.note-fields .fi,.note-fields textarea{width:100%}
+.fi{border:1px solid var(--border2);border-radius:7px;padding:7px 9px;background:var(--bg3);color:var(--text);font:inherit;min-width:0}
+.fi:focus{outline:1px solid var(--accent)}
+@media(max-width:900px){.note-fields{grid-template-columns:1fr}.notes-col{width:100vw}}
 </style>
 </head>
 <body>
@@ -241,6 +264,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   </div>
 
   <div class="season-bar" id="seasonBar"></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:0 10px">
+    <button id="matrixTab" class="btn btn-accent btn-sm" onclick="setAppMode('matrix')">매트릭스 편성</button>
+    <button id="notesTab" class="btn btn-sm" onclick="setAppMode('notes')">공략 노트</button>
+    <button id="saveStatus" class="btn btn-sm" style="margin-left:auto" onclick="retryFailedWrites()" aria-live="polite">저장됨</button>
+  </div>
 
   <div id="loadingScreen" style="display:none;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:10px">
     <i class="ti ti-loader-2 spin" style="font-size:26px;color:var(--accent)"></i>
@@ -269,6 +297,17 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <button class="btn btn-sm btn-icon" onclick="openCharMgr()" title="관리"><i class="ti ti-settings"></i></button>
         </div>
         <div class="col-inner" style="padding:10px">
+          <div id="noteShortcuts" style="display:none;gap:5px;flex-wrap:wrap;margin-bottom:8px">
+            <button class="btn btn-sm" onclick="selectNoteScope('all')">전체</button>
+            <button class="btn btn-sm" onclick="selectNoteScope('explore')">업적·탐험</button>
+            <button class="btn btn-sm" onclick="selectNoteScope('inbox')">미분류</button>
+            <button class="btn btn-sm" onclick="selectNoteScope('trash')">휴지통</button>
+          </div>
+          <input id="charSearch" class="fi" style="width:100%;margin-bottom:6px" placeholder="공명자 검색" aria-label="공명자 검색" oninput="renderPool()">
+          <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
+            <select id="charAttrFilter" class="fi" aria-label="공명자 속성 필터" onchange="renderPool()"><option value="">모든 속성</option><option>응결</option><option>용융</option><option>전도</option><option>기류</option><option>회절</option><option>인멸</option></select>
+            <label id="availableFilterLabel" style="font-size:12px"><input type="checkbox" id="charAvailable" onchange="renderPool()"> 배치 가능만</label>
+          </div>
           <div id="charPoolSection"></div>
         </div>
       </div>
@@ -279,8 +318,10 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <div class="col-wrap">
         <div class="col-header">
           <h2><i class="ti ti-sword" style="margin-right:4px"></i>파티 편성</h2>
-          <div style="display:flex;gap:6px;align-items:center">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
             <span id="info" style="font-size:11px;color:var(--text2)"></span>
+            <button class="btn btn-sm" id="partyUndo" onclick="travelPartyHistory(-1)" title="편성 실행 취소">↶</button>
+            <button class="btn btn-sm" id="partyRedo" onclick="travelPartyHistory(1)" title="편성 다시 실행">↷</button>
             <button class="btn btn-sm" onclick="openPartyImport()" title="다른 시즌의 공명자 편성 가져오기"><i class="ti ti-copy"></i> 가져오기</button>
             <button class="btn btn-accent btn-sm" onclick="addParty()"><i class="ti ti-plus"></i> 추가</button>
           </div>
@@ -329,6 +370,19 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       </div>
     </div>
 
+    <div class="col notes-col" id="notesPane" style="display:none">
+      <div class="col-wrap">
+        <div class="col-header"><h2 id="notesHeading">공략 노트</h2><button class="btn btn-accent btn-sm" onclick="editNote()">+ 새 노트</button></div>
+        <div class="col-inner" style="padding:12px">
+          <input id="noteSearch" class="fi" style="width:100%;margin-bottom:8px" placeholder="제목·본문·태그 검색" aria-label="공략 검색" oninput="renderNotes()">
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <select id="noteStatusFilter" class="fi" aria-label="진행 상태" onchange="renderNotes()"><option value="">모든 진행 상태</option><option>미시작</option><option>진행 중</option><option>완료</option></select>
+            <button class="btn btn-sm" onclick="recoverNoteDraft()">임시 글 복구</button>
+          </div>
+          <div id="notesList"></div><div id="noteDetail"></div>
+        </div>
+      </div>
+    </div>
   </div><!-- end swipe-wrap -->
   </div><!-- end main-layout -->
 </div><!-- end app -->
@@ -569,6 +623,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <button class="btn btn-sm" onclick="closeM('memoModal')">닫기</button>
     </div>
     <textarea class="textarea" id="memoText" placeholder="빌드, 공명 체인 레벨, 운영 팁, 조합 등 자유롭게..." style="min-height:120px"></textarea>
+    <div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-sm" onclick="openCharNotes(memoIdx)">공략 노트 보기</button><button class="btn btn-sm" onclick="openCharNotes(memoIdx,true)">메모를 새 노트에 복사</button></div>
     <div style="display:flex;gap:8px;margin-top:9px">
       <button class="btn btn-accent" style="flex:1;justify-content:center" onclick="saveMemo()"><i class="ti ti-device-floppy"></i> 저장</button>
       <button class="btn" onclick="openEditChar(memoIdx);closeM('memoModal')" title="상세 편집"><i class="ti ti-edit"></i></button>
@@ -587,7 +642,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <input class="field" id="saveName" placeholder="백업 이름">
       <button class="btn btn-accent btn-sm" onclick="doSave()"><i class="ti ti-device-floppy"></i> 전체 백업</button>
     </div>
-    <p style="font-size:13px;color:var(--text2);margin-bottom:8px">저장된 백업 <span style="font-size:11px;color:var(--text3)">(캐릭터 설정 + 모든 시즌 데이터)</span></p>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:8px">저장된 백업 <span style="font-size:11px;color:var(--text3)">(공명자·이미지 + 모든 시즌 + 공략 노트·휴지통)</span></p>
     <div class="saves-list" id="savesList"></div>
   </div>
 </div>
@@ -600,6 +655,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <button class="btn btn-sm" style="margin-left:auto" onclick="closeM('partyMemoModal')">닫기</button>
     </div>
     <textarea class="textarea" id="partyMemoText" placeholder="파티 운용 가이드, 스킬 순서, 팁 등..." style="min-height:140px"></textarea>
+    <div id="partyNoteLinks" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"></div>
     <button class="btn btn-accent" style="width:100%;justify-content:center;margin-top:9px" onclick="savePartyMemo()"><i class="ti ti-device-floppy"></i> 저장</button>
   </div>
 </div>
@@ -616,7 +672,7 @@ import {
 import {
   getFirestore, doc, getDoc, setDoc,
   collection, getDocs, deleteDoc, addDoc,
-  serverTimestamp, query, orderBy, updateDoc
+  serverTimestamp, query, orderBy, updateDoc, writeBatch
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
 const cfg = {
@@ -638,19 +694,53 @@ let _uid = null;
 const uDoc  = (...p) => { if(!_uid) throw new Error('not-authenticated'); return doc(db,'users',_uid,'ww_data',...p); };
 const uColl = (name) => { if(!_uid) throw new Error('not-authenticated'); return collection(db,'users',_uid,'ww_'+name); };
 
+// 큰 이미지는 내용 해시별 별도 문서에 보관하고 목록 문서는 참조만 저장한다.
+const storedImageHashes=new Set();
+async function packImages(list){
+  const uid=_uid;
+  return Promise.all(list.map(async item=>{
+    const c={...item};
+    if(typeof c.img==='string'&&c.img.startsWith('data:')){
+      const bytes=new TextEncoder().encode(c.img);
+      if(bytes.length>900000) throw new Error('이미지가 문서 용량 한도를 초과합니다');
+      const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+      const ref=doc(db,'users',uid,'ww_images',hash);
+      const key=uid+':'+hash;
+      if(!storedImageHashes.has(key)){
+        if(!(await getDoc(ref)).exists()) await setDoc(ref,{data:c.img});
+        storedImageHashes.add(key);
+      }
+      c.img=null;c.imageRef=hash;
+    }else delete c.imageRef;
+    return c;
+  }));
+}
+async function unpackImages(list){
+  const uid=_uid;
+  return Promise.all(list.map(async c=>{
+    if(!c.imageRef) return c;
+    const d=await getDoc(doc(db,'users',uid,'ww_images',c.imageRef));
+    if(!d.exists()) throw new Error('저장된 이미지를 찾을 수 없습니다');
+    const {imageRef,...rest}=c;return {...rest,img:d.data().data};
+  }));
+}
+
 // ── FB API를 window에 노출 (일반 스크립트에서 호출 가능) ──
 window.FB = {
   ready: false,
+  get uid(){ return _uid; },
   async loadChars(){
     const d = await getDoc(uDoc('chars'));
-    return d.exists() ? d.data().list.map(c=>({attr:'회절',owned:true,memo:'',...c})) : null;
+    return d.exists() ? unpackImages(d.data().list.map(c=>({attr:'회절',owned:true,memo:'',...c}))) : null;
   },
-  async saveChars(list){ await setDoc(uDoc('chars'),{list}); },
+  async saveChars(list){ const ref=uDoc('chars');await setDoc(ref,{list:await packImages(list)}); },
   // 전역 버프/보스 풀 (벤치) — 모든 시즌이 공유, 시즌별로는 활성 id만 저장
   async loadBuffs(){ const d=await getDoc(uDoc('buffs'));  return d.exists()?(d.data().list||[]):null; },
   async saveBuffs(list){ await setDoc(uDoc('buffs'),{list}); },
-  async loadBosses(){ const d=await getDoc(uDoc('bosses')); return d.exists()?(d.data().list||[]):null; },
-  async saveBosses(list){ await setDoc(uDoc('bosses'),{list}); },
+  async loadBosses(){ const d=await getDoc(uDoc('bosses')); return d.exists()?unpackImages(d.data().list||[]):null; },
+  async saveBosses(list){ const ref=uDoc('bosses');await setDoc(ref,{list:await packImages(list)}); },
+  async loadNotes(){ const s=await getDocs(uColl('notes')); return s.docs.map(d=>({...d.data(),id:d.id})); },
+  async saveNote(note){ await setDoc(doc(uColl('notes'),note.id),note); },
   async loadSeasons(){
     const q = query(uColl('seasons'), orderBy('ts','asc'));
     const s = await getDocs(q);
@@ -675,7 +765,11 @@ window.FB = {
     const s = await getDocs(q);
     return s.docs.map(d=>({id:d.id,...d.data()}));
   },
-  async deleteSave(id){ await deleteDoc(doc(db,'users',_uid,'ww_saves',id)); },
+  async deleteSave(id){
+    const ref=doc(uColl('saves'),id), chunks=await getDocs(collection(ref,'chunks'));
+    for(const c of chunks.docs) await deleteDoc(c.ref);
+    await deleteDoc(ref);
+  },
   async loadAllSeasonData(sids){
     const results = {};
     for(const sid of sids){
@@ -685,36 +779,51 @@ window.FB = {
     return results;
   },
   async saveFullBackup(name, backupData){
-    await addDoc(uColl('saves'),{
-      name, type:'full',
-      chars: backupData.chars,
-      buffs: backupData.buffs || [],
-      bosses: backupData.bosses || [],
-      seasons: backupData.seasons,
-      allSeasonData: backupData.allSeasonData,
-      date: new Date().toLocaleString('ko'),
-      ts: serverTimestamp()
-    });
+    const ref=doc(uColl('saves'));
+    const json=JSON.stringify(backupData), chunks=[];
+    for(let i=0;i<json.length;){
+      let end=Math.min(i+180000,json.length);
+      const last=json.charCodeAt(end-1);if(end<json.length&&last>=0xD800&&last<=0xDBFF)end--;
+      chunks.push(json.slice(i,end));i=end;
+    }
+    for(let i=0;i<chunks.length;i++) await setDoc(doc(collection(ref,'chunks'),String(i)),{text:chunks[i]});
+    // 모든 조각이 저장된 뒤에만 백업 목록에 공개한다.
+    await setDoc(ref,{name,type:'full',format:2,chunks:chunks.length,
+      seasonCount:backupData.seasons.length,date:new Date().toLocaleString('ko'),ts:serverTimestamp()});
   },
   async restoreFullBackup(saveId){
     const d = await getDoc(doc(db,'users',_uid,'ww_saves',saveId));
     if(!d.exists()) return null;
-    return d.data();
-  },
-  // 백업 스냅샷으로 모든 시즌을 교체 복원 (원본 시즌 id·순서 유지)
-  async restoreAllSeasons(seasonsArr, allSeasonData){
-    // 기존 시즌 전부 삭제
-    const existing = await getDocs(uColl('seasons'));
-    for(const dref of existing.docs){ await deleteDoc(dref.ref); }
-    // 백업 시즌 복원 — setDoc으로 원래 id를 그대로 사용
-    for(const s of seasonsArr){
-      const {id, ...meta} = s;
-      await setDoc(doc(db,'users',_uid,'ww_seasons',id), {
-        ...meta,
-        ts: serverTimestamp(),
-        seasonData: (allSeasonData && allSeasonData[id]) || null
-      });
+    const meta=d.data();
+    if(meta.format!==2) return meta;
+    if(!Number.isInteger(meta.chunks)||meta.chunks<1||meta.chunks>1000) throw new Error('백업 조각 수가 올바르지 않습니다');
+    let json='';
+    for(let i=0;i<meta.chunks;i++){
+      const c=await getDoc(doc(d.ref,'chunks',String(i)));
+      if(!c.exists()) throw new Error('백업 일부가 누락되었습니다');
+      json+=c.data().text;
     }
+    return {...JSON.parse(json),name:meta.name,type:'full'};
+  },
+  async replaceSnapshot(data){
+    const uid=_uid;
+    const oldSeasons=await getDocs(collection(db,'users',uid,'ww_seasons')),oldNotes=await getDocs(collection(db,'users',uid,'ww_notes'));
+    if(_uid!==uid)throw new Error('복원 중 계정이 변경되었습니다');
+    const newIds=new Set(data.seasons.map(s=>s.id)),noteIds=new Set(data.notes.map(n=>n.id));
+    const staleSeasons=oldSeasons.docs.filter(d=>!newIds.has(d.id)),staleNotes=oldNotes.docs.filter(d=>!noteIds.has(d.id));
+    if(3+data.seasons.length+data.notes.length+staleSeasons.length+staleNotes.length>450)
+      throw new Error('안전한 일괄 복원 범위를 넘었습니다. 현재 데이터는 유지됩니다');
+    const packedChars=await packImages(data.chars),packedBosses=await packImages(data.bosses);
+    if(_uid!==uid)throw new Error('복원 중 계정이 변경되었습니다');
+    const batch=writeBatch(db);
+    batch.set(doc(db,'users',uid,'ww_data','chars'),{list:packedChars});
+    batch.set(doc(db,'users',uid,'ww_data','buffs'),{list:data.buffs});
+    batch.set(doc(db,'users',uid,'ww_data','bosses'),{list:packedBosses});
+    data.seasons.forEach((s,i)=>batch.set(doc(db,'users',uid,'ww_seasons',s.id),{
+      name:s.name,start:s.start||'',end:s.end||'',ts:new Date(i),seasonData:data.allSeasonData[s.id]}));
+    data.notes.forEach(n=>batch.set(doc(db,'users',uid,'ww_notes',n.id),n));
+    [...staleSeasons,...staleNotes].forEach(d=>batch.delete(d.ref));
+    await batch.commit();
   },
 };
 
@@ -723,6 +832,7 @@ window.signInGoogle = async () => {
   catch(e){ showToast('로그인 실패: '+e.code); }
 };
 window.doSignOut = async () => {
+  try{ await flushAllWrites(); }catch(_){ showToast('저장 실패를 해결한 뒤 로그아웃해 주세요');return; }
   await fbSignOut(auth); _uid=null; window.FB.ready=false;
   document.getElementById('app').style.display='none';
   document.getElementById('loginScreen').style.display='flex';
@@ -814,12 +924,22 @@ const DC=[
 // buffs/bosses = 전역 풀(벤치). activeBuffs/activeBosses = 현재 시즌에서 활성화된 id 목록.
 let chars=[], parties=[], buffs=[], bosses=[];
 let activeBuffs=[], activeBosses=[];
+let notes=[],appMode='matrix',noteScope='all',selectedNoteChar=null,selectedNoteId=null,selectedNoteBoss=null;
+let dataReady=false;
 let seasons=[], curSid=null;
 let editCharIdx=null, memoIdx=null, editBossId=null, editBuffId=null, editSid=null;
 
 // 안정적 id 생성기 (전역 버프/보스용)
-let _idc=0;
-function genId(p){ return p+'_'+Date.now().toString(36)+'_'+(_idc++).toString(36); }
+function genId(p){ return p+'_'+crypto.randomUUID(); }
+// legacySlot은 최초 배열 번호를 영구 보존한다. 아직 열지 않은 구시즌도 안전하게 읽는다.
+function normalizeChars(list){
+  return list.map((c,i)=>({color:0,attr:'회절',owned:true,memo:'',...c,
+    id:c.id||('char_legacy_'+i), legacySlot:c.legacySlot??(c.id?null:i)}));
+}
+function charBySlot(slot){
+  return chars.find(c=>!c.deleted&&(typeof slot==='number'?c.legacySlot===slot:c.id===slot));
+}
+function normalizeSlots(slots){ return [0,1,2].map(i=>charBySlot((slots||[])[i])?.id||null); }
 let curFilter='all';
 let nC=COLS[0],nA='회절',eC=COLS[0],eA='회절',nUp=null,eUp=null;
 let bossC=COLS[0],bossUp=null;
@@ -834,6 +954,7 @@ function processImage(file, cb){
   if(!file) return;
   if(!file.type.startsWith('image/')){ showToast('이미지 파일만 업로드할 수 있어요'); return; }
   const reader=new FileReader();
+  reader.onerror=()=>showToast('이미지 파일을 읽을 수 없어요');
   reader.onload=e=>{
     const img=new Image();
     img.onload=()=>{
@@ -859,23 +980,32 @@ function processImage(file, cb){
 // ── 초기화 ──
 async function appInit(){
   const ld=document.getElementById('loadingScreen');
+  const uid=window.FB.uid;
+  dataReady=false;chars=[];parties=[];buffs=[];bosses=[];notes=[];seasons=[];curSid=null;activeBuffs=[];activeBosses=[];
+  selectedNoteChar=null;selectedNoteId=null;selectedNoteBoss=null;noteScope='all';
   ld.style.display='flex';
   try {
-    const saved = await window.FB.loadChars();
-    chars = saved || DC.map(c=>({...c}));
-    if(!saved) await window.FB.saveChars(chars);
-    buffs  = (await window.FB.loadBuffs())  || [];
-    bosses = (await window.FB.loadBosses()) || [];
-    seasons = await window.FB.loadSeasons();
+    const [saved,loadedBuffs,loadedBosses,loadedNotes,loadedSeasons]=await Promise.all([
+      window.FB.loadChars(),window.FB.loadBuffs(),window.FB.loadBosses(),window.FB.loadNotes(),window.FB.loadSeasons()
+    ]);
+    if(uid!==window.FB.uid)return;
+    chars = normalizeChars(saved || DC);
+    if(!saved||saved.some(c=>!c.id)) await window.FB.saveChars(chars);
+    if(uid!==window.FB.uid)return;
+    buffs=loadedBuffs||[];bosses=loadedBosses||[];notes=loadedNotes;seasons=loadedSeasons;
+    dataReady=true;
     if(seasons.length>0){
       curSid = pickDefaultSeason();
       await loadSeasonData(curSid);
     }
+    resetPartyHistory();
   } catch(e) {
     console.error('appInit error:', e);
-    chars = DC.map(c=>({...c}));
-    seasons = [];
-    showToast('데이터 로딩 중 오류 발생');
+    if(uid!==window.FB.uid)return;
+    dataReady=false;
+    ld.innerHTML='<p>데이터를 불러오지 못했습니다. 원본은 유지됩니다.</p><button class="btn" onclick="location.reload()">다시 불러오기</button>';
+    document.getElementById('mainLayout').style.display='none';
+    showToast('데이터 로딩 실패: '+(e.code||e.message));return;
   }
   ld.style.display='none';
   renderSeasonBar();
@@ -883,7 +1013,9 @@ async function appInit(){
 }
 
 async function loadSeasonData(sid){
+  const uid=window.FB.uid;
   const d = await window.FB.loadSeasonData(sid);
+  if(uid!==window.FB.uid)throw new Error('시즌을 읽는 중 계정이 변경되었습니다');
   if(!d){
     parties=[{name:'파티 1',slots:[null,null,null],buffId:null,bossIds:[],score:'',hp:'',memo:''}];
     activeBuffs=[]; activeBosses=[];
@@ -920,7 +1052,7 @@ async function loadSeasonData(sid){
     activeBosses = Array.isArray(d.activeBosses) ? d.activeBosses.slice() : [];
   }
 
-  parties = rawParties.map(p=>({name:'파티',slots:[null,null,null],buffId:null,bossIds:[],score:'',hp:'',memo:'',...p}));
+  parties = rawParties.map(p=>({name:'파티',buffId:null,bossIds:[],score:'',hp:'',memo:'',...p,slots:normalizeSlots(p.slots)}));
   // 전역 풀에서 삭제된 id는 활성 목록에서 제거
   activeBuffs  = activeBuffs.filter(bid=>buffs.some(b=>b.id===bid));
   activeBosses = activeBosses.filter(bid=>bosses.some(b=>b.id===bid));
@@ -931,49 +1063,83 @@ async function loadSeasonData(sid){
     await saveSeason();   // 새 형식(activeBuffs/activeBosses)으로 시즌 재저장
   }
 }
-// Firestore 문서 1MB 한도 — 이미지(base64)가 쌓이면 근접할 수 있어 저장 전에 경고
-function warnDocSize(list,label){
-  const size=JSON.stringify(list).length;
-  if(size>800000) showToast(`${label} 데이터가 ${Math.round(size/1024)}KB로 한도(1MB)에 근접했어요. 이미지 일부를 정리해 주세요`);
-}
 async function saveSeason(){
   if(!curSid) return;
-  try{ await window.FB.saveSeasonData(curSid,{parties,activeBuffs,activeBosses}); }
-  catch(e){ console.error('saveSeason:',e); showToast('시즌 저장 실패: '+(e.code||e.message)); }
+  recordPartyHistory();
+  const sid=curSid,data=cloneData({parties,activeBuffs,activeBosses});
+  return queueWrite('season:'+sid,()=>window.FB.saveSeasonData(sid,data));
 }
 async function saveChars(){
-  warnDocSize(chars,'공명자');
-  try{ await window.FB.saveChars(chars); }
-  catch(e){ console.error('saveChars:',e); showToast('공명자 저장 실패: '+(e.code||e.message)); }
+  const data=cloneData(chars);return queueWrite('chars',()=>window.FB.saveChars(data));
 }
 async function saveBuffs(){
-  try{ await window.FB.saveBuffs(buffs); }
-  catch(e){ console.error('saveBuffs:',e); showToast('버프 저장 실패: '+(e.code||e.message)); }
+  const data=cloneData(buffs);return queueWrite('buffs',()=>window.FB.saveBuffs(data));
 }
 async function saveBosses(){
-  warnDocSize(bosses,'보스');
-  try{ await window.FB.saveBosses(bosses); }
-  catch(e){ console.error('saveBosses:',e); showToast('보스 저장 실패: '+(e.code||e.message)); }
+  const data=cloneData(bosses);return queueWrite('bosses',()=>window.FB.saveBosses(data));
 }
+
+const cloneData=x=>JSON.parse(JSON.stringify(x));
+let writeTail=Promise.resolve(),writeCount=0;
+const failedWrites=new Map(),writeVersions=new Map();
+function updateSaveStatus(){
+  const el=document.getElementById('saveStatus');
+  el.textContent=failedWrites.size?'저장 실패 · 클릭하여 재시도':writeCount||saveSeasonDebounced.pending()?'저장 중…':'저장됨';
+  el.style.color=failedWrites.size?'#f58a8a':'';
+}
+function queueWrite(key,fn){
+  if(!dataReady)return Promise.reject(new Error('데이터를 먼저 다시 불러와 주세요'));
+  const uid=window.FB.uid,version=(writeVersions.get(key)||0)+1;
+  writeVersions.set(key,version);failedWrites.delete(key);writeCount++;updateSaveStatus();
+  const run=writeTail.then(async()=>{
+    if(uid!==window.FB.uid) throw new Error('로그인 계정이 변경되었습니다');
+    await fn();
+  });
+  const result=run.catch(e=>{
+    if(writeVersions.get(key)===version) failedWrites.set(key,{fn,uid});
+    showToast('저장 실패: '+(e.code||e.message));throw e;
+  }).finally(()=>{writeCount--;updateSaveStatus();});
+  writeTail=result.catch(()=>{});
+  return result;
+}
+async function retryFailedWrites(){
+  for(const [key,{fn,uid}] of [...failedWrites]){
+    if(uid===window.FB.uid) await queueWrite(key,fn);
+  }
+  if(appMode==='notes')renderNotes();
+}
+async function flushAllWrites(){
+  await saveSeasonDebounced.flush();
+  await writeTail;
+  if(failedWrites.size) throw new Error('저장되지 않은 변경이 있습니다');
+}
+window.addEventListener('beforeunload',e=>{
+  if(writeCount||failedWrites.size||saveSeasonDebounced.pending()) {e.preventDefault();e.returnValue='';}
+});
+window.addEventListener('unhandledrejection',e=>{
+  console.error(e.reason);showToast('작업 실패: '+(e.reason?.code||e.reason?.message||'다시 시도해 주세요'));e.preventDefault();
+});
 
 // 디바운스 — 텍스트 입력(이름/점수/HP)이 키 입력마다 Firestore에 쓰지 않도록 모아서 저장
 function debounce(fn, ms){
   let t, lastArgs;
-  const wrapped=(...a)=>{ lastArgs=a; clearTimeout(t); t=setTimeout(()=>{ t=null; fn(...lastArgs); }, ms); };
+  const wrapped=(...a)=>{ lastArgs=a; clearTimeout(t); t=setTimeout(()=>{ t=null; fn(...lastArgs); }, ms); updateSaveStatus(); };
   wrapped.flush=()=>{ if(t){ clearTimeout(t); t=null; return fn(...lastArgs); } };
+  wrapped.pending=()=>!!t;
   return wrapped;
 }
 const saveSeasonDebounced = debounce(()=>saveSeason(), 600);
 
 // ── 렌더 전체 ──
 function renderAll(){
-  const has = !!curSid;
+  const has = !!curSid||appMode==='notes';
   document.getElementById('noSeason').style.display  = has?'none':'flex';
   document.getElementById('mainLayout').style.display= has?'grid':'none';
   const dots = document.getElementById('mobileDots');
   if(dots) dots.style.display = (has && window.innerWidth<=900) ? 'flex' : 'none';
   if(!has) return;
   renderPool(); renderParties(); renderInfo(); renderBuffGrid(); renderBossList();
+  if(appMode==='notes') renderNotes();
 }
 
 // renderPool은 공명자 관리 모달에서 직접 열 때도 쓰이므로 분리 유지
@@ -1065,11 +1231,19 @@ async function pickSeason(sid){
 }
 
 async function switchSeason(sid){
-  await saveSeasonDebounced.flush();  // 입력 중이던 변경을 현재 시즌에 먼저 저장
-  curSid = sid;
-  await loadSeasonData(sid);
-  renderSeasonBar(); renderAll();
+  if(seasonSwitchBusy||sid===curSid) return;
+  seasonSwitchBusy=true;
+  const previous=curSid,snapshot=cloneData({parties,activeBuffs,activeBosses});
+  document.getElementById('mainLayout').inert=true;
+  try{
+    await flushAllWrites();
+    curSid=sid;await loadSeasonData(sid);resetPartyHistory();
+    renderSeasonBar();renderAll();
+  }catch(e){
+    curSid=previous;({parties,activeBuffs,activeBosses}=snapshot);throw e;
+  }finally{seasonSwitchBusy=false;document.getElementById('mainLayout').inert=false;}
 }
+let seasonSwitchBusy=false;
 
 function openPartyImport(){
   const list=document.getElementById('partyImportList');
@@ -1093,7 +1267,7 @@ async function importPartyFormation(sourceSid){
   if(!confirm(`"${source.name}"의 공명자 편성으로 현재 시즌 파티를 교체할까요?\n보스·버프·점수·HP·메모는 복사하지 않습니다.`)) return;
   parties=d.parties.map((p,i)=>({
     name:p.name||`파티 ${i+1}`,
-    slots:Array.isArray(p.slots)?p.slots.slice(0,3).map(s=>Number.isInteger(s)&&chars[s]?s:null):[null,null,null],
+    slots:normalizeSlots(p.slots),
     buffId:null,bossIds:[],score:'',hp:'',memo:''
   }));
   closeM('partyImportModal');
@@ -1180,6 +1354,7 @@ async function saveSeasonEdit(){
 
 async function deleteSeason(sid){
   if(!confirm('이 시즌을 삭제할까요?')) return;
+  await flushAllWrites();
   await window.FB.deleteSeason(sid);
   seasons = seasons.filter(s=>s.id!==sid);
   if(curSid===sid){
@@ -1187,7 +1362,7 @@ async function deleteSeason(sid){
     if(curSid) await loadSeasonData(curSid);
     else { parties=[]; activeBuffs=[]; activeBosses=[]; }
   }
-  renderSeasonList(); renderSeasonBar(); renderAll();
+  resetPartyHistory();renderSeasonList(); renderSeasonBar(); renderAll();
 }
 
 // ── 공명자 풀 ──
@@ -1204,16 +1379,21 @@ function getUsed(){ const u={}; parties.forEach(p=>p.slots.forEach(s=>{if(s!=nul
 
 function renderPool(){
   const used=getUsed(); let html='';
+  const search=document.getElementById('charSearch').value.trim().toLocaleLowerCase();
+  const attr=document.getElementById('charAttrFilter').value;
+  const available=appMode==='matrix'&&document.getElementById('charAvailable').checked;
   const rT=(fn,lbl,lc)=>{
-    if(!chars.some(c=>fn(c)&&c.owned)) return;
+    if(!chars.some(c=>fn(c)&&!c.deleted&&(c.owned||appMode==='notes'))) return;
     html+=`<p class="sec-title"><span style="color:${lc}">${lbl}</span></p><div class="char-grid" id="cgrid-${lc.replace(/[^a-z]/g,'')}">`;
     chars.forEach((c,i)=>{
-      if(!fn(c)||!c.owned) return;
-      const ex=(used[i]||0)>=(c.dupe?2:1);
-      html+=`<div class="char-card${c.star5?' star5':''}${ex?' exhausted':''}"
+      if(!fn(c)||(!c.owned&&appMode==='matrix')||c.deleted) return;
+      if(search&&!c.name.toLocaleLowerCase().includes(search)||attr&&c.attr!==attr) return;
+      const ex=(used[c.id]||0)>=(c.dupe?2:1);
+      if(available&&ex) return;
+      html+=`<div class="char-card${c.star5?' star5':''}${ex&&appMode==='matrix'?' exhausted':''}${appMode==='notes'&&selectedNoteChar===c.id?' note-selected':''}"
         draggable="true"
         data-ci="${i}"
-        onclick="openMemo(${i})"
+        onclick="selectPoolChar(${i})"
         ondragstart="charDragStart(event,${i})"
         ondragover="charDragOver(event,${i})"
         ondragleave="charDragLeave(event)"
@@ -1238,8 +1418,8 @@ function renderParties(){
   const used=getUsed();
   document.getElementById('partiesArea').innerHTML=parties.map((p,pi)=>{
     const slots=p.slots.map((s,si)=>{
-      if(s!==null&&chars[s]){
-        const c=chars[s], mp=c.memo?c.memo.split('\n')[0]:'';
+      if(s!==null&&charBySlot(s)){
+        const c=charBySlot(s), mp=c.memo?c.memo.split('\n')[0]:'';
         return `<div class="slot filled${c.star5?' is5':''}" onclick="openSlot(${pi},${si})">
           <div class="slot-portrait">${mkBg(c,80,68)}</div>
           <div class="slot-name">${esc(c.name)}</div>
@@ -1383,7 +1563,8 @@ function charDragStart(e,ci){
   charDragSrc=ci;
   e.dataTransfer.effectAllowed='move';
   e.stopPropagation();
-  setTimeout(()=>e.currentTarget.classList.add('char-dragging'),0);
+  const card=e.currentTarget;
+  setTimeout(()=>card.classList.add('char-dragging'),0);
 }
 function charDragOver(e,ci){
   e.preventDefault();
@@ -1399,19 +1580,9 @@ async function charDragDrop(e,ci){
   e.stopPropagation();
   e.currentTarget.classList.remove('char-drag-over');
   if(charDragSrc===null||ci===charDragSrc) return;
-  // 파티 슬롯의 인덱스 매핑도 함께 업데이트
+  // 공명자의 고유 ID는 순서와 무관하다.
   const moved=chars.splice(charDragSrc,1)[0];
   chars.splice(ci,0,moved);
-  // 파티 슬롯 인덱스 재매핑
-  parties.forEach(p=>{
-    p.slots=p.slots.map(s=>{
-      if(s===null) return null;
-      if(s===charDragSrc) return ci;
-      if(charDragSrc<ci){ if(s>charDragSrc&&s<=ci) return s-1; }
-      else { if(s>=ci&&s<charDragSrc) return s+1; }
-      return s;
-    });
-  });
   charDragSrc=null;
   renderAll();
   await saveChars();
@@ -1453,8 +1624,8 @@ function openSlot(pi,si){
   const mk=(fn,lbl,lc)=>{
     let g='';
     chars.forEach((c,i)=>{
-      if(!fn(c)||!c.owned) return;
-      const out=(used[i]||0)>=(c.dupe?2:1)&&i!==cur;
+      if(!fn(c)||!c.owned||c.deleted) return;
+      const out=(used[c.id]||0)>=(c.dupe?2:1)&&c.id!==cur;
       g+=`<div class="mc${out?' out':''}${c.star5?' s5':''}" onclick="pickChar(${pi},${si},${i})">
         ${c.dupe?'<span class="dupe-tag">×2</span>':''}${c.star5?'<div class="star5-corner"></div>':''}
         <div style="height:52px;overflow:hidden">${mkBg(c,62,52)}</div>
@@ -1466,7 +1637,12 @@ function openSlot(pi,si){
   document.getElementById('slotTiers').innerHTML=mk(c=>c.star5,'★5','var(--gold)')+mk(c=>!c.star5,'★4','var(--text2)');
   document.getElementById('slotModal').classList.add('open');
 }
-async function pickChar(pi,si,i){ parties[pi].slots[si]=i; closeM('slotModal'); renderAll(); await saveSeason(); }
+async function pickChar(pi,si,i){
+  const c=chars[i];
+  if(!c||c.deleted||!c.owned) return;
+  if(parties[pi].slots[si]!==c.id&&(getUsed()[c.id]||0)>=(c.dupe?2:1)) return;
+  parties[pi].slots[si]=c.id; closeM('slotModal'); renderAll(); await saveSeason();
+}
 
 // ── 버프 (전역 벤치 + 시즌별 활성화) ──
 function renderBuffGrid(){
@@ -1567,7 +1743,8 @@ function renderBossList(){
         <div class="boss-icon" style="background:${col.bg}">${iconInner}</div>
         <div class="boss-name-label">${esc(b.name)}</div>
         ${bossResistanceBadges(b)}
-        ${b.memo?`<div class="boss-memo-text">${esc(b.memo.split('\n')[0])}</div>`:''}
+        ${b.memo?`<div class="boss-memo-text" onclick="event.stopPropagation()">${linkedText(b.memo)}</div>`:''}
+        ${notes.some(n=>!n.deletedAt&&(n.bossIds||[]).includes(b.id))?`<button class="btn btn-sm" onclick="event.stopPropagation();openBossNotes('${b.id}')">연결 노트</button>`:''}
       </div>
     </div>`;
   }).join('');
@@ -1662,7 +1839,7 @@ function setFilter(f){
 }
 async function setAllOwned(v){ chars.forEach(c=>c.owned=v);renderCharEditList();renderPool();await saveChars();showToast(v?'전체 보유':'전체 해제'); }
 function renderCharEditList(){
-  const fil=chars.map((c,i)=>({c,i})).filter(({c})=>curFilter==='all'||(curFilter==='owned'&&c.owned)||(curFilter==='unowned'&&!c.owned));
+  const fil=chars.map((c,i)=>({c,i})).filter(({c})=>!c.deleted&&(curFilter==='all'||(curFilter==='owned'&&c.owned)||(curFilter==='unowned'&&!c.owned)));
   document.getElementById('charEditList').innerHTML=fil.length
     ?fil.map(({c,i})=>{
       const col=cc(c);const a=c.attr&&ATTRS[c.attr];
@@ -1689,7 +1866,13 @@ async function togStar5(i){
   renderCharEditList();renderPool();await saveChars();
 }
 async function togDupe(i){ chars[i].dupe=!chars[i].dupe;renderCharEditList();renderPool();await saveChars(); }
-async function delChar(i){ chars.splice(i,1);parties.forEach(p=>p.slots=p.slots.map(s=>s===i?null:s>i?s-1:s));renderCharEditList();renderAll();await saveChars();await saveSeason(); }
+async function delChar(i){
+  if(!confirm(`${chars[i].name} 공명자를 삭제할까요? 기존 시즌의 해당 슬롯은 비워집니다.`)) return;
+  const id=chars[i].id;
+  chars[i].deleted=true; chars[i].owned=false;
+  parties.forEach(p=>p.slots=p.slots.map(s=>s===id?null:s));
+  renderCharEditList();renderAll();await saveChars();await saveSeason();
+}
 function openEditChar(i){
   editCharIdx=i;eUp=null; const c=chars[i];
   document.getElementById('editCharTitle').textContent=`편집: ${c.name}`;
@@ -1731,6 +1914,9 @@ function openPartyMemo(pi){
   const p=parties[pi];
   document.getElementById('partyMemoTitle').textContent=`#${pi+1} ${p.name} 메모`;
   document.getElementById('partyMemoText').value=p.memo||'';
+  document.getElementById('partyNoteLinks').innerHTML=p.slots.map(id=>{
+    const i=chars.findIndex(c=>c.id===id);return i<0?'':`<button class="btn btn-sm" onclick="openCharNotes(${i})">${esc(chars[i].name)} 공략</button>`;
+  }).join('');
   document.getElementById('partyMemoModal').classList.add('open');
   setTimeout(()=>document.getElementById('partyMemoText').focus(),80);
 }
@@ -1753,7 +1939,7 @@ function prevUp(m){
 async function addChar(){
   const name=document.getElementById('nName').value.trim();if(!name){showToast('이름을 입력하세요');return;}
   const url=document.getElementById('nUrl').value.trim();
-  chars.push({name,img:nUp||url||null,color:COLS.indexOf(nC),attr:nA,memo:'',
+  chars.push({id:genId('char'),legacySlot:null,name,img:nUp||url||null,color:COLS.indexOf(nC),attr:nA,memo:'',
     owned:document.getElementById('nOwned').checked,dupe:document.getElementById('nDupe').checked,star5:document.getElementById('nStar5').checked});
   ['nName','nUrl'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('nFile').value='';document.getElementById('nPrev').style.display='none';
@@ -1781,14 +1967,15 @@ async function doSave(){
   if(btn){btn.disabled=true;btn.textContent='저장 중...';}
   try{
     // 현재 시즌 데이터 먼저 저장
-    await saveSeason();
+    await flushAllWrites();await saveSeason();
     // 모든 시즌 데이터 로드
     const allSeasonData = await window.FB.loadAllSeasonData(seasons.map(s=>s.id));
     await window.FB.saveFullBackup(name, {
       chars: JSON.parse(JSON.stringify(chars)),
       buffs: JSON.parse(JSON.stringify(buffs)),
       bosses: JSON.parse(JSON.stringify(bosses)),
-      seasons: JSON.parse(JSON.stringify(seasons)),
+      seasons: seasons.map(({id,name,start,end})=>({id,name,start:start||'',end:end||''})),
+      notes: cloneData(notes),
       allSeasonData
     });
     document.getElementById('saveName').value='';
@@ -1807,7 +1994,7 @@ async function renderSavesList(){
   list.innerHTML=saves.map(s=>{
     const isFull=s.type==='full';
     const tag=isFull?'<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:var(--accent2);color:#fff;margin-left:5px">전체</span>':'';
-    const seCount=isFull&&s.seasons?` · ${s.seasons.length}시즌`:'';
+    const seCount=isFull?` · ${s.seasonCount??s.seasons?.length??0}시즌`:'';
     return `<div class="si">
       <div style="flex:1;min-width:0">
         <div style="font-size:13px">${esc(s.name)}${tag}</div>
@@ -1822,34 +2009,260 @@ async function loadSave(id){
   const d=await window.FB.restoreFullBackup(id);
   if(!d){showToast('불러오기 실패');return;}
   if(d.type!=='full'){showToast('지원하지 않는 구버전 백업입니다. 새로 백업을 만들어 주세요');return;}
+  const prepared=validateSnapshot(d);
   if(!confirm(`"${d.name}" 백업을 복원할까요?
 현재 캐릭터 설정과 모든 시즌이 백업 시점 상태로 교체됩니다.
 (백업 이후 추가/변경한 시즌은 사라집니다)`)) return;
   showToast('복원 중...');
+  document.getElementById('app').inert=true;
   try{
-    // 캐릭터 + 전역 버프/보스 풀 복원
-    chars=(d.chars||[]).map(c=>({attr:'회절',owned:true,memo:'',...c}));
-    buffs=Array.isArray(d.buffs)?d.buffs:[];
-    bosses=Array.isArray(d.bosses)?d.bosses:[];
-    await window.FB.saveChars(chars);
-    await window.FB.saveBuffs(buffs);
-    await window.FB.saveBosses(bosses);
-    // 모든 시즌 + 시즌별 데이터 복원 (원본 id 유지)
-    // (구버전 백업은 시즌 안에 buffs/bosses가 있어 loadSeasonData가 전역 풀로 자동 마이그레이션)
-    if(Array.isArray(d.seasons)&&d.seasons.length){
-      await window.FB.restoreAllSeasons(d.seasons, d.allSeasonData||{});
-      seasons = await window.FB.loadSeasons();
-      curSid = pickDefaultSeason();
-      if(curSid) await loadSeasonData(curSid);
-      else { parties=[]; activeBuffs=[]; activeBosses=[]; }
-    } else {
-      seasons=[]; curSid=null; parties=[]; activeBuffs=[]; activeBosses=[];
-    }
-    renderSeasonBar();
+    await flushAllWrites();await saveSeason();
+    await window.FB.saveFullBackup('복원 전 자동 안전 백업 '+new Date().toLocaleString('ko'),{
+      chars:cloneData(chars),buffs:cloneData(buffs),bosses:cloneData(bosses),notes:cloneData(notes),
+      seasons:seasons.map(({id,name,start,end})=>({id,name,start:start||'',end:end||''})),
+      allSeasonData:await window.FB.loadAllSeasonData(seasons.map(s=>s.id))
+    });
+    await window.FB.replaceSnapshot(prepared);
+    chars=prepared.chars;buffs=prepared.buffs;bosses=prepared.bosses;notes=prepared.notes;
+    seasons=prepared.seasons;curSid=pickDefaultSeason();
+    if(curSid)await loadSeasonData(curSid);else{parties=[];activeBuffs=[];activeBosses=[];}
+    resetPartyHistory();selectedNoteId=null;renderSeasonBar();
     closeM('savesModal');renderAll();showToast('복원 완료');
   }catch(e){console.error('restore error:',e);showToast('복원 오류: '+(e.code||e.message));}
+  finally{document.getElementById('app').inert=false;}
+}
+function validateSnapshot(raw){
+  const d=cloneData(raw);
+  const validId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]+$/.test(id)&&id.length<=160;
+  const checkList=(list,label,needsId=true)=>{
+    if(!Array.isArray(list)||list.some(v=>!v||typeof v!=='object'||Array.isArray(v)))throw new Error(label+' 목록이 손상되었습니다');
+    if(needsId&&(list.some(v=>!validId(v.id))||new Set(list.map(v=>v.id)).size!==list.length))throw new Error(label+' ID가 올바르지 않습니다');
+  };
+  checkList(d.chars,'공명자',false);checkList(d.seasons,'시즌');
+  if(d.chars.some(c=>typeof c.name!=='string')||d.seasons.some(s=>typeof s.name!=='string'))throw new Error('백업 이름 필드가 올바르지 않습니다');
+  d.chars=normalizeChars(d.chars.map((c,i)=>c.id?c:{...c,id:chars.find(x=>x.legacySlot===i&&x.name===c.name)?.id||genId('char'),legacySlot:i}));
+  checkList(d.chars,'공명자');
+  const optionalStrings=(item,keys)=>keys.every(k=>item[k]==null||typeof item[k]==='string');
+  if(d.chars.some(c=>!optionalStrings(c,['memo','img','attr'])||(c.legacySlot!==null&&(!Number.isInteger(c.legacySlot)||c.legacySlot<0))))throw new Error('공명자 데이터가 손상되었습니다');
+  d.buffs=d.buffs??[];d.bosses=d.bosses??[];d.notes=d.notes??cloneData(notes);
+  checkList(d.buffs,'버프');checkList(d.bosses,'보스');checkList(d.notes,'노트');
+  if([...d.buffs,...d.bosses].some(b=>typeof b.name!=='string'||!optionalStrings(b,['img','memo','desc','icon'])))throw new Error('벤치 데이터가 손상되었습니다');
+  d.allSeasonData=d.allSeasonData||{};
+  for(const s of d.seasons){
+    if(!(s.id in d.allSeasonData)){
+      if('seasonData' in s)d.allSeasonData[s.id]=s.seasonData;
+      else throw new Error(s.name+' 시즌 데이터가 누락되었습니다');
+    }
+    const sd=d.allSeasonData[s.id];
+    if(sd!==null&&(!sd||!Array.isArray(sd.parties)||sd.parties.some(p=>!p||!Array.isArray(p.slots)||p.slots.length!==3||p.slots.some(v=>v!==null&&!(Number.isInteger(v)&&v>=0)&&!validId(v)))))throw new Error(s.name+' 편성 데이터가 손상되었습니다');
+    if(sd){
+      const ids=value=>value===undefined||(Array.isArray(value)&&value.every(validId));
+      if(!ids(sd.activeBuffs)||!ids(sd.activeBosses)||sd.parties.some(p=>!optionalStrings(p,['name','memo'])||!ids(p.bossIds)||(p.buffId!=null&&!validId(p.buffId))))throw new Error(s.name+' 편성 연결이 손상되었습니다');
+      if(['buffs','bosses'].some(k=>sd[k]!==undefined&&(!Array.isArray(sd[k])||sd[k].some(x=>!x||typeof x.name!=='string'))))throw new Error(s.name+' 구시즌 벤치가 손상되었습니다');
+    }
+  }
+  for(const n of d.notes){
+    if(typeof n.title!=='string'||typeof n.body!=='string'||['charIds','bossIds','sources','tags','pinnedFor'].some(k=>n[k]!==undefined&&(!Array.isArray(n[k])||n[k].some(x=>typeof x!=='string'))))throw new Error('공략 노트 데이터가 손상되었습니다');
+    if(!optionalStrings(n,['kind','status','region','version','verified','updatedAt','createdAt','deletedAt'])||['charIds','bossIds','pinnedFor'].some(k=>(n[k]||[]).some(x=>!validId(x))))throw new Error('공략 노트 연결이 손상되었습니다');
+    if((n.sources||[]).some(x=>!safeWebURL(x)))throw new Error('공략 출처 주소가 올바르지 않습니다');
+  }
+  return d;
 }
 async function delSave(id){ await window.FB.deleteSave(id);renderSavesList(); }
+
+// ── 현재 세션의 편성 실행 취소/다시 실행 ──
+let partyHistory=[],partyHistoryIndex=-1,historySid=null,historyTravel=false;
+function resetPartyHistory(){historySid=curSid;partyHistory=[JSON.stringify(parties)];partyHistoryIndex=0;updateHistoryButtons();}
+function updateHistoryButtons(){
+  document.getElementById('partyUndo').disabled=partyHistoryIndex<=0;
+  document.getElementById('partyRedo').disabled=partyHistoryIndex>=partyHistory.length-1;
+}
+function recordPartyHistory(){
+  if(historyTravel) return;
+  if(historySid!==curSid){resetPartyHistory();return;}
+  const snapshot=JSON.stringify(parties);
+  if(snapshot!==partyHistory[partyHistoryIndex]){
+    partyHistory.splice(partyHistoryIndex+1);partyHistory.push(snapshot);
+    if(partyHistory.length>60)partyHistory.shift();partyHistoryIndex=partyHistory.length-1;
+  }
+  updateHistoryButtons();
+}
+async function travelPartyHistory(delta){
+  await saveSeasonDebounced.flush();
+  const next=partyHistoryIndex+delta;if(next<0||next>=partyHistory.length)return;
+  partyHistoryIndex=next;parties=JSON.parse(partyHistory[next]);
+  parties.forEach(p=>p.slots=normalizeSlots(p.slots));
+  historyTravel=true;
+  try{renderAll();const saving=saveSeason();historyTravel=false;await saving;}finally{historyTravel=false;updateHistoryButtons();}
+}
+
+// ── 공략 노트: 편성과 동일한 공명자 패널을 공유한다 ──
+function setAppMode(mode){
+  if(!dataReady){showToast('데이터를 불러온 후 사용할 수 있습니다');return;}
+  appMode=mode;document.getElementById('app').classList.toggle('notes-mode',mode==='notes');
+  document.getElementById('matrixTab').classList.toggle('btn-accent',mode==='matrix');
+  document.getElementById('notesTab').classList.toggle('btn-accent',mode==='notes');
+  document.getElementById('noteShortcuts').style.display=mode==='notes'?'flex':'none';
+  document.getElementById('availableFilterLabel').style.display=mode==='notes'?'none':'';
+  renderAll();if(window.innerWidth<=900)goPanel(0);
+}
+function selectPoolChar(i){
+  if(appMode==='matrix'){openMemo(i);return;}
+  selectedNoteChar=chars[i].id;selectedNoteBoss=null;noteScope='char';selectedNoteId=null;
+  document.getElementById('noteSearch').value='';document.getElementById('noteStatusFilter').value='';
+  const linked=notes.filter(n=>!n.deletedAt&&(n.charIds||[]).includes(selectedNoteChar));
+  selectedNoteId=(linked.find(n=>(n.pinnedFor||[]).includes(selectedNoteChar))||linked.sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''))[0])?.id||null;
+  renderPool();renderNotes();if(window.innerWidth<=900)goPanel(1);
+}
+function selectNoteScope(scope){
+  noteScope=scope;selectedNoteChar=null;selectedNoteBoss=null;selectedNoteId=null;renderPool();renderNotes();
+  if(window.innerWidth<=900)goPanel(1);
+}
+function safeWebURL(value){
+  try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)?u.href:null;}catch(_){return null;}
+}
+function linkedText(value){
+  return String(value||'').split(/(https?:\/\/[^\s<>]+)/g).map(part=>{
+    const url=safeWebURL(part);return url?`<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(part)}</a>`:esc(part);
+  }).join('');
+}
+function renderNotes(){
+  const character=chars.find(c=>c.id===selectedNoteChar);
+  const labels={all:'전체 노트',char:character?character.name+' 공략':'공명자 공략',boss:(bosses.find(b=>b.id===selectedNoteBoss)?.name||'보스')+' 연결 노트',explore:'업적 · 탐험',inbox:'미분류 보관함',trash:'휴지통'};
+  document.getElementById('notesHeading').textContent=labels[noteScope]||'공략 노트';
+  const query=document.getElementById('noteSearch').value.trim().toLocaleLowerCase(),status=document.getElementById('noteStatusFilter').value;
+  const list=notes.filter(n=>{
+    if(!!n.deletedAt!==(noteScope==='trash'))return false;
+    if(noteScope==='char'&&!(n.charIds||[]).includes(selectedNoteChar))return false;
+    if(noteScope==='boss'&&!(n.bossIds||[]).includes(selectedNoteBoss))return false;
+    if(noteScope==='explore'&&!['업적','탐험','시크릿'].includes(n.kind))return false;
+    if(noteScope==='inbox'&&n.kind!=='미분류')return false;
+    if(status&&n.status!==status)return false;
+    return !query||[n.title,n.body,n.region,(n.tags||[]).join(' ')].join(' ').toLocaleLowerCase().includes(query);
+  }).sort((a,b)=>Number((b.pinnedFor||[]).includes(selectedNoteChar))-Number((a.pinnedFor||[]).includes(selectedNoteChar))||(b.updatedAt||'').localeCompare(a.updatedAt||''));
+  document.getElementById('notesList').innerHTML=list.length?list.map(n=>`<div class="note-card" role="button" tabindex="0" onclick="openNote('${n.id}')" onkeydown="if(event.key==='Enter')openNote('${n.id}')">
+    <div>${(n.pinnedFor||[]).includes(selectedNoteChar)?'📌 ':''}${esc(n.title)}</div>
+    <div class="note-meta">${esc(n.kind)} · ${esc(n.status)}${n.region?' · '+esc(n.region):''}${n.version?' · '+esc(n.version):''}</div>
+  </div>`).join(''):'<p class="note-meta">아직 노트가 없습니다. 새 노트에 제목만 적어도 저장할 수 있어요.</p>';
+  if(selectedNoteId&&list.some(n=>n.id===selectedNoteId))renderNoteDetail(notes.find(n=>n.id===selectedNoteId));
+  else{selectedNoteId=null;document.getElementById('noteDetail').innerHTML='';}
+}
+function openNote(id){selectedNoteId=id;renderNoteDetail(notes.find(n=>n.id===id));document.getElementById('noteDetail').scrollIntoView({block:'nearest'});}
+function renderNoteDetail(n){
+  if(!n)return;
+  const body=(n.body||'').split('\n').map((line,i)=>{
+    const match=line.match(/^\s*- \[([ xX])\] (.*)$/);
+    return match?`<label style="display:block"><input type="checkbox" ${match[1]!==' '?'checked':''} ${n.deletedAt?'disabled':''} onchange="toggleNoteCheck('${n.id}',${i},this.checked)"> ${linkedText(match[2])}</label>`:linkedText(line);
+  }).join('\n');
+  document.getElementById('noteDetail').innerHTML=`<hr style="border:0;border-top:1px solid var(--border);margin:16px 0"><h3>${esc(n.title)}</h3>
+    <div class="note-meta">${esc((n.charIds||[]).map(id=>chars.find(c=>c.id===id)?.name||'삭제된 공명자').join(' · '))}${n.verified?' · 확인 '+esc(n.verified):''}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+      ${n.deletedAt?`<button class="btn btn-sm" onclick="trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="trashNote('${n.id}',true)">휴지통</button>${selectedNoteChar?`<button class="btn btn-sm" onclick="pinNote('${n.id}')">${(n.pinnedFor||[]).includes(selectedNoteChar)?'고정 해제':'이 공명자 대표 공략으로 고정'}</button>`:''}`}
+    </div><div class="note-body">${body}</div>
+    ${(n.sources||[]).map(url=>`<div class="note-meta">↗ ${linkedText(url)}</div>`).join('')}
+    <div class="note-meta">${esc((n.tags||[]).map(t=>'#'+t).join(' '))}</div>`;
+}
+async function persistNote(note){
+  const value=cloneData(note);
+  await queueWrite('note:'+note.id,async()=>{
+    await window.FB.saveNote(value);
+    const i=notes.findIndex(n=>n.id===value.id);if(i<0)notes.push(value);else notes[i]=value;
+  });
+}
+async function toggleNoteCheck(id,line,checked){
+  const n=notes.find(x=>x.id===id);if(!n||n.deletedAt)return;
+  const lines=n.body.split('\n');lines[line]=lines[line].replace(/\[[ xX]\]/,checked?'[x]':'[ ]');
+  n.body=lines.join('\n');n.updatedAt=new Date().toISOString();await persistNote(n);
+}
+async function trashNote(id,deleted){
+  const n=notes.find(x=>x.id===id);if(!n)return;
+  if(deleted&&!confirm('휴지통으로 옮길까요? 나중에 복구할 수 있습니다.'))return;
+  n.deletedAt=deleted?new Date().toISOString():null;n.updatedAt=new Date().toISOString();
+  await persistNote(n);selectedNoteId=null;renderNotes();
+}
+async function pinNote(id){
+  const n=notes.find(x=>x.id===id);if(!n||!selectedNoteChar)return;
+  n.pinnedFor=n.pinnedFor||[];
+  n.pinnedFor=n.pinnedFor.includes(selectedNoteChar)?n.pinnedFor.filter(x=>x!==selectedNoteChar):[...n.pinnedFor,selectedNoteChar];
+  await persistNote(n);renderNotes();
+}
+let editingNoteId=null,noteDraftRevision=0;
+function draftKey(){return 'ww-note-draft:'+window.FB.uid;}
+function readNoteEditor(){
+  const get=id=>document.getElementById(id).value;
+  return {id:editingNoteId,title:get('ntTitle').trim(),body:get('ntBody'),kind:get('ntKind'),status:get('ntStatus'),region:get('ntRegion').trim(),version:get('ntVersion').trim(),verified:get('ntVerified'),
+    tags:get('ntTags').split(',').map(t=>t.trim()).filter(Boolean),sources:get('ntSources').split('\n').map(s=>s.trim()).filter(Boolean),
+    charIds:Array.from(document.querySelectorAll('#ntChars input:checked'),x=>x.value),bossIds:Array.from(document.querySelectorAll('#ntBosses input:checked'),x=>x.value)};
+}
+function cacheNoteDraft(){
+  noteDraftRevision++;
+  try{localStorage.setItem(draftKey(),JSON.stringify(readNoteEditor()));}catch(_){showToast('기기 임시저장 공간이 부족합니다. 저장 버튼을 눌러 주세요');}
+}
+function editNote(id=null,draft=null){
+  if(!draft){
+    try{
+      const cached=JSON.parse(localStorage.getItem(draftKey())||'null');
+      if(cached&&cached.id!==id&&(cached.title||cached.body)&&!confirm('다른 임시 글이 있습니다. 새 작성을 시작할까요? 취소 후 임시 글 복구로 돌아갈 수 있습니다.'))return;
+    }catch(_){}
+  }
+  const existing=notes.find(n=>n.id===id);
+  const n=draft||existing||{title:'',body:'',kind:noteScope==='char'?'공명자 공략':noteScope==='explore'?'업적':'미분류',status:'미시작',charIds:selectedNoteChar?[selectedNoteChar]:[],bossIds:selectedNoteBoss?[selectedNoteBoss]:[]};
+  editingNoteId=id||genId('note');
+  document.getElementById('noteEditorModal')?.remove();
+  const options=(items,value)=>items.map(v=>`<option${v===value?' selected':''}>${esc(v)}</option>`).join('');
+  document.body.insertAdjacentHTML('beforeend',`<div class="modal-bg open" id="noteEditorModal"><div class="modal" style="max-width:760px" oninput="cacheNoteDraft()">
+    <h3 style="margin-bottom:12px">${existing?'노트 편집':'새 공략 노트'}</h3>
+    <div class="note-fields">
+      <label style="grid-column:1/-1">제목<input class="fi" id="ntTitle" maxlength="200" value="${esc(n.title||'')}" placeholder="제목만으로도 저장 가능"></label>
+      <label>종류<select class="fi" id="ntKind">${options(['미분류','공명자 공략','딜사이클','업적','탐험','시크릿','기타'],n.kind)}</select></label>
+      <label>진행<select class="fi" id="ntStatus">${options(['미시작','진행 중','완료'],n.status)}</select></label>
+      <label>지역<input class="fi" id="ntRegion" value="${esc(n.region||'')}"></label>
+      <label>태그 (쉼표 구분)<input class="fi" id="ntTags" value="${esc((n.tags||[]).join(', '))}"></label>
+      <label>게임 버전<input class="fi" id="ntVersion" value="${esc(n.version||'')}" placeholder="예: 3.0"></label>
+      <label>내용 확인일<input class="fi" type="date" id="ntVerified" value="${esc(n.verified||'')}"></label>
+      <label style="grid-column:1/-1">내용 · 체크리스트는 - [ ] 항목 형식<textarea class="fi" id="ntBody" rows="10">${esc(n.body||'')}</textarea></label>
+      <label style="grid-column:1/-1">출처 링크 (한 줄에 하나 · 유튜브 시간 링크 가능)<textarea class="fi" id="ntSources" rows="3">${esc((n.sources||[]).join('\n'))}</textarea></label>
+    </div>
+    <details style="margin:10px 0" ${(n.charIds||[]).length?'open':''}><summary>관련 공명자 (여러 명 선택)</summary><div id="ntChars" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${chars.filter(c=>!c.deleted).map(c=>`<label><input type="checkbox" value="${c.id}" ${(n.charIds||[]).includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></details>
+    <details><summary>관련 보스 (선택 사항)</summary><div id="ntBosses" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${bosses.map(b=>`<label><input type="checkbox" value="${b.id}" ${(n.bossIds||[]).includes(b.id)?'checked':''}> ${esc(b.name)}</label>`).join('')}</div></details>
+    <div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-accent" id="noteSaveButton" onclick="saveNoteEditor()">저장</button><button class="btn" onclick="cacheNoteDraft();closeM('noteEditorModal')">닫기 · 임시 글 유지</button></div>
+    <p class="note-meta">작성 중인 내용은 이 계정의 기기 임시 글로 보관됩니다. 다른 기기에서는 저장 후 볼 수 있어요.</p>
+  </div></div>`);
+}
+async function saveNoteEditor(){
+  const data=readNoteEditor();if(!data.title){showToast('제목을 입력하세요');return;}
+  if(data.sources.some(s=>!safeWebURL(s))){showToast('출처에는 http 또는 https 링크를 입력해 주세요');return;}
+  const duplicate=notes.find(n=>n.id!==data.id&&!n.deletedAt&&(n.sources||[]).some(s=>data.sources.some(t=>safeWebURL(t)===safeWebURL(s))));
+  if(duplicate&&!confirm(`"${duplicate.title}" 노트에 같은 출처가 있습니다. 그대로 저장할까요?`))return;
+  const old=notes.find(n=>n.id===data.id);
+  const note={pinnedFor:[],createdAt:new Date().toISOString(),...old,...data,updatedAt:new Date().toISOString(),deletedAt:null};
+  if(new TextEncoder().encode(JSON.stringify(note)).length>800000){showToast('노트가 너무 큽니다. 나누어 저장해 주세요');return;}
+  const button=document.getElementById('noteSaveButton'),revision=noteDraftRevision;button.disabled=true;
+  try{
+    await persistNote(note);
+    const index=notes.findIndex(n=>n.id===note.id);if(index>=0)notes[index]=note;else notes.push(note);
+    if(revision===noteDraftRevision&&editingNoteId===data.id){localStorage.removeItem(draftKey());closeM('noteEditorModal');}
+    selectedNoteId=note.id;renderNotes();showToast('노트 저장됨');
+  }finally{button.disabled=false;}
+}
+function recoverNoteDraft(){
+  try{
+    const draft=JSON.parse(localStorage.getItem(draftKey())||'null');
+    if(!draft){showToast('이 계정의 임시 글이 없습니다');return;}
+    editNote(notes.some(n=>n.id===draft.id)?draft.id:null,draft);
+  }catch(_){showToast('임시 글을 읽을 수 없습니다');}
+}
+async function openCharNotes(i,copyMemo=false){
+  const memo=copyMemo?document.getElementById('memoText').value:'';
+  if(isOpen('memoModal')&&chars[i].memo!==document.getElementById('memoText').value.trim())await saveMemo();
+  if(isOpen('partyMemoModal'))await savePartyMemo();
+  closeM('memoModal');closeM('partyMemoModal');setAppMode('notes');selectPoolChar(i);
+  if(copyMemo)editNote(null,{title:chars[i].name+' 운용 메모',body:memo,kind:'공명자 공략',status:'미시작',charIds:[chars[i].id]});
+}
+function openBossNotes(id){
+  setAppMode('notes');noteScope='boss';selectedNoteBoss=id;selectedNoteChar=null;selectedNoteId=null;
+  renderPool();renderNotes();if(window.innerWidth<=900)goPanel(1);
+}
 
 // ── 유틸 ──
 function closeM(id){ document.getElementById(id).classList.remove('open'); }
@@ -1901,7 +2314,7 @@ document.addEventListener('paste', e=>{
     const wrap = document.getElementById('swipeWrap');
     const dots = document.querySelectorAll('.mobile-dot');
     if(!wrap) return;
-    curPanel = Math.max(0, Math.min(2, n));
+    curPanel = Math.max(0, Math.min(appMode==='notes'?1:2, n));
     wrap.style.transform = `translateX(${-curPanel * 100}vw)`;
     dots.forEach((d,i) => d.classList.toggle('active', i===curPanel));
   }
@@ -1911,6 +2324,8 @@ document.addEventListener('paste', e=>{
   function updateDotsVisibility(){
     const dots = document.getElementById('mobileDots');
     if(dots) dots.style.display = isMobile() ? 'flex' : 'none';
+    const wrap=document.getElementById('swipeWrap');
+    if(wrap){if(isMobile())goPanel(curPanel);else wrap.style.transform='';}
   }
   window.addEventListener('resize', updateDotsVisibility);
   updateDotsVisibility();
