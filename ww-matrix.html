@@ -229,7 +229,6 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .notes-col{grid-column:2 / -1}
 .note-shortcut[aria-pressed="true"]{background:var(--accent2);border-color:var(--accent);color:#fff;font-weight:700;box-shadow:inset 0 -2px 0 var(--accent)}
 .note-shortcut:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.note-char-heading{display:none;border-top:1px solid var(--border);padding:10px 10px 0;margin:0;font-size:12px;font-weight:600;color:var(--text2);flex-shrink:0}
 #noteShortcuts{padding:10px;margin:0!important;flex-shrink:0}
 .note-section-label{font-size:12px;color:var(--text2);margin:12px 0 8px;font-weight:600}
 #noteDetail:not(:empty){border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:8px;padding:14px;margin-top:20px;background:var(--bg2)}
@@ -312,13 +311,6 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <h2><i class="ti ti-users" style="margin-right:4px"></i><span id="charPanelTitle">공명자</span></h2>
           <button class="btn btn-sm btn-icon" onclick="openCharMgr()" title="관리"><i class="ti ti-settings"></i></button>
         </div>
-          <div id="noteShortcuts" role="group" aria-label="공략 노트 분류" style="display:none;gap:5px;flex-wrap:wrap;margin-bottom:8px">
-            <button class="btn btn-sm note-shortcut" data-note-scope="all" aria-pressed="false" onclick="selectNoteScope('all')">전체</button>
-            <button class="btn btn-sm note-shortcut" data-note-scope="explore" aria-pressed="false" onclick="selectNoteScope('explore')">업적·탐험</button>
-            <button class="btn btn-sm note-shortcut" data-note-scope="inbox" aria-pressed="false" onclick="selectNoteScope('inbox')">미분류</button>
-            <button class="btn btn-sm note-shortcut" data-note-scope="trash" aria-pressed="false" onclick="selectNoteScope('trash')">휴지통</button>
-          </div>
-          <h3 id="noteCharHeading" class="note-char-heading">공명자별 공략</h3>
         <div class="char-controls">
           <input id="charSearch" class="fi" style="width:100%;margin-bottom:6px" placeholder="공명자 검색" aria-label="공명자 검색" oninput="renderPool()">
           <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
@@ -393,6 +385,12 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     <div class="col notes-col" id="notesPane" style="display:none">
       <div class="col-wrap">
         <div class="col-header"><h2 id="notesHeading">공략 노트</h2><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="returnToFormation()">편성으로 돌아가기</button><button class="btn btn-accent btn-sm" onclick="editNote()">+ 새 노트</button></div></div>
+        <div id="noteShortcuts" role="group" aria-label="공략 노트 분류" style="display:none;gap:5px;flex-wrap:wrap;border-bottom:1px solid var(--border)">
+          <button class="btn btn-sm note-shortcut" data-note-scope="all" aria-pressed="false" onclick="selectNoteScope('all')">전체</button>
+          <button class="btn btn-sm note-shortcut" data-note-scope="explore" aria-pressed="false" onclick="selectNoteScope('explore')">업적·탐험</button>
+          <button class="btn btn-sm note-shortcut" data-note-scope="inbox" aria-pressed="false" onclick="selectNoteScope('inbox')">미분류</button>
+          <button class="btn btn-sm note-shortcut" data-note-scope="trash" aria-pressed="false" onclick="selectNoteScope('trash')">휴지통</button>
+        </div>
         <div class="col-inner" style="padding:12px">
           <input id="noteSearch" class="fi" style="width:100%;margin-bottom:8px" placeholder="제목·본문·태그 검색" aria-label="공략 검색" oninput="renderNotes()">
           <div style="display:flex;gap:6px;margin-bottom:10px">
@@ -2198,7 +2196,7 @@ function setAppMode(mode){
   document.getElementById('matrixTab').classList.toggle('btn-accent',mode==='matrix');
   document.getElementById('notesTab').classList.toggle('btn-accent',mode==='notes');
   renderNoteNavigation();
-  document.getElementById('availableFilterLabel').style.display=mode==='notes'?'none':'';
+  document.getElementById('availableFilterLabel').style.visibility=mode==='notes'?'hidden':'';
   renderAll();restorePoolPosition(position);if(window.innerWidth<=900)goPanel(0);
 }
 function selectPoolChar(i){
@@ -2223,9 +2221,8 @@ function linkedText(value){
 }
 function renderNoteNavigation(){
   const inNotes=appMode==='notes';
-  document.getElementById('charPanelTitle').textContent=inNotes?'공략 탐색':'공명자';
+  document.getElementById('charPanelTitle').textContent='공명자';
   document.getElementById('noteShortcuts').style.display=inNotes?'flex':'none';
-  document.getElementById('noteCharHeading').style.display=inNotes?'block':'none';
   document.querySelectorAll('[data-note-scope]').forEach(button=>{
     button.setAttribute('aria-pressed',String(inNotes&&button.dataset.noteScope===noteScope));
   });
