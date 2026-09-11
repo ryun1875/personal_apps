@@ -497,7 +497,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     <p style="font-size:12px;color:var(--text3);margin-bottom:10px">버프를 자유롭게 추가하세요. 파티별로 적용 버프를 선택할 수 있습니다.</p>
     <div id="buffEditList"></div>
     <div id="buffAddArea" style="margin-top:14px">
-      <p style="font-size:13px;font-weight:500;margin-bottom:8px">버프 추가</p>
+      <p id="buffAddHeading" style="font-size:13px;font-weight:500;margin-bottom:8px">버프 추가</p>
       <div style="display:flex;flex-direction:column;gap:7px">
         <input class="field" id="bName" placeholder="버프 이름 (예: 회절 피해 +30%)">
         <input class="field" id="bIcon" placeholder="아이콘 이모지 (예: ⚡🔥💧✨)">
@@ -520,6 +520,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <input class="field" id="ebIcon" placeholder="아이콘 이모지">
       <textarea class="textarea" id="ebDesc" placeholder="버프 설명" style="min-height:56px"></textarea>
       <button class="btn btn-accent" style="justify-content:center" onclick="saveBuffEdit()"><i class="ti ti-device-floppy"></i> 저장</button>
+      <button class="btn" style="justify-content:center" onclick="openBuffCopy(editBuffId,true)"><i class="ti ti-copy"></i> 이 내용으로 새 버프 만들기</button>
+      <p class="note-meta">효과가 달라지면 복제해 주세요. 원본을 수정하면 지난 시즌에도 반영됩니다.</p>
     </div>
   </div>
 </div>
@@ -1725,6 +1727,7 @@ function renderBuffGrid(){
 }
 
 function openBuffMgr(){
+  document.getElementById('buffAddHeading').textContent='버프 추가';
   document.getElementById('bName').value='';document.getElementById('bIcon').value='';document.getElementById('bDesc').value='';
   renderBuffEditList();
   document.getElementById('buffMgrModal').classList.add('open');
@@ -1737,7 +1740,8 @@ function renderBuffEditList(){
         <button class="dtog${on?' on':''}" style="flex-shrink:0;width:46px" onclick="toggleActiveBuff('${b.id}')" title="이번 시즌 사용">${on?'사용중':'벤치'}</button>
         <span style="font-size:18px">${esc(b.icon||'🎯')}</span>
         <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500">${esc(b.name)}</div><div style="font-size:11px;color:var(--text3)">${esc(b.desc||'')}</div></div>
-        <button class="btn btn-sm btn-icon" onclick="openEditBuff('${b.id}')"><i class="ti ti-edit"></i></button>
+        <button class="btn btn-sm" onclick="openBuffCopy('${b.id}')" title="원본을 유지하고 새 버프 만들기"><i class="ti ti-copy"></i> 복제</button>
+        <button class="btn btn-sm btn-icon" onclick="openEditBuff('${b.id}')" title="원본 편집"><i class="ti ti-edit"></i></button>
         <button class="btn btn-sm btn-icon" onclick="removeBuff('${b.id}')"><i class="ti ti-trash"></i></button>
       </div>`;
     }).join('')
@@ -1750,12 +1754,26 @@ async function toggleActiveBuff(bid){
   else activeBuffs.push(bid);
   renderBuffEditList();renderBuffGrid();renderParties();await saveSeason();
 }
+function openBuffCopy(bid,fromEditor=false){
+  const source=buffs.find(b=>b.id===bid);if(!source)return;
+  const name=fromEditor?document.getElementById('ebName').value.trim()||source.name:source.name;
+  const icon=fromEditor?document.getElementById('ebIcon').value:source.icon||'';
+  const desc=fromEditor?document.getElementById('ebDesc').value:source.desc||'';
+  closeM('buffEditModal');openBuffMgr();
+  document.getElementById('bName').value=name+' (복사)';
+  document.getElementById('bIcon').value=icon;
+  document.getElementById('bDesc').value=desc;
+  document.getElementById('buffAddHeading').textContent='새 버프 복제 · 이름·속성을 수정한 뒤 추가하세요 (원본 유지)';
+  document.getElementById('buffAddArea').scrollIntoView({block:'nearest'});
+  document.getElementById('bName').focus();
+}
 async function addBuff(){
   const name=document.getElementById('bName').value.trim();
   if(!name){showToast('버프 이름을 입력하세요');return;}
   const b={id:genId('buff'),name,icon:document.getElementById('bIcon').value.trim(),desc:document.getElementById('bDesc').value.trim()};
   buffs.push(b); activeBuffs.push(b.id);
   document.getElementById('bName').value='';document.getElementById('bIcon').value='';document.getElementById('bDesc').value='';
+  document.getElementById('buffAddHeading').textContent='버프 추가';
   renderBuffEditList();renderBuffGrid();renderParties();await saveBuffs();await saveSeason();showToast('버프 추가됨 · 이번 시즌 활성화');
 }
 function openEditBuff(bid){
