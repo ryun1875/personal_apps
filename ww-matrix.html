@@ -220,7 +220,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .notes-col{grid-column:2 / -1}
 .note-shortcut[aria-pressed="true"]{background:var(--accent2);border-color:var(--accent);color:#fff;font-weight:700;box-shadow:inset 0 -2px 0 var(--accent)}
 .note-shortcut:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.note-char-heading{display:none;border-top:1px solid var(--border);padding-top:12px;margin:12px 0 8px;font-size:12px;font-weight:600;color:var(--text2)}
+.note-char-heading{display:none;border-top:1px solid var(--border);padding:10px 10px 0;margin:0;font-size:12px;font-weight:600;color:var(--text2);flex-shrink:0}
+#noteShortcuts{padding:10px;margin:0!important;flex-shrink:0}
+.note-section-label{font-size:12px;color:var(--text2);margin:12px 0 8px;font-weight:600}
+#noteDetail:not(:empty){border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:8px;padding:14px;margin-top:20px;background:var(--bg2)}
+.note-card[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 3px 0 var(--accent)}
 @media(min-width:901px) and (max-width:1350px){
   .main-layout{grid-template-columns:minmax(250px,30%) minmax(350px,1fr) minmax(220px,25%);gap:8px}
 }
@@ -299,7 +303,6 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <h2><i class="ti ti-users" style="margin-right:4px"></i><span id="charPanelTitle">공명자</span></h2>
           <button class="btn btn-sm btn-icon" onclick="openCharMgr()" title="관리"><i class="ti ti-settings"></i></button>
         </div>
-        <div class="col-inner" style="padding:10px">
           <div id="noteShortcuts" role="group" aria-label="공략 노트 분류" style="display:none;gap:5px;flex-wrap:wrap;margin-bottom:8px">
             <button class="btn btn-sm note-shortcut" data-note-scope="all" aria-pressed="false" onclick="selectNoteScope('all')">전체</button>
             <button class="btn btn-sm note-shortcut" data-note-scope="explore" aria-pressed="false" onclick="selectNoteScope('explore')">업적·탐험</button>
@@ -307,6 +310,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
             <button class="btn btn-sm note-shortcut" data-note-scope="trash" aria-pressed="false" onclick="selectNoteScope('trash')">휴지통</button>
           </div>
           <h3 id="noteCharHeading" class="note-char-heading">공명자별 공략</h3>
+        <div class="col-inner" style="padding:10px">
           <input id="charSearch" class="fi" style="width:100%;margin-bottom:6px" placeholder="공명자 검색" aria-label="공명자 검색" oninput="renderPool()">
           <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
             <select id="charAttrFilter" class="fi" aria-label="공명자 속성 필터" onchange="renderPool()"><option value="">모든 속성</option><option>응결</option><option>용융</option><option>전도</option><option>기류</option><option>회절</option><option>인멸</option></select>
@@ -383,7 +387,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
             <select id="noteStatusFilter" class="fi" aria-label="진행 상태" onchange="renderNotes()"><option value="">모든 진행 상태</option><option>미시작</option><option>진행 중</option><option>완료</option></select>
             <button class="btn btn-sm" onclick="recoverNoteDraft()">임시 글 복구</button>
           </div>
-          <div id="notesList"></div><div id="noteDetail"></div>
+          <div id="notesListLabel" class="note-section-label"></div>
+          <div id="notesList" role="group" aria-label="노트 목록"></div><section id="noteDetail" aria-label="선택한 노트 읽기"></section>
         </div>
       </div>
     </div>
@@ -2217,25 +2222,27 @@ function renderNotes(){
     if(status&&n.status!==status)return false;
     return !query||[n.title,n.body,n.region,(n.tags||[]).join(' ')].join(' ').toLocaleLowerCase().includes(query);
   }).sort((a,b)=>Number((b.pinnedFor||[]).includes(selectedNoteChar))-Number((a.pinnedFor||[]).includes(selectedNoteChar))||(b.updatedAt||'').localeCompare(a.updatedAt||''));
-  document.getElementById('notesList').innerHTML=list.length?list.map(n=>`<div class="note-card" role="button" tabindex="0" onclick="openNote('${n.id}')" onkeydown="if(event.key==='Enter')openNote('${n.id}')">
+  if(!list.some(n=>n.id===selectedNoteId))selectedNoteId=null;
+  document.getElementById('notesListLabel').textContent=`노트 목록 · ${list.length}개 — 선택하면 아래에서 내용을 읽습니다`;
+  document.getElementById('notesList').innerHTML=list.length?list.map(n=>`<div class="note-card" role="button" aria-pressed="${n.id===selectedNoteId}" tabindex="0" onclick="openNote('${n.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openNote('${n.id}');}">
     <div>${(n.pinnedFor||[]).includes(selectedNoteChar)?'📌 ':''}${esc(n.title)}</div>
     <div class="note-meta">${esc(n.kind)} · ${esc(n.status)}${n.region?' · '+esc(n.region):''}${n.version?' · '+esc(n.version):''}</div>
   </div>`).join(''):'<p class="note-meta">아직 노트가 없습니다. 새 노트에 제목만 적어도 저장할 수 있어요.</p>';
   if(selectedNoteId&&list.some(n=>n.id===selectedNoteId))renderNoteDetail(notes.find(n=>n.id===selectedNoteId));
   else{selectedNoteId=null;document.getElementById('noteDetail').innerHTML='';}
 }
-function openNote(id){selectedNoteId=id;renderNoteDetail(notes.find(n=>n.id===id));document.getElementById('noteDetail').scrollIntoView({block:'nearest'});}
+function openNote(id){selectedNoteId=id;renderNotes();document.getElementById('noteDetail').scrollIntoView({block:'nearest'});}
 function renderNoteDetail(n){
   if(!n)return;
   const body=(n.body||'').split('\n').map((line,i)=>{
     const match=line.match(/^\s*- \[([ xX])\] (.*)$/);
     return match?`<label style="display:block"><input type="checkbox" ${match[1]!==' '?'checked':''} ${n.deletedAt?'disabled':''} onchange="toggleNoteCheck('${n.id}',${i},this.checked)"> ${linkedText(match[2])}</label>`:linkedText(line);
   }).join('\n');
-  document.getElementById('noteDetail').innerHTML=`<hr style="border:0;border-top:1px solid var(--border);margin:16px 0"><h3>${esc(n.title)}</h3>
+  document.getElementById('noteDetail').innerHTML=`<div class="note-section-label" style="margin-top:0">선택한 노트 · 읽기</div><h3>${esc(n.title)}</h3>
     <div class="note-meta">${esc((n.charIds||[]).map(id=>chars.find(c=>c.id===id)?.name||'삭제된 공명자').join(' · '))}${n.verified?' · 확인 '+esc(n.verified):''}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
       ${n.deletedAt?`<button class="btn btn-sm" onclick="trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="trashNote('${n.id}',true)">휴지통</button>${selectedNoteChar?`<button class="btn btn-sm" onclick="pinNote('${n.id}')">${(n.pinnedFor||[]).includes(selectedNoteChar)?'고정 해제':'이 공명자 대표 공략으로 고정'}</button>`:''}`}
-    </div><div class="note-body">${body}</div>
+    </div><div class="note-section-label" style="border-top:1px solid var(--border);padding-top:12px">본문</div><div class="note-body">${body||'<span class="note-meta">작성된 본문이 없습니다.</span>'}</div>
     ${(n.sources||[]).map(url=>`<div class="note-meta">↗ ${linkedText(url)}</div>`).join('')}
     <div class="note-meta">${esc((n.tags||[]).map(t=>'#'+t).join(' '))}</div>`;
 }
