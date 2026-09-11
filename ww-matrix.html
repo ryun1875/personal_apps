@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>명조 매트릭스 파티 편성</title>
+<title>게임 편성·공략 | 명조 · 소녀전선2</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
@@ -256,13 +256,34 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .fi:focus{outline:1px solid var(--accent)}
 @media(max-width:900px){.note-fields{grid-template-columns:1fr}.notes-col{width:100vw}}
 </style>
+<style>
+#wwWorkspace{display:contents}#wwWorkspace[hidden],#gfWorkspace[hidden]{display:none!important}
+#gfWorkspace{display:flex;flex:1;min-height:0;flex-direction:column;gap:10px}
+.gf-layout{display:grid;grid-template-columns:minmax(220px,30%) minmax(0,1fr);gap:12px;flex:1;min-height:0}
+.gf-pane{background:var(--bg2);border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.gf-toolbar{padding:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);flex-shrink:0}
+.gf-scroll{overflow-y:auto;min-height:0;flex:1;padding:10px;scrollbar-gutter:stable}
+.gf-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:7px}
+.gf-char{padding:0;overflow:hidden;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);cursor:pointer}
+.gf-char[aria-pressed="true"]{outline:2px solid var(--accent)}
+.gf-portrait{height:100px;display:flex;align-items:center;justify-content:center;background:var(--bg3);overflow:hidden;font-size:22px}
+.gf-portrait img{width:100%;height:100%;object-fit:cover}.gf-char small{display:block;padding:5px;overflow-wrap:anywhere}
+.gf-squad{padding:12px;border:1px solid var(--border);border-radius:10px;margin-bottom:10px}
+.gf-slots{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:10px 0}
+.gf-slots .gf-char{width:100%}.gf-slots .gf-portrait{height:110px}
+.gf-note{display:block;width:100%;text-align:left;margin:8px 0;padding:12px;white-space:normal}
+.gf-detail{padding:14px;border:1px solid var(--accent);border-radius:8px;margin-top:12px}
+.gf-detail a{color:var(--accent);overflow-wrap:anywhere}.gf-note[aria-pressed="true"]{border-color:var(--accent)}
+.gf-editor label{display:block;margin:10px 0;font-size:12px;color:var(--text2)}.gf-editor .field,.gf-editor textarea{width:100%;margin-top:5px}
+@media(max-width:650px){.gf-layout{grid-template-columns:120px minmax(0,1fr);gap:6px}.gf-roster{grid-template-columns:1fr}.gf-slots{gap:3px}.gf-slots .gf-portrait{height:74px;font-size:14px}.gf-slots small{font-size:10px;padding:3px}.gf-squad{padding:7px}.gf-toolbar{padding:7px;gap:5px}#gfWorkspace{padding:0 6px}.top-bar h1{font-size:13px}}
+</style>
 </head>
 <body>
 
 <div id="loginScreen">
   <div class="login-box">
-    <h1>⚔️ 매트릭스 파티 편성</h1>
-    <p>명조 워더링 웨이브<br>시즌별 파티 편성 관리</p>
+    <h1>⚔️ 게임 편성·공략</h1>
+    <p>명조 · 소녀전선2<br>게임별 편성과 공략을 한곳에서</p>
     <button class="google-btn" onclick="signInGoogle()">
       <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
       Google로 로그인
@@ -272,12 +293,14 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 
 <div id="app">
   <div class="top-bar">
-    <h1>매트릭스 파티 편성</h1>
+    <select id="gameSelect" class="fi" aria-label="게임 선택" onchange="switchGame(this.value)"><option value="ww">명조</option><option value="gf2">소녀전선2</option></select>
+    <h1 id="gameTitle">매트릭스 파티 편성</h1>
     <img class="user-avatar" id="userAvatar" src="" alt="">
-    <button class="btn btn-sm" onclick="openSaves()"><i class="ti ti-folder"></i> 백업/복원</button>
+    <button class="btn btn-sm" onclick="activeGame==='gf2'?GF.openBackups():openSaves()"><i class="ti ti-folder"></i> 백업/복원</button>
     <button class="btn btn-icon btn-sm" onclick="doSignOut()" title="로그아웃"><i class="ti ti-logout"></i></button>
   </div>
 
+  <div id="wwWorkspace">
   <div class="season-bar" id="seasonBar"></div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;padding:0 10px">
     <button id="matrixTab" class="btn btn-accent btn-sm" onclick="setAppMode('matrix')">매트릭스 편성</button>
@@ -404,7 +427,16 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     </div>
   </div><!-- end swipe-wrap -->
   </div><!-- end main-layout -->
+  </div><!-- wwWorkspace -->
+  <div id="gfWorkspace" hidden>
+    <div class="gf-toolbar"><button class="btn" id="gfSquadTab" onclick="GF.mode('squads')">5인 제대 편성</button><button class="btn" id="gfNoteTab" onclick="GF.mode('notes')">공략 노트</button><button class="btn btn-sm" style="margin-left:auto" id="gfStatus" onclick="retryFailedWrites()" aria-live="polite">서버 저장 완료</button></div>
+    <div class="gf-layout">
+      <aside class="gf-pane"><div class="gf-toolbar"><strong>캐릭터</strong><button class="btn btn-sm" onclick="GF.editChar()">+ 등록</button></div><div class="gf-toolbar"><input id="gfCharSearch" class="field" placeholder="이름·분류 검색" aria-label="소녀전선2 캐릭터 검색" oninput="GF.renderRoster()" style="width:100%"></div><div class="gf-scroll" id="gfRosterScroll"><div class="gf-roster" id="gfRoster"></div></div></aside>
+      <section class="gf-pane"><div id="gfActions" class="gf-toolbar"></div><div id="gfContent" class="gf-scroll"></div></section>
+    </div>
+  </div>
 </div><!-- end app -->
+<div class="modal-bg" id="gfModal"><div class="modal gf-editor" id="gfModalBody"></div></div>
 
 <!-- 슬롯 선택 -->
 <div class="modal-bg" id="slotModal">
@@ -719,15 +751,15 @@ const uColl = (name) => { if(!_uid) throw new Error('not-authenticated'); return
 
 // 큰 이미지는 내용 해시별 별도 문서에 보관하고 목록 문서는 참조만 저장한다.
 const storedImageHashes=new Set();
-async function packImages(list,uid=_uid){
+async function packImages(list,uid=_uid,namespace='ww'){
   return Promise.all(list.map(async item=>{
     const c={...item};
     if(typeof c.img==='string'&&c.img.startsWith('data:')){
       const bytes=new TextEncoder().encode(c.img);
       if(bytes.length>900000) throw new Error('이미지가 문서 용량 한도를 초과합니다');
       const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
-      const ref=doc(db,'users',uid,'ww_images',hash);
-      const key=uid+':'+hash;
+      const ref=doc(db,'users',uid,namespace+'_images',hash);
+      const key=uid+':'+namespace+':'+hash;
       if(!storedImageHashes.has(key)){
         if(!(await getDoc(ref)).exists()) await setDoc(ref,{data:c.img});
         storedImageHashes.add(key);
@@ -737,10 +769,10 @@ async function packImages(list,uid=_uid){
     return c;
   }));
 }
-async function unpackImages(list,uid=_uid){
+async function unpackImages(list,uid=_uid,namespace='ww'){
   return Promise.all(list.map(async c=>{
     if(!c.imageRef) return c;
-    const d=await getDoc(doc(db,'users',uid,'ww_images',c.imageRef));
+    const d=await getDoc(doc(db,'users',uid,namespace+'_images',c.imageRef));
     if(!d.exists()) throw new Error('저장된 이미지를 찾을 수 없습니다');
     const {imageRef,...rest}=c;return {...rest,img:d.data().data};
   }));
@@ -792,8 +824,8 @@ window.FB = {
     batch.update(doc(db,'users',uid,'ww_seasons',sid),{seasonData:data});
     await batch.commit();
   },
-  async loadSaves(){
-    const q = query(uColl('saves'), orderBy('ts','desc'));
+  async loadSaves(namespace='ww'){
+    const q = query(collection(db,'users',_uid,namespace+'_saves'), orderBy('ts','desc'));
     const s = await getDocs(q);
     return s.docs.map(d=>({id:d.id,...d.data()}));
   },
@@ -811,8 +843,8 @@ window.FB = {
     }
     return results;
   },
-  async saveFullBackup(name, backupData){
-    const ref=doc(uColl('saves'));
+  async saveFullBackup(name, backupData,namespace='ww'){
+    const ref=doc(collection(db,'users',_uid,namespace+'_saves'));
     const json=JSON.stringify(backupData), chunks=[];
     for(let i=0;i<json.length;){
       let end=Math.min(i+180000,json.length);
@@ -822,10 +854,10 @@ window.FB = {
     for(let i=0;i<chunks.length;i++) await setDoc(doc(collection(ref,'chunks'),String(i)),{text:chunks[i]});
     // 모든 조각이 저장된 뒤에만 백업 목록에 공개한다.
     await setDoc(ref,{name,type:'full',format:2,chunks:chunks.length,
-      seasonCount:backupData.seasons.length,date:new Date().toLocaleString('ko'),ts:serverTimestamp()});
+      seasonCount:backupData.seasons?.length||0,date:new Date().toLocaleString('ko'),ts:serverTimestamp()});
   },
-  async restoreFullBackup(saveId){
-    const d = await getDoc(doc(db,'users',_uid,'ww_saves',saveId));
+  async restoreFullBackup(saveId,namespace='ww'){
+    const d = await getDoc(doc(db,'users',_uid,namespace+'_saves',saveId));
     if(!d.exists()) return null;
     const meta=d.data();
     if(meta.format!==2) return meta;
@@ -837,6 +869,35 @@ window.FB = {
       json+=c.data().text;
     }
     return {...JSON.parse(json),name:meta.name,type:'full'};
+  },
+  async loadGF(){
+    const uid=_uid;
+    const [d,n]=await Promise.all([getDoc(doc(db,'users',uid,'gf2_data','workspace')),getDocs(collection(db,'users',uid,'gf2_notes'))]);
+    const state=d.exists()?d.data():{chars:[],squads:[]};
+    return {chars:await unpackImages(state.chars||[],uid,'gf2'),squads:state.squads||[],notes:n.docs.map(x=>({...x.data(),id:x.id}))};
+  },
+  async saveGF(data){
+    const uid=_uid,epoch=sessionEpoch;
+    const packed={chars:await packImages(data.chars,uid,'gf2'),squads:data.squads};
+    if(uid!==_uid||epoch!==sessionEpoch)throw new Error('저장 중 계정이 변경되었습니다');
+    if(new TextEncoder().encode(JSON.stringify(packed)).length>800000)throw new Error('캐릭터·제대 데이터가 너무 큽니다');
+    await setDoc(doc(db,'users',uid,'gf2_data','workspace'),packed);
+  },
+  async saveGFNote(note){
+    if(new TextEncoder().encode(JSON.stringify(note)).length>800000)throw new Error('노트가 너무 큽니다');
+    await setDoc(doc(db,'users',_uid,'gf2_notes',note.id),note);
+  },
+  async restoreGF(data){
+    const uid=_uid,epoch=sessionEpoch;
+    const old=await getDocs(collection(db,'users',uid,'gf2_notes'));
+    const ids=new Set(data.notes.map(n=>n.id)),stale=old.docs.filter(n=>!ids.has(n.id));
+    if(data.notes.length+stale.length+1>450)throw new Error('안전한 일괄 복원 범위를 넘었습니다');
+    const packed={chars:await packImages(data.chars,uid,'gf2'),squads:data.squads};
+    if(new TextEncoder().encode(JSON.stringify(packed)).length>800000)throw new Error('복원 데이터가 너무 큽니다');
+    if(uid!==_uid||epoch!==sessionEpoch)throw new Error('복원 중 계정이 변경되었습니다');
+    const batch=writeBatch(db);batch.set(doc(db,'users',uid,'gf2_data','workspace'),packed);
+    data.notes.forEach(n=>batch.set(doc(db,'users',uid,'gf2_notes',n.id),n));
+    stale.forEach(n=>batch.delete(n.ref));await batch.commit();
   },
   async replaceSnapshot(data){
     const uid=_uid;
@@ -865,6 +926,7 @@ window.signInGoogle = async () => {
   catch(e){ showToast('로그인 실패: '+e.code); }
 };
 window.doSignOut = async () => {
+  if(isOpen('gfModal')){showToast('작성 창을 저장하거나 닫은 뒤 로그아웃해 주세요');return;}
   try{ await flushAllWrites(); }catch(_){ showToast('저장 실패를 해결한 뒤 로그아웃해 주세요');return; }
   await fbSignOut(auth);
   document.getElementById('app').style.display='none';
@@ -955,6 +1017,109 @@ const DC=[
 ];
 
 // ── 상태 ──
+let activeGame='ww',gameSwitchBusy=false;
+async function switchGame(game){
+  if(!['ww','gf2'].includes(game)||gameSwitchBusy||game===activeGame){document.getElementById('gameSelect').value=activeGame;return;}
+  if(!dataReady||document.querySelector('.modal-bg.open')){document.getElementById('gameSelect').value=activeGame;showToast('열린 편집창을 저장하거나 닫은 뒤 게임을 전환해 주세요');return;}
+  gameSwitchBusy=true;const epoch=sessionEpoch;
+  document.getElementById('gameSelect').disabled=true;
+  document.getElementById('app').inert=true;
+  try{
+    await flushAllWrites();assertSession(epoch);
+    if(game==='gf2')await GF.load();assertSession(epoch);
+    activeGame=game;
+    document.getElementById('wwWorkspace').hidden=game!=='ww';
+    document.getElementById('gfWorkspace').hidden=game!=='gf2';
+    document.getElementById('gameTitle').textContent=game==='ww'?'매트릭스 파티 편성':'소녀전선2 · 제대와 공략';
+    if(game==='gf2')GF.render();
+  }catch(e){showToast('게임 전환 실패: '+e.message);}
+  finally{if(epoch===sessionEpoch){gameSwitchBusy=false;document.getElementById('gameSelect').disabled=false;document.getElementById('gameSelect').value=activeGame;document.getElementById('app').inert=false;}}
+}
+// 소녀전선2는 명조 상태/경로를 재사용하지 않는 독립 작업 공간이다.
+const GF={
+  chars:[],squads:[],notes:[],loaded:false,view:'squads',selectedChar:null,selectedNote:null,scope:'all',timer:null,editor:null,dragId:null,noteQuery:'',scrolls:{squads:0,notes:0},
+  reset(){clearTimeout(this.timer);this.timer=null;this.chars=[];this.squads=[];this.notes=[];this.loaded=false;this.view='squads';this.selectedChar=null;this.selectedNote=null;this.scope='all';this.editor=null;this.dragId=null;this.noteQuery='';this.scrolls={squads:0,notes:0};},
+  async load(){if(this.loaded)return;const epoch=sessionEpoch,data=await window.FB.loadGF();assertSession(epoch);this.chars=data.chars;this.squads=data.squads;this.notes=data.notes;this.loaded=true;},
+  async save(){const snapshot=cloneData({chars:this.chars,squads:this.squads});return queueWrite('gf2:workspace',()=>window.FB.saveGF(snapshot));},
+  schedule(){clearTimeout(this.timer);this.timer=setTimeout(()=>{this.timer=null;this.save();},600);updateSaveStatus();},
+  async flush(){if(this.timer){clearTimeout(this.timer);this.timer=null;await this.save();}},
+  portrait(c){const src=c?.img;return `<div class="gf-portrait">${src?`<img src="${esc(src)}" alt="" onerror="this.hidden=true">`:esc(c?.name?.slice(0,2)||'+')}</div>`;},
+  mode(view){this.scrolls[this.view]=document.getElementById('gfContent').scrollTop;this.view=view;this.render();document.getElementById('gfContent').scrollTop=this.scrolls[view]||0;},
+  render(){this.renderRoster();this.renderMain();if(this.view==='notes'){document.getElementById('gfNoteSearch').value=this.noteQuery;this.filterNotes(this.noteQuery);}document.getElementById('gfSquadTab').classList.toggle('btn-accent',this.view==='squads');document.getElementById('gfNoteTab').classList.toggle('btn-accent',this.view==='notes');},
+  renderRoster(){
+    const q=document.getElementById('gfCharSearch').value.trim().toLowerCase();
+    document.getElementById('gfRoster').innerHTML=this.chars.filter(c=>!c.deleted&&(!q||[c.name,c.group].join(' ').toLowerCase().includes(q))).map(c=>`<button class="gf-char" aria-pressed="${this.selectedChar===c.id}" onclick="GF.selectChar('${c.id}')" title="캐릭터 공략 열기">${this.portrait(c)}<small>${esc(c.name)}</small></button>`).join('')||'<p class="note-meta">+ 등록으로 캐릭터를 추가하세요.</p>';
+  },
+  selectChar(id){this.selectedChar=id;this.selectedNote=null;this.scope='char';this.noteQuery='';this.mode('notes');},
+  setScope(scope){this.scope=scope;this.selectedChar=null;this.selectedNote=null;this.render();},
+  renderMain(){
+    const actions=document.getElementById('gfActions'),content=document.getElementById('gfContent');
+    if(this.view==='squads'){
+      actions.innerHTML='<strong>제대 보관함 · 5인 구성</strong><button class="btn btn-accent btn-sm" onclick="GF.addSquad()">+ 제대 추가</button><span class="note-meta">다른 제대에 같은 캐릭터를 재사용할 수 있습니다.</span>';
+      content.innerHTML=this.squads.map((s,i)=>`<article class="gf-squad" ondragover="event.preventDefault()" ondrop="GF.dropSquad(event,'${s.id}')"><div style="display:flex;gap:6px;align-items:center"><span draggable="true" ondragstart="GF.dragId='${s.id}';event.dataTransfer.setData('text/plain','${s.id}')" ondragend="GF.dragId=null" title="제대 순서 변경" style="cursor:grab">⠿</span><input class="field" style="min-width:0;flex:1" aria-label="제대 이름" value="${esc(s.name)}" oninput="GF.updateSquad('${s.id}','name',this.value)"><button class="btn btn-sm" onclick="GF.moveSquad('${s.id}',-1)" ${i===0?'disabled':''} aria-label="제대 위로">↑</button><button class="btn btn-sm" onclick="GF.moveSquad('${s.id}',1)" ${i===this.squads.length-1?'disabled':''} aria-label="제대 아래로">↓</button><button class="btn btn-sm" onclick="GF.removeSquad('${s.id}')" aria-label="제대 삭제">×</button></div><div class="gf-slots">${s.slots.map((id,slot)=>{const c=this.chars.find(c=>c.id===id&&!c.deleted);return `<button class="gf-char" onclick="GF.pickSlot('${s.id}',${slot})" title="${esc(c?.name||'빈 슬롯')} · 배치 변경">${this.portrait(c)}<small>${esc(c?.name||'배치')}</small></button>`;}).join('')}</div><textarea class="textarea" style="width:100%;min-height:55px" aria-label="제대 용도와 운용 메모" placeholder="용도 · 운용법 · 교체 후보" oninput="GF.updateSquad('${s.id}','memo',this.value)">${esc(s.memo||'')}</textarea></article>`).join('')||'<p class="note-meta">제대를 추가하고 5개의 슬롯을 눌러 캐릭터를 배치하세요.</p>';
+      return;
+    }
+    const c=this.chars.find(c=>c.id===this.selectedChar&&!c.deleted);
+    actions.innerHTML=`${['all','general','trash'].map((k,i)=>`<button class="btn btn-sm ${this.scope===k?'btn-accent':''}" onclick="GF.setScope('${k}')">${['전체','일반 공략','휴지통'][i]}</button>`).join('')}<strong>${esc(c?c.name+' 공략':'공략 노트')}</strong>${c?`<button class="btn btn-sm" onclick="GF.editChar('${c.id}')">캐릭터 편집</button>`:''}<button class="btn btn-accent btn-sm" onclick="GF.editNote()">+ 새 노트</button><button class="btn btn-sm" onclick="GF.recoverDraft()">임시 글 복구</button>`;
+    const list=this.notes.filter(n=>!!n.deletedAt===(this.scope==='trash')&&(this.scope!=='char'||(n.charIds||[]).includes(this.selectedChar))&&(this.scope!=='general'||!(n.charIds||[]).length)).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
+    if(!list.some(n=>n.id===this.selectedNote))this.selectedNote=null;
+    const selected=list.find(n=>n.id===this.selectedNote);
+    content.innerHTML=`<input class="field" style="width:100%" id="gfNoteSearch" placeholder="제목·본문 검색" aria-label="소녀전선2 공략 검색" oninput="GF.filterNotes(this.value)"><p class="note-meta">노트 목록 · ${list.length}개 — 같은 노트를 다시 누르면 접힙니다.</p><div id="gfNoteList">${list.map(n=>`<button class="btn gf-note" data-gf-note="${n.id}" aria-pressed="${selected?.id===n.id}" onclick="GF.openNote('${n.id}')">${esc(n.title)}<small class="note-meta" style="display:block">${esc(n.kind||'공략')}</small></button>`).join('')||'<p class="note-meta">아직 노트가 없습니다.</p>'}</div><div id="gfNoteDetail">${selected?this.noteDetail(selected):''}</div>`;
+  },
+  filterNotes(q){this.noteQuery=q;q=q.toLowerCase();document.querySelectorAll('[data-gf-note]').forEach(el=>{const n=this.notes.find(n=>n.id===el.dataset.gfNote);el.hidden=![n?.title,n?.body].join(' ').toLowerCase().includes(q);});},
+  openNote(id){const search=document.getElementById('gfNoteSearch').value;this.selectedNote=this.selectedNote===id?null:id;this.renderMain();document.getElementById('gfNoteSearch').value=search;this.filterNotes(search);},
+  noteDetail(n){
+    const body=(n.body||'').split('\n').map((line,i)=>{const m=line.match(/^\s*- \[([ xX])\] (.*)$/);return m?`<label style="display:block"><input type="checkbox" ${m[1]!==' '?'checked':''} ${n.deletedAt?'disabled':''} onchange="GF.checkNote('${n.id}',${i},this.checked)"> ${linkedText(m[2])}</label>`:linkedText(line);}).join('\n');
+    return `<article class="gf-detail"><p class="note-meta">선택한 노트 · 읽기</p><h3>${esc(n.title)}</h3><div class="gf-toolbar">${n.deletedAt?`<button class="btn btn-sm" onclick="GF.trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="GF.editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="GF.trashNote('${n.id}',true)">휴지통</button>`}</div><div class="note-body">${body}</div>${(n.sources||[]).map(s=>'<p>'+linkedText(s)+'</p>').join('')}</article>`;
+  },
+  async addSquad(){this.squads.push({id:genId('squad'),name:'제대 '+(this.squads.length+1),slots:Array(5).fill(null),memo:''});this.renderMain();await this.save();},
+  updateSquad(id,key,value){const s=this.squads.find(s=>s.id===id);if(s&&['name','memo'].includes(key)){s[key]=value;this.schedule();}},
+  async moveSquad(id,delta){const i=this.squads.findIndex(s=>s.id===id),to=i+delta;if(i<0||to<0||to>=this.squads.length)return;this.squads.splice(to,0,this.squads.splice(i,1)[0]);this.renderMain();await this.save();},
+  async dropSquad(e,id){e.preventDefault();const from=this.squads.findIndex(s=>s.id===this.dragId),to=this.squads.findIndex(s=>s.id===id);this.dragId=null;if(from<0||to<0||from===to)return;this.squads.splice(to,0,this.squads.splice(from,1)[0]);this.renderMain();await this.save();},
+  async removeSquad(id){if(!confirm('이 제대를 삭제할까요? 캐릭터와 공략은 유지됩니다.'))return;this.squads=this.squads.filter(s=>s.id!==id);this.renderMain();await this.save();},
+  modal(title,body){document.getElementById('gfModalBody').innerHTML=`<div class="gf-toolbar"><h3>${esc(title)}</h3><button class="btn btn-sm" style="margin-left:auto" onclick="GF.closeEditor()">닫기</button></div>${body}`;document.getElementById('gfModal').classList.add('open');},
+  closeEditor(){if(this.editor?.type==='note')this.cacheDraft();this.editor=null;closeM('gfModal');},
+  pickSlot(sid,slot){const squad=this.squads.find(s=>s.id===sid);if(!squad)return;this.editor={type:'slot'};this.modal('제대 캐릭터 선택',`<button class="btn" onclick="GF.assign('${sid}',${slot},null)">슬롯 비우기</button><div class="gf-roster" style="margin-top:10px">${this.chars.filter(c=>!c.deleted).map(c=>`<button class="gf-char" ${squad.slots.includes(c.id)&&squad.slots[slot]!==c.id?'disabled':''} onclick="GF.assign('${sid}',${slot},'${c.id}')">${this.portrait(c)}<small>${esc(c.name)}</small></button>`).join('')}</div>`);},
+  async assign(sid,slot,cid){const s=this.squads.find(s=>s.id===sid);if(!s||slot<0||slot>4||cid&&(!this.chars.some(c=>c.id===cid&&!c.deleted)||s.slots.some((id,i)=>id===cid&&i!==slot)))return;s.slots[slot]=cid;this.closeEditor();this.renderMain();await this.save();},
+  editChar(id=null){const c=this.chars.find(c=>c.id===id)||{name:'',group:'',memo:'',img:null};this.editor={type:'char',id:id||genId('gfchar'),img:c.img,epoch:sessionEpoch};this.modal(id?'캐릭터 편집':'캐릭터 등록',`<label>이름<input class="field" id="gfcName" value="${esc(c.name)}"></label><label>분류 · 역할 (자유 입력)<input class="field" id="gfcGroup" value="${esc(c.group||'')}"></label><label>간단 메모<textarea class="textarea" id="gfcMemo">${esc(c.memo||'')}</textarea></label><label>초상화 · 파일 선택 또는 Ctrl+V<input type="file" accept="image/*" onchange="GF.image(this.files[0])"></label><div id="gfcPreview">${this.portrait(c)}</div><button class="btn btn-sm" onclick="GF.editor.img=null;document.getElementById('gfcPreview').innerHTML=''">이미지 제거</button><div class="gf-toolbar"><button class="btn btn-accent" onclick="GF.saveChar()">서버에 저장</button>${id?`<button class="btn" onclick="GF.deleteChar('${id}')">캐릭터 삭제</button>`:''}</div>`);},
+  image(file){const editor=this.editor;if(editor?.type!=='char')return;processImage(file,out=>{if(this.editor!==editor||editor.epoch!==sessionEpoch)return;editor.img=out;document.getElementById('gfcPreview').innerHTML=this.portrait({img:out});});},
+  async saveChar(){if(this.editor?.type!=='char')return;const name=document.getElementById('gfcName').value.trim();if(!name){showToast('이름을 입력하세요');return;}const c={id:this.editor.id,name,group:document.getElementById('gfcGroup').value.trim(),memo:document.getElementById('gfcMemo').value,img:this.editor.img||null};const i=this.chars.findIndex(x=>x.id===c.id);if(i<0)this.chars.push(c);else this.chars[i]={...this.chars[i],...c};this.closeEditor();this.render();await this.save();},
+  async deleteChar(id){if(!confirm('캐릭터를 목록과 제대에서 제거할까요? 연결된 공략 노트는 유지됩니다.'))return;const c=this.chars.find(c=>c.id===id);if(!c)return;c.deleted=true;this.squads.forEach(s=>s.slots=s.slots.map(v=>v===id?null:v));this.selectedChar=null;this.scope='all';this.closeEditor();this.render();await this.save();},
+  draftKey(){return 'gf2-note-draft:'+window.FB.uid;},
+  readNote(){return {id:this.editor.id,title:document.getElementById('gfnTitle').value.trim(),body:document.getElementById('gfnBody').value,kind:document.getElementById('gfnKind').value.trim(),sources:document.getElementById('gfnSources').value.split('\n').map(s=>s.trim()).filter(Boolean),charIds:Array.from(document.querySelectorAll('#gfnChars input:checked'),el=>el.value)};},
+  cacheDraft(){if(this.editor?.type!=='note')return;try{localStorage.setItem(this.draftKey(),JSON.stringify(this.readNote()));document.getElementById('gfnStatus').textContent='기기 임시저장 완료 · 서버 반영은 저장 버튼을 눌러 주세요';}catch(_){showToast('임시저장 실패 · 서버에 저장해 주세요');}},
+  editNote(id=null,draft=null){
+    if(!draft){try{const old=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(old&&old.id!==id&&!confirm('다른 임시 글이 있습니다. 새 작성을 시작할까요?'))return;}catch(_){}}
+    const n=draft||this.notes.find(n=>n.id===id)||{title:'',body:'',kind:'공략',sources:[],charIds:this.selectedChar?[this.selectedChar]:[]};
+    this.editor={type:'note',id:id||draft?.id||genId('gfnote'),epoch:sessionEpoch};
+    this.modal('공략 노트 편집',`<div oninput="GF.cacheDraft()"><label>제목<input class="field" id="gfnTitle" value="${esc(n.title)}"></label><label>분류 (공략·운용법·팁 등)<input class="field" id="gfnKind" value="${esc(n.kind||'공략')}"></label><label>내용 · 체크리스트는 - [ ] 항목<textarea class="textarea" id="gfnBody" rows="10">${esc(n.body)}</textarea></label><label>출처 링크 · 한 줄에 하나<textarea class="textarea" id="gfnSources">${esc((n.sources||[]).join('\n'))}</textarea></label><p>관련 캐릭터 (여러 명 선택)</p><div id="gfnChars">${this.chars.filter(c=>!c.deleted).map(c=>`<label style="display:inline-block;margin-right:10px"><input type="checkbox" value="${c.id}" ${(n.charIds||[]).includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></div><p class="note-meta" id="gfnStatus">${draft?'임시 글 복구됨 · 저장 버튼을 눌러 주세요':'작성 중인 내용은 기기에 임시저장됩니다.'}</p><button class="btn btn-accent" id="gfnSave" onclick="GF.saveNoteEditor()">서버에 저장</button>`);
+  },
+  recoverDraft(){try{const d=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(d)this.editNote(d.id,d);else showToast('임시 글이 없습니다');}catch(_){showToast('임시 글을 읽을 수 없습니다');}},
+  async persistNote(n){if(new TextEncoder().encode(JSON.stringify(n)).length>800000)throw new Error('노트가 너무 큽니다');const i=this.notes.findIndex(x=>x.id===n.id);if(i<0)this.notes.push(n);else this.notes[i]=n;const value=cloneData(n);await queueWrite('gf2:note:'+n.id,()=>window.FB.saveGFNote(value));},
+  async saveNoteEditor(){
+    const editor=this.editor;if(editor?.type!=='note')return;const n=this.readNote();if(!n.title){showToast('제목을 입력하세요');return;}if(n.sources.some(s=>!safeWebURL(s))){showToast('출처는 http 또는 https 링크여야 합니다');return;}
+    const modal=document.getElementById('gfModalBody');modal.inert=true;
+    try{await this.persistNote({...this.notes.find(x=>x.id===n.id),...n,updatedAt:new Date().toISOString(),deletedAt:null});if(this.editor!==editor||editor.epoch!==sessionEpoch)return;localStorage.removeItem(this.draftKey());this.editor=null;closeM('gfModal');this.selectedNote=n.id;this.render();showToast('노트 서버 저장 완료');}finally{modal.inert=false;}
+  },
+  async checkNote(id,line,checked){const n=this.notes.find(n=>n.id===id);if(!n||n.deletedAt)return;const lines=n.body.split('\n');lines[line]=lines[line].replace(/\[[ xX]\]/,checked?'[x]':'[ ]');await this.persistNote({...n,body:lines.join('\n'),updatedAt:new Date().toISOString()});},
+  async trashNote(id,trash){const n=this.notes.find(n=>n.id===id);if(!n)return;if(trash&&!confirm('노트를 휴지통으로 보낼까요? 복구할 수 있습니다.'))return;const epoch=sessionEpoch;await this.persistNote({...n,deletedAt:trash?new Date().toISOString():null});if(epoch!==sessionEpoch)return;this.selectedNote=null;this.renderMain();},
+  snapshot(){return {game:'gf2',version:1,chars:cloneData(this.chars),squads:cloneData(this.squads),notes:cloneData(this.notes)};},
+  validate(raw){
+    if(raw?.game!=='gf2'||raw.version!==1)throw new Error('소녀전선2 백업이 아닙니다');
+    const d=cloneData(raw),validId=x=>typeof x==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(x);
+    for(const key of ['chars','squads','notes'])if(!Array.isArray(d[key])||d[key].some(x=>!x||!validId(x.id))||new Set(d[key].map(x=>x.id)).size!==d[key].length)throw new Error('백업 목록이 손상되었습니다');
+    if(d.chars.some(c=>typeof c.name!=='string'||(c.img!=null&&typeof c.img!=='string')))throw new Error('캐릭터 데이터 오류');
+    const ids=new Set(d.chars.map(c=>c.id));
+    if(d.squads.some(s=>typeof s.name!=='string'||!Array.isArray(s.slots)||s.slots.length!==5||s.slots.some(id=>id!==null&&!ids.has(id))||new Set(s.slots.filter(Boolean)).size!==s.slots.filter(Boolean).length))throw new Error('5인 제대 데이터 오류');
+    if(d.notes.some(n=>typeof n.title!=='string'||typeof n.body!=='string'||!Array.isArray(n.charIds)||n.charIds.some(id=>!ids.has(id))||!Array.isArray(n.sources)||n.sources.some(s=>!safeWebURL(s))||new TextEncoder().encode(JSON.stringify(n)).length>800000))throw new Error('공략 노트 데이터 오류');return d;
+  },
+  async openBackups(){await flushAllWrites();const epoch=sessionEpoch,list=await window.FB.loadSaves('gf2');assertSession(epoch);this.editor={type:'backup'};this.modal('소녀전선2 백업 / 복원',`<p class="note-meta">이 게임의 캐릭터·제대·공략만 백업합니다. 명조에는 영향을 주지 않습니다.</p><button class="btn btn-accent" onclick="GF.backup()">현재 데이터 백업</button>${list.map(s=>`<div class="gf-toolbar"><span>${esc(s.name)} · ${esc(s.date)}</span><button class="btn btn-sm" onclick="GF.restore('${s.id}')">복원</button></div>`).join('')}`);},
+  async backup(){document.getElementById('gfModalBody').inert=true;try{await flushAllWrites();const epoch=sessionEpoch;await window.FB.saveFullBackup('소녀전선2 '+new Date().toLocaleString('ko'),this.snapshot(),'gf2');assertSession(epoch);await this.openBackups();showToast('소녀전선2 백업 완료');}finally{document.getElementById('gfModalBody').inert=false;}},
+  async restore(id){if(!confirm('소녀전선2 데이터를 이 백업으로 교체할까요? 현재 데이터는 먼저 안전 백업합니다. 명조는 유지됩니다.'))return;document.getElementById('app').inert=true;document.getElementById('gfModalBody').inert=true;const epoch=sessionEpoch;
+    try{await flushAllWrites();const d=this.validate(await window.FB.restoreFullBackup(id,'gf2'));assertSession(epoch);await window.FB.saveFullBackup('복원 전 안전 백업 '+new Date().toLocaleString('ko'),this.snapshot(),'gf2');assertSession(epoch);await window.FB.restoreGF(d);assertSession(epoch);this.chars=d.chars;this.squads=d.squads;this.notes=d.notes;this.selectedChar=null;this.selectedNote=null;this.scope='all';this.closeEditor();this.render();showToast('소녀전선2 복원 완료');}catch(e){showToast('복원 실패: '+e.message);}finally{if(epoch===sessionEpoch){document.getElementById('app').inert=false;document.getElementById('gfModalBody').inert=false;}}
+  }
+};
+document.addEventListener('paste',e=>{if(activeGame!=='gf2'||GF.editor?.type!=='char'||!isOpen('gfModal'))return;const item=Array.from(e.clipboardData?.items||[]).find(x=>x.type.startsWith('image/'));if(item){e.preventDefault();GF.image(item.getAsFile());}});
 // buffs/bosses = 전역 풀(벤치). activeBuffs/activeBosses = 현재 시즌에서 활성화된 id 목록.
 let chars=[], parties=[], buffs=[], bosses=[];
 let activeBuffs=[], activeBosses=[];
@@ -1122,6 +1287,12 @@ let sessionEpoch=0;
 function assertSession(epoch){if(epoch!==sessionEpoch)throw new Error('계정이 변경되어 작업을 중단했습니다');}
 const failedWrites=new Map(),writeVersions=new Map();
 function resetSession(){
+  if(GF.editor?.type==='note')GF.cacheDraft();
+  GF.reset();activeGame='ww';gameSwitchBusy=false;
+  document.getElementById('gameSelect').value='ww';document.getElementById('gameSelect').disabled=false;
+  document.getElementById('wwWorkspace').hidden=false;document.getElementById('gfWorkspace').hidden=true;
+  document.getElementById('gameTitle').textContent='매트릭스 파티 편성';
+  document.getElementById('gfCharSearch').value='';
   // 인증 콜백에서 uid를 바꾸기 전에 호출해 작성 중인 글을 원래 계정에 보관한다.
   if(isOpen('noteEditorModal'))cacheNoteDraft();
   document.getElementById('noteEditorModal')?.remove();
@@ -1139,6 +1310,8 @@ function updateSaveStatus(){
   el.textContent=failedWrites.size?'서버 저장 실패 · 재시도':writeCount||saveSeasonDebounced.pending()?'서버 저장 중…':'서버 저장 완료';
   el.title='편성 및 저장 버튼으로 확정한 변경의 서버 저장 상태입니다. 노트 편집 중인 임시 글은 별도입니다.';
   el.style.color=failedWrites.size?'#f58a8a':'';
+  const gf=document.getElementById('gfStatus');
+  if(gf){gf.textContent=GF.timer?'서버 저장 대기 중…':el.textContent;gf.style.color=el.style.color;}
 }
 function queueWrite(key,fn){
   if(!dataReady)return Promise.reject(new Error('데이터를 먼저 다시 불러와 주세요'));
@@ -1165,12 +1338,13 @@ async function retryFailedWrites(){
   if(appMode==='notes')renderNotes();
 }
 async function flushAllWrites(){
+  await GF.flush();
   await saveSeasonDebounced.flush();
   await writeTail;
   if(failedWrites.size) throw new Error('저장되지 않은 변경이 있습니다');
 }
 window.addEventListener('beforeunload',e=>{
-  if(writeCount||failedWrites.size||saveSeasonDebounced.pending()) {e.preventDefault();e.returnValue='';}
+  if(writeCount||failedWrites.size||saveSeasonDebounced.pending()||GF.timer) {e.preventDefault();e.returnValue='';}
 });
 window.addEventListener('unhandledrejection',e=>{
   console.error(e.reason);showToast('작업 실패: '+(e.reason?.code||e.reason?.message||'다시 시도해 주세요'));e.preventDefault();
@@ -2443,7 +2617,7 @@ document.addEventListener('paste', e=>{
   let curPanel = 0;
   let touchStartX = 0, touchStartY = 0, dragging = false;
 
-  function isMobile(){ return window.innerWidth <= 900; }
+  function isMobile(){ return activeGame==='ww'&&window.innerWidth <= 900; }
 
   function goPanel(n){
     if(!isMobile()) return;
