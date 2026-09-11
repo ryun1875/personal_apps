@@ -372,7 +372,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 
     <div class="col notes-col" id="notesPane" style="display:none">
       <div class="col-wrap">
-        <div class="col-header"><h2 id="notesHeading">공략 노트</h2><button class="btn btn-accent btn-sm" onclick="editNote()">+ 새 노트</button></div>
+        <div class="col-header"><h2 id="notesHeading">공략 노트</h2><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="returnToFormation()">편성으로 돌아가기</button><button class="btn btn-accent btn-sm" onclick="editNote()">+ 새 노트</button></div></div>
         <div class="col-inner" style="padding:12px">
           <input id="noteSearch" class="fi" style="width:100%;margin-bottom:8px" placeholder="제목·본문·태그 검색" aria-label="공략 검색" oninput="renderNotes()">
           <div style="display:flex;gap:6px;margin-bottom:10px">
@@ -1427,13 +1427,14 @@ function renderPool(){
       html+=`<div class="char-card${c.star5?' star5':''}${ex&&appMode==='matrix'?' exhausted':''}${appMode==='notes'&&selectedNoteChar===c.id?' note-selected':''}"
         draggable="true"
         data-ci="${i}"
+        data-cid="${c.id}"
         onclick="selectPoolChar(${i})"
         ondragstart="charDragStart(event,${i})"
         ondragover="charDragOver(event,${i})"
         ondragleave="charDragLeave(event)"
         ondrop="charDragDrop(event,${i})"
         ondragend="charDragEnd()"
-        title="${esc(c.name)} — 클릭: 메모 | 드래그: 순서 변경">
+        title="${esc(c.name)} — 클릭: ${appMode==='notes'?'공략 노트':'메모'} | 드래그: 순서 변경">
         ${c.star5?'<div class="star5-corner"></div>':''}${c.dupe?'<span class="dupe-tag">×2</span>':''}
         ${c.memo?'<div class="memo-dot"></div>':''}
         <div class="portrait-wrap">${mkBg(c,63,63)}</div>
@@ -2143,14 +2144,28 @@ async function travelPartyHistory(delta){
 }
 
 // ── 공략 노트: 편성과 동일한 공명자 패널을 공유한다 ──
+function capturePoolPosition(){
+  const pool=document.getElementById('charPoolSection'),pane=pool.parentElement;
+  const top=pane.getBoundingClientRect().top;
+  const card=[...pool.querySelectorAll('[data-cid]')].find(c=>c.getBoundingClientRect().bottom>top);
+  return {scroll:pane.scrollTop,id:card?.dataset.cid,offset:card?card.getBoundingClientRect().top-top:0};
+}
+function restorePoolPosition(position){
+  const pool=document.getElementById('charPoolSection'),pane=pool.parentElement;
+  const card=[...pool.querySelectorAll('[data-cid]')].find(c=>c.dataset.cid===position.id);
+  if(card)pane.scrollTop+=card.getBoundingClientRect().top-pane.getBoundingClientRect().top-position.offset;
+  else pane.scrollTop=position.scroll;
+}
+function returnToFormation(){setAppMode('matrix');if(window.innerWidth<=900)goPanel(1);}
 function setAppMode(mode){
   if(!dataReady){showToast('데이터를 불러온 후 사용할 수 있습니다');return;}
+  const position=capturePoolPosition();
   appMode=mode;document.getElementById('app').classList.toggle('notes-mode',mode==='notes');
   document.getElementById('matrixTab').classList.toggle('btn-accent',mode==='matrix');
   document.getElementById('notesTab').classList.toggle('btn-accent',mode==='notes');
   document.getElementById('noteShortcuts').style.display=mode==='notes'?'flex':'none';
   document.getElementById('availableFilterLabel').style.display=mode==='notes'?'none':'';
-  renderAll();if(window.innerWidth<=900)goPanel(0);
+  renderAll();restorePoolPosition(position);if(window.innerWidth<=900)goPanel(0);
 }
 function selectPoolChar(i){
   if(appMode==='matrix'){openMemo(i);return;}
@@ -2211,10 +2226,11 @@ function renderNoteDetail(n){
 async function persistNote(note){
   const epoch=sessionEpoch;
   const value=cloneData(note);
+  // 로컬 상태는 입력 순서대로 갱신한다. 느린 이전 저장 응답이 새 편집을 덮지 않는다.
+  const i=notes.findIndex(n=>n.id===value.id);if(i<0)notes.push(value);else notes[i]=value;
   await queueWrite('note:'+note.id,async()=>{
     await window.FB.saveNote(value);
     if(epoch!==sessionEpoch)throw new Error('노트 저장 중 계정이 변경되었습니다');
-    const i=notes.findIndex(n=>n.id===value.id);if(i<0)notes.push(value);else notes[i]=value;
   });
 }
 async function toggleNoteCheck(id,line,checked){
@@ -2288,7 +2304,6 @@ async function saveNoteEditor(){
   const button=document.getElementById('noteSaveButton'),revision=noteDraftRevision;button.disabled=true;
   try{
     await persistNote(note);
-    const index=notes.findIndex(n=>n.id===note.id);if(index>=0)notes[index]=note;else notes.push(note);
     if(revision===noteDraftRevision&&editingNoteId===data.id){localStorage.removeItem(draftKey());closeM('noteEditorModal');}
     selectedNoteId=note.id;renderNotes();showToast('노트 저장됨');
   }finally{button.disabled=false;}
