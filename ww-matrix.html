@@ -264,6 +264,12 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .gf-toolbar{padding:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);flex-shrink:0}
 .gf-scroll{overflow-y:auto;min-height:0;flex:1;padding:10px;scrollbar-gutter:stable}
 .gf-roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:7px}
+#gfRoster{grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:5px;align-items:start}
+#gfRoster .gf-char{min-width:0;border-width:0.5px;border-radius:var(--radius)}
+#gfRoster .gf-portrait{height:auto;width:100%;aspect-ratio:1;font-size:18px;position:relative}
+#gfRoster .gf-portrait img{position:absolute;inset:0;object-position:top center}
+#gfRoster .gf-char small{font-size:10px;padding:3px 2px;line-height:1.2;word-break:keep-all}
+@media(max-width:900px){#gfRoster{grid-template-columns:repeat(auto-fill,minmax(60px,1fr))}}
 .gf-char{padding:0;overflow:hidden;border:1px solid var(--border);border-radius:8px;background:var(--bg3);color:var(--text);cursor:pointer}
 .gf-char[aria-pressed="true"]{outline:2px solid var(--accent)}
 .gf-portrait{height:100px;display:flex;align-items:center;justify-content:center;background:var(--bg3);overflow:hidden;font-size:22px}
