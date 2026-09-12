@@ -1106,13 +1106,13 @@ const GF={
     const list=this.notes.filter(n=>!!n.deletedAt===(this.scope==='trash')&&(this.scope!=='char'||(n.charIds||[]).includes(this.selectedChar))&&(this.scope!=='general'||!(n.charIds||[]).length)).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
     if(!list.some(n=>n.id===this.selectedNote))this.selectedNote=null;
     const selected=list.find(n=>n.id===this.selectedNote);
-    content.innerHTML=`<input class="field" style="width:100%" id="gfNoteSearch" placeholder="제목·본문 검색" aria-label="소녀전선2 공략 검색" oninput="GF.filterNotes(this.value)"><p class="note-meta">노트 목록 · ${list.length}개 — 같은 노트를 다시 누르면 접힙니다.</p><div id="gfNoteList">${list.map(n=>`<button class="btn gf-note" data-gf-note="${n.id}" aria-pressed="${selected?.id===n.id}" onclick="GF.openNote('${n.id}')">${esc(n.title)}<small class="note-meta" style="display:block">${esc(n.kind||'공략')}</small></button>`).join('')||'<p class="note-meta">아직 노트가 없습니다.</p>'}</div><div id="gfNoteDetail">${selected?this.noteDetail(selected):''}</div>`;
+    content.innerHTML=`<input class="field" style="width:100%" id="gfNoteSearch" placeholder="제목·본문 검색" aria-label="소녀전선2 공략 검색" oninput="GF.filterNotes(this.value)"><p class="note-meta">노트 목록 · ${list.length}개 — 같은 노트를 다시 누르면 접힙니다.</p><div id="gfNoteList">${list.map(n=>`<button class="btn gf-note" data-gf-note="${n.id}" aria-pressed="${selected?.id===n.id}" onclick="GF.openNote('${n.id}')">${esc(n.title)}<small class="note-meta" style="display:block">${esc(n.kind||'공략')}</small>${noteDatesHTML(n)}</button>`).join('')||'<p class="note-meta">아직 노트가 없습니다.</p>'}</div><div id="gfNoteDetail">${selected?this.noteDetail(selected):''}</div>`;
   },
   filterNotes(q){this.noteQuery=q;q=q.toLowerCase();document.querySelectorAll('[data-gf-note]').forEach(el=>{const n=this.notes.find(n=>n.id===el.dataset.gfNote);el.hidden=![n?.title,n?.body].join(' ').toLowerCase().includes(q);});},
   openNote(id){const search=document.getElementById('gfNoteSearch').value;this.selectedNote=this.selectedNote===id?null:id;this.renderMain();document.getElementById('gfNoteSearch').value=search;this.filterNotes(search);},
   noteDetail(n){
     const body=(n.body||'').split('\n').map((line,i)=>{const m=line.match(/^\s*- \[([ xX])\] (.*)$/);return m?`<label style="display:block"><input type="checkbox" ${m[1]!==' '?'checked':''} ${n.deletedAt?'disabled':''} onchange="GF.checkNote('${n.id}',${i},this.checked)"> ${linkedText(m[2])}</label>`:linkedText(line);}).join('\n');
-    return `<article class="gf-detail"><p class="note-meta">선택한 노트 · 읽기</p><h3>${esc(n.title)}</h3><div class="gf-toolbar">${n.deletedAt?`<button class="btn btn-sm" onclick="GF.trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="GF.editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="GF.trashNote('${n.id}',true)">휴지통</button>`}</div><div class="note-body">${body}</div>${(n.sources||[]).map(s=>'<p>'+linkedText(s)+'</p>').join('')}</article>`;
+    return `<article class="gf-detail"><p class="note-meta">선택한 노트 · 읽기</p><h3>${esc(n.title)}</h3>${noteDatesHTML(n)}<div class="gf-toolbar">${n.deletedAt?`<button class="btn btn-sm" onclick="GF.trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="GF.editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="GF.trashNote('${n.id}',true)">휴지통</button>`}</div><div class="note-body">${body}</div>${(n.sources||[]).map(s=>'<p>'+linkedText(s)+'</p>').join('')}</article>`;
   },
   async addSquad(){this.squads.push({id:genId('squad'),name:'제대 '+(this.squads.length+1),slots:Array(5).fill(null),memo:''});this.renderMain();await this.save();},
   updateSquad(id,key,value){const s=this.squads.find(s=>s.id===id);if(s&&['name','memo'].includes(key)){s[key]=value;this.schedule();}},
@@ -1141,9 +1141,9 @@ const GF={
   async saveNoteEditor(){
     const editor=this.editor;if(editor?.type!=='note')return;const n=this.readNote();if(!n.title){showToast('제목을 입력하세요');return;}if(n.sources.some(s=>!safeWebURL(s))){showToast('출처는 http 또는 https 링크여야 합니다');return;}
     const modal=document.getElementById('gfModalBody');modal.inert=true;
-    try{await this.persistNote({...this.notes.find(x=>x.id===n.id),...n,updatedAt:new Date().toISOString(),deletedAt:null});if(this.editor!==editor||editor.epoch!==sessionEpoch)return;localStorage.removeItem(this.draftKey());this.editor=null;closeM('gfModal');this.selectedNote=n.id;this.render();showToast('노트 서버 저장 완료');}finally{modal.inert=false;}
+    try{await this.persistNote({...this.notes.find(x=>x.id===n.id),...n,...noteEditDates(this.notes.find(x=>x.id===n.id)),deletedAt:null});if(this.editor!==editor||editor.epoch!==sessionEpoch)return;localStorage.removeItem(this.draftKey());this.editor=null;closeM('gfModal');this.selectedNote=n.id;this.render();showToast('노트 서버 저장 완료');}finally{modal.inert=false;}
   },
-  async checkNote(id,line,checked){const n=this.notes.find(n=>n.id===id);if(!n||n.deletedAt)return;const lines=n.body.split('\n');lines[line]=lines[line].replace(/\[[ xX]\]/,checked?'[x]':'[ ]');await this.persistNote({...n,body:lines.join('\n'),updatedAt:new Date().toISOString()});},
+  async checkNote(id,line,checked){const n=this.notes.find(n=>n.id===id);if(!n||n.deletedAt)return;const lines=n.body.split('\n');lines[line]=lines[line].replace(/\[[ xX]\]/,checked?'[x]':'[ ]');const updated={...n,body:lines.join('\n'),updatedAt:new Date().toISOString()};refreshNoteDates(updated);await this.persistNote(updated);},
   async trashNote(id,trash){const n=this.notes.find(n=>n.id===id);if(!n)return;if(trash&&!confirm('노트를 휴지통으로 보낼까요? 복구할 수 있습니다.'))return;const epoch=sessionEpoch;await this.persistNote({...n,deletedAt:trash?new Date().toISOString():null});if(epoch!==sessionEpoch)return;this.selectedNote=null;this.renderMain();},
   snapshot(){return {game:'gf2',version:1,chars:cloneData(this.chars),squads:cloneData(this.squads),notes:cloneData(this.notes)};},
   validate(raw){
@@ -2481,6 +2481,7 @@ function renderNotes(){
   document.getElementById('notesList').innerHTML=list.length?list.map(n=>`<div class="note-card" role="button" aria-pressed="${n.id===selectedNoteId}" tabindex="0" onclick="openNote('${n.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openNote('${n.id}');}">
     <div>${(n.pinnedFor||[]).includes(selectedNoteChar)?'📌 ':''}${esc(n.title)}</div>
     <div class="note-meta">${esc(n.kind)} · ${esc(n.status)}${n.region?' · '+esc(n.region):''}${n.version?' · '+esc(n.version):''}</div>
+    ${noteDatesHTML(n)}
   </div>`).join(''):'<p class="note-meta">아직 노트가 없습니다. 새 노트에 제목만 적어도 저장할 수 있어요.</p>';
   if(selectedNoteId&&list.some(n=>n.id===selectedNoteId))renderNoteDetail(notes.find(n=>n.id===selectedNoteId));
   else{selectedNoteId=null;document.getElementById('noteDetail').innerHTML='';}
@@ -2490,6 +2491,17 @@ function openNote(id){
   renderNotes();
   if(selectedNoteId)document.getElementById('noteDetail').scrollIntoView({block:'nearest'});
 }
+function formatNoteDate(value){
+  if(typeof value!=='string'||!value.trim())return '기록 없음';
+  const date=new Date(value);if(!Number.isFinite(date.getTime()))return '기록 없음';
+  return new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(date);
+}
+function noteDatesText(n){return `작성 ${formatNoteDate(n.createdAt)} · 수정 ${formatNoteDate(n.updatedAt)} (한국 시간)`;}
+function noteDatesHTML(n){return `<div class="note-meta" data-note-dates="${esc(n.id)}" title="노트 저장·체크리스트 변경 시각입니다. 원문 공략의 최신성을 보장하지는 않습니다.">${esc(noteDatesText(n))}</div>`;}
+function refreshNoteDates(n){document.querySelectorAll('[data-note-dates]').forEach(el=>{if(el.dataset.noteDates===n.id)el.textContent=noteDatesText(n);});}
+function noteEditDates(old,now=new Date().toISOString()){
+  return {createdAt:old?old.createdAt||null:now,updatedAt:now};
+}
 function renderNoteDetail(n){
   if(!n)return;
   const body=(n.body||'').split('\n').map((line,i)=>{
@@ -2497,6 +2509,7 @@ function renderNoteDetail(n){
     return match?`<label style="display:block"><input type="checkbox" ${match[1]!==' '?'checked':''} ${n.deletedAt?'disabled':''} onchange="toggleNoteCheck('${n.id}',${i},this.checked)"> ${linkedText(match[2])}</label>`:linkedText(line);
   }).join('\n');
   document.getElementById('noteDetail').innerHTML=`<div class="note-section-label" style="margin-top:0">선택한 노트 · 읽기</div><h3>${esc(n.title)}</h3>
+    ${noteDatesHTML(n)}
     <div class="note-meta">${esc((n.charIds||[]).map(id=>chars.find(c=>c.id===id)?.name||'삭제된 공명자').join(' · '))}${n.verified?' · 확인 '+esc(n.verified):''}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
       ${n.deletedAt?`<button class="btn btn-sm" onclick="trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="trashNote('${n.id}',true)">휴지통</button>${selectedNoteChar?`<button class="btn btn-sm" onclick="pinNote('${n.id}')">${(n.pinnedFor||[]).includes(selectedNoteChar)?'고정 해제':'이 공명자 대표 공략으로 고정'}</button>`:''}`}
@@ -2517,12 +2530,12 @@ async function persistNote(note){
 async function toggleNoteCheck(id,line,checked){
   const n=notes.find(x=>x.id===id);if(!n||n.deletedAt)return;
   const lines=n.body.split('\n');lines[line]=lines[line].replace(/\[[ xX]\]/,checked?'[x]':'[ ]');
-  n.body=lines.join('\n');n.updatedAt=new Date().toISOString();await persistNote(n);
+  n.body=lines.join('\n');n.updatedAt=new Date().toISOString();refreshNoteDates(n);await persistNote(n);
 }
 async function trashNote(id,deleted){
   const n=notes.find(x=>x.id===id);if(!n)return;
   if(deleted&&!confirm('휴지통으로 옮길까요? 나중에 복구할 수 있습니다.'))return;
-  n.deletedAt=deleted?new Date().toISOString():null;n.updatedAt=new Date().toISOString();
+  n.deletedAt=deleted?new Date().toISOString():null;
   await persistNote(n);selectedNoteId=null;renderNotes();
 }
 async function pinNote(id){
@@ -2585,7 +2598,7 @@ async function saveNoteEditor(){
   const duplicate=notes.find(n=>n.id!==data.id&&!n.deletedAt&&(n.sources||[]).some(s=>data.sources.some(t=>safeWebURL(t)===safeWebURL(s))));
   if(duplicate&&!confirm(`"${duplicate.title}" 노트에 같은 출처가 있습니다. 그대로 저장할까요?`))return;
   const old=notes.find(n=>n.id===data.id);
-  const note={pinnedFor:[],createdAt:new Date().toISOString(),...old,...data,updatedAt:new Date().toISOString(),deletedAt:null};
+  const note={pinnedFor:[],...old,...data,...noteEditDates(old),deletedAt:null};
   if(new TextEncoder().encode(JSON.stringify(note)).length>800000){showToast('노트가 너무 큽니다. 나누어 저장해 주세요');return;}
   const button=document.getElementById('noteSaveButton'),revision=noteDraftRevision;button.disabled=true;
   setNoteDraftStatus('서버에 저장 중…');
