@@ -349,6 +349,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
             <select id="charAttrFilter" class="fi" aria-label="공명자 속성 필터" onchange="renderPool()"><option value="">모든 속성</option><option>응결</option><option>용융</option><option>전도</option><option>기류</option><option>회절</option><option>인멸</option></select>
             <label id="availableFilterLabel" style="font-size:12px"><input type="checkbox" id="charAvailable" onchange="renderPool()"> 배치 가능만</label>
+            <label id="unownedFilterLabel" style="font-size:12px;display:none"><input type="checkbox" id="charIncludeUnowned" onchange="renderPool()"> 미보유 포함</label>
             <button class="btn btn-sm" style="margin-left:auto;white-space:nowrap" onclick="document.getElementById('charScroll').scrollTop=0" title="공명자 목록 맨 위로">↑ 맨 위</button>
           </div>
         </div>
@@ -1372,6 +1373,7 @@ let sessionEpoch=0;
 function assertSession(epoch){if(epoch!==sessionEpoch)throw new Error('계정이 변경되어 작업을 중단했습니다');}
 const failedWrites=new Map(),writeVersions=new Map();
 function resetSession(){
+  document.getElementById('charIncludeUnowned').checked=false;
   if(GF.editor?.type==='note')GF.cacheDraft();
   GF.reset();activeGame='ww';gameSwitchBusy=false;
   document.getElementById('gameSelect').value='ww';document.getElementById('gameSelect').disabled=false;
@@ -1708,11 +1710,12 @@ function renderPool(){
   const search=document.getElementById('charSearch').value.trim().toLocaleLowerCase();
   const attr=document.getElementById('charAttrFilter').value;
   const available=appMode==='matrix'&&document.getElementById('charAvailable').checked;
+  const includeUnowned=appMode==='notes'&&document.getElementById('charIncludeUnowned').checked;
   const rT=(fn,lbl,lc)=>{
-    if(!chars.some(c=>fn(c)&&!c.deleted&&(c.owned||appMode==='notes'))) return;
+    if(!chars.some(c=>fn(c)&&!c.deleted&&(c.owned||includeUnowned))) return;
     html+=`<p class="sec-title"><span style="color:${lc}">${lbl}</span></p><div class="char-grid" id="cgrid-${lc.replace(/[^a-z]/g,'')}">`;
     chars.forEach((c,i)=>{
-      if(!fn(c)||(!c.owned&&appMode==='matrix')||c.deleted) return;
+      if(!fn(c)||(!c.owned&&!includeUnowned)||c.deleted) return;
       if(search&&!c.name.toLocaleLowerCase().includes(search)||attr&&c.attr!==attr) return;
       const ex=(used[c.id]||0)>=(c.dupe?2:1);
       if(available&&ex) return;
@@ -2474,7 +2477,8 @@ function setAppMode(mode){
   document.getElementById('matrixTab').classList.toggle('btn-accent',mode==='matrix');
   document.getElementById('notesTab').classList.toggle('btn-accent',mode==='notes');
   renderNoteNavigation();
-  document.getElementById('availableFilterLabel').style.visibility=mode==='notes'?'hidden':'';
+  document.getElementById('availableFilterLabel').style.display=mode==='notes'?'none':'';
+  document.getElementById('unownedFilterLabel').style.display=mode==='notes'?'':'none';
   renderAll();restorePoolPosition(position);if(window.innerWidth<=900)goPanel(0);
 }
 function selectPoolChar(i){
