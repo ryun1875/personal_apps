@@ -243,6 +243,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 #app.notes-mode #notesPane{display:flex!important}
 #app.notes-mode #mobileDots .mobile-dot:nth-child(3){display:none}
 .char-card.note-selected{outline:2px solid var(--accent);outline-offset:1px}
+.char-card.unowned .portrait-wrap{filter:grayscale(1);opacity:.3}
+.char-card.unowned .char-name,.char-card.unowned .star5-corner,.char-card.unowned .dupe-tag,.char-card.unowned .memo-dot{opacity:.4}
 .note-card{padding:12px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;background:var(--bg3);cursor:pointer}
 .note-card:hover{border-color:var(--accent)}
 .note-meta{font-size:12px;color:var(--text3);margin-top:5px;overflow-wrap:anywhere}
@@ -1714,7 +1716,7 @@ function renderPool(){
       if(search&&!c.name.toLocaleLowerCase().includes(search)||attr&&c.attr!==attr) return;
       const ex=(used[c.id]||0)>=(c.dupe?2:1);
       if(available&&ex) return;
-      html+=`<div class="char-card${c.star5?' star5':''}${ex&&appMode==='matrix'?' exhausted':''}${appMode==='notes'&&selectedNoteChar===c.id?' note-selected':''}"
+      html+=`<div class="char-card${c.star5?' star5':''}${!c.owned?' unowned':''}${ex&&appMode==='matrix'?' exhausted':''}${appMode==='notes'&&selectedNoteChar===c.id?' note-selected':''}"
         draggable="true"
         data-ci="${i}"
         data-cid="${c.id}"
@@ -1724,7 +1726,7 @@ function renderPool(){
         ondragleave="charDragLeave(event)"
         ondrop="charDragDrop(event,${i})"
         ondragend="charDragEnd()"
-        title="${esc(c.name)} — 클릭: ${appMode==='notes'?'공략 노트':'메모'} | 드래그: 순서 변경">
+        title="${esc(c.name)}${!c.owned?' (미보유)':''} — 클릭: ${appMode==='notes'?'공략 노트':'메모'} | 드래그: 순서 변경">
         ${c.star5?'<div class="star5-corner"></div>':''}${c.dupe?'<span class="dupe-tag">×2</span>':''}
         ${c.memo?'<div class="memo-dot"></div>':''}
         <div class="portrait-wrap">${mkBg(c,63,63)}</div>
