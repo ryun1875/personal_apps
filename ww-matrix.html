@@ -1864,13 +1864,13 @@ async function deleteSeason(sid){
 
 // ── 공명자 풀 ──
 function cc(c){ return (c.attr&&ATTRS[c.attr])?ATTRS[c.attr]:COLS[c.color%COLS.length]; }
-function mkBg(c,w,h){
+function mkBg(c,w,h,fill=false){
   const col=cc(c);
   const badge=c.attr&&ATTRS[c.attr]?`<span class="attr-badge" style="background:${ATTRS[c.attr].bg};color:${ATTRS[c.attr].text}">${c.attr}</span>`:'';
   const nm=esc(c.name.slice(0,2));
   const fb=`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:${Math.floor(w*.28)}px;font-weight:500;background:${col.bg};color:${col.text}">${nm}</div>`;
-  if(c.img) return `<div style="width:${w}px;height:${h}px;position:relative;overflow:hidden;background:${col.bg}">${fb}<img src="${esc(c.img)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;z-index:1" onerror="this.style.display='none'"><div style="position:absolute;inset:0;z-index:2;pointer-events:none">${badge}</div></div>`;
-  return `<div style="width:${w}px;height:${h}px;position:relative;overflow:hidden;background:${col.bg};display:flex;align-items:center;justify-content:center;font-size:${Math.floor(w*.28)}px;font-weight:500;color:${col.text}">${nm}${badge}</div>`;
+  if(c.img) return `<div style="width:${fill?'100%':w+'px'};height:${fill?'100%':h+'px'};position:relative;overflow:hidden;background:${col.bg}">${fb}<img src="${esc(c.img)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;z-index:1" onerror="this.style.display='none'"><div style="position:absolute;inset:0;z-index:2;pointer-events:none">${badge}</div></div>`;
+  return `<div style="width:${fill?'100%':w+'px'};height:${fill?'100%':h+'px'};position:relative;overflow:hidden;background:${col.bg};display:flex;align-items:center;justify-content:center;font-size:${Math.floor(w*.28)}px;font-weight:500;color:${col.text}">${nm}${badge}</div>`;
 }
 function getUsed(){ const u={}; parties.forEach(p=>p.slots.forEach(s=>{if(s!=null)u[s]=(u[s]||0)+1;})); return u; }
 
@@ -1901,7 +1901,7 @@ function renderPool(){
         title="${esc(c.name)}${!c.owned?' (미보유)':''} — 클릭: ${appMode==='notes'?'공략 노트':'메모'} | 드래그: 순서 변경">
         ${c.star5?'<div class="star5-corner"></div>':''}${c.dupe?'<span class="dupe-tag">×2</span>':''}
         ${c.memo?'<div class="memo-dot"></div>':''}
-        <div class="portrait-wrap">${mkBg(c,63,63)}</div>
+        <div class="portrait-wrap">${mkBg(c,63,63,true)}</div>
         <div class="char-name">${esc(c.name)}</div>
       </div>`;
     });
