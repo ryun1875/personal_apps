@@ -75,9 +75,6 @@
   .thumb img{width:100%;height:100%;object-fit:cover;}
   .thumb .x{position:absolute;top:0;right:0;width:30px;height:30px;border-radius:0 0 0 10px;
     background:#000c;color:#fff;font-size:18px;line-height:30px;text-align:center;border:none;}
-  .spin{display:inline-block;width:15px;height:15px;border:2px solid #fff5;border-top-color:#fff;
-    border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px;}
-  @keyframes s{to{transform:rotate(360deg);}}
   .preview{background:#0f1113;border:1px dashed var(--line);border-radius:14px;padding:16px;
     font-size:19px;font-weight:800;letter-spacing:-.2px;line-height:1.5;word-break:keep-all;white-space:pre-wrap;min-height:30px;}
   .hint{font-size:12px;color:var(--sub);margin-top:8px;line-height:1.5;}
@@ -95,10 +92,11 @@
     padding:12px 14px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);}
   .bar .wrap{padding:0;display:flex;gap:10px;}
   .share{background:var(--go);flex:2;}.copy{background:var(--panel2);border:1px solid var(--line);color:var(--ink);flex:1;}
+  .share:disabled{opacity:.55;}
+  .session-gate{position:fixed;inset:0;z-index:100;background:#15171aee;display:grid;place-items:center;padding:24px;}
+  .session-gate[hidden]{display:none;}
+  .session-gate p{max-width:360px;white-space:pre-line;text-align:center;line-height:1.7;}
   input[type=file]{display:none;}
-  input.ai-filled{border-color:var(--accent)!important;box-shadow:0 0 0 2px rgba(90,169,255,.30);}
-  #labelStat.ok{color:var(--accent);font-weight:700;}
-  #labelStat.no{color:var(--bone);font-weight:700;}
   /* 라이브 카메라 */
   html.cam-open,body.cam-open{overflow:hidden;overscroll-behavior:none;}
   body.cam-open{position:fixed;left:0;right:0;width:100%;}
@@ -116,23 +114,25 @@
   .camcount button:disabled{opacity:.35;}
   .shutter{width:74px;height:74px;border-radius:50%;background:#fff;border:5px solid #ffffff55;}
   .shutter:active{transform:scale(.92);}
+  .shutter:disabled{opacity:.35;transform:none;}
   .camspace{width:96px;text-align:right;}
   .camspace button{min-width:86px;min-height:48px;background:#ffffff2b;border:1px solid #ffffff55;color:#fff;padding:9px 10px;border-radius:10px;font-size:15px;font-weight:800;touch-action:manipulation;}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="session-gate" id="sessionGate" role="status" aria-live="polite"><p id="sessionMessage">작업 내용을 확인하고 있어요…</p></div>
+<div class="wrap" id="appContent" inert>
   <header><h1>불량 보고</h1><button class="reset" onclick="resetAll()">초기화</button></header>
+  <div class="hint" id="draftStatus" role="status" aria-live="polite">사진 임시저장 확인 중…</div>
 
   <!-- 라벨 (여러 장) -->
   <div class="card">
-    <p class="lbl">① 라벨 (소비기한·제조사 자동인식 · 여러 장 가능)</p>
+    <p class="lbl">① 라벨 사진 (여러 장 가능)</p>
     <div class="btnrow">
       <button class="bigbtn label-btn" onclick="openCam('label')">📷 촬영</button>
-      <button class="bigbtn label-btn alt2" onclick="labelAlbum.click()">🖼 앨범</button>
+      <button class="bigbtn label-btn alt2" onclick="$('labelAlbum').click()">🖼 앨범</button>
     </div>
     <input type="file" id="labelAlbum" accept="image/*" multiple>
-    <div class="hint" id="labelStat"></div>
     <div class="thumbs" id="thLabel"></div>
     <div class="clearrow" id="clrLabel" style="display:none"><button onclick="clearType('label')">라벨 사진 전체 삭제</button></div>
   </div>
@@ -161,6 +161,12 @@
       <div class="chips" id="bongChips"></div>
       <input type="text" id="bongEtc" inputmode="numeric" placeholder="직접 입력 (숫자)" style="margin-top:8px;text-align:left;font-size:16px;font-weight:600">
     </div>
+    <div class="field" id="quantityField">
+      <label class="lbl" for="actualCount">실제 나온 전체 개수 (불량 포함 · 선택)</label>
+      <input type="text" id="actualCount" inputmode="numeric" placeholder="예: 67" aria-describedby="quantityHint inputError">
+      <div class="hint" id="quantityHint" aria-live="polite"></div>
+    </div>
+    <div class="hint warn" id="inputError" role="alert" hidden></div>
   </div>
 
   <!-- 불량 사진: 4종 탭 + 공용 촬영 영역 -->
@@ -202,7 +208,7 @@
   </div>
 </div>
 
-<div class="bar"><div class="wrap">
+<div class="bar" id="actionBar" inert><div class="wrap">
   <button class="bigbtn copy" onclick="copyText(event)">문자 복사</button>
   <button class="bigbtn share" id="shareBtn" onclick="shareAll()">공유 (사진+문자)</button>
 </div></div>
@@ -216,7 +222,7 @@
   <video id="camVideo" playsinline muted></video>
   <div class="cambottom">
     <span class="camcount"><span>이번 <b id="camCount">0</b>장</span><button id="camUndoBtn" onclick="camUndo()" disabled>최근 1장 삭제</button></span>
-    <button class="shutter" onclick="camShoot()" aria-label="사진 촬영"></button>
+    <button class="shutter" id="camShutterBtn" onclick="camShoot()" aria-label="카메라 준비 중" disabled></button>
     <span class="camspace"><button onclick="closeCam()">나가기</button></span>
   </div>
 </div>
@@ -226,15 +232,22 @@ const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.par
          set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
 const DEFAULT_MAKERS=["마니커","케이탑푸드","하림","체리부로","사조"];
 const MAX_PER_SEND=10, SIZE_BUDGET=8*1024*1024;   // 브라우저 공유 한계: 1회 10장 · 약 8MB
-const APP_VER="v1.12 (총 개수 요약 추가)";
-let makers=LS.get("dr_makers",DEFAULT_MAKERS.slice());
-let history=LS.get("dr_history",[]);
+const APP_VER="v1.19 (수량 입력 오류 방지)";
+const rawMakers=LS.get("dr_makers",null);
+let makers=Array.isArray(rawMakers)
+  ? [...new Set(rawMakers.filter(m=>typeof m==="string").map(m=>m.trim()).filter(Boolean))]
+  : DEFAULT_MAKERS.slice();
+if(Array.isArray(rawMakers)&&rawMakers.length&&!makers.length)makers=DEFAULT_MAKERS.slice();
+const rawHistory=LS.get("dr_history",null);
+let history=Array.isArray(rawHistory)
+  ? rawHistory.filter(h=>h&&typeof h==="object"&&typeof h.t==="string"&&typeof h.m==="string").slice(0,20)
+  : [];
 const KINDS=["북채","통날개","신선육"];
 function normalizeKind(value,fallback=""){const v=value==="날개"?"통날개":value;return KINDS.includes(v)?v:fallback;}
 let maker="",kind=KINDS[0],bong="",editMakers=false,queue=[];
 const BONG=[1,2,3,4,5];
 const COMP_MAX=1600, COMP_Q=0.80;      // 공유 시 압축(용량 우선)
-let camSave=LS.get("dr_camsave",false);  // 라이브 카메라 원본 저장(기본 꺼짐, 필요시 토글)
+let camSave=LS.get("dr_camsave",false)===true;  // 라이브 카메라 원본 저장(기본 꺼짐, 필요시 토글)
 function compressFile(file){return new Promise(resolve=>{
   if(!file.type||file.type.indexOf("image/")!==0)return resolve(file);
   const url=URL.createObjectURL(file),img=new Image();
@@ -248,7 +261,8 @@ function compressFile(file){return new Promise(resolve=>{
 function saveToDevice(blob,name){try{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;
   document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1500);}catch(e){}}
 function toggleCamSave(){camSave=!camSave;LS.set("dr_camsave",camSave);$("camSaveBtn").textContent=camSave?"원본저장 ✓":"원본저장 ✗";}
-let camSound=LS.get("dr_camsound",true);  // 셔터음
+const savedCamSound=LS.get("dr_camsound",true);
+let camSound=typeof savedCamSound==="boolean"?savedCamSound:true;  // 셔터음
 let _ac=null;
 function shutterSound(){if(!camSound)return;
   try{_ac=_ac||new (window.AudioContext||window.webkitAudioContext)();const ac=_ac;if(ac.state==="suspended")ac.resume();
@@ -262,22 +276,32 @@ function toggleCamSound(){camSound=!camSound;LS.set("dr_camsound",camSound);$("c
 const bruise=[],bone=[],cut=[],flesh=[],labels=[];     // 모두 in-place 변형(재할당 X)
 const DEFECT_KEYS=["bruise","bone","cut","flesh"];
 const TCFG={
-  bruise:{arr:bruise,tag:"피멍",fileTag:"bruise",theme:"bruise",tab:"tabBruise"},
-  bone:{arr:bone,tag:"골절",fileTag:"bone",theme:"bone",tab:"tabBone"},
-  cut:{arr:cut,tag:"절단",fileTag:"cut",theme:"cut",tab:"tabCut"},
-  flesh:{arr:flesh,tag:"살점불량",fileTag:"flesh",theme:"flesh",tab:"tabFlesh"},
-  label:{arr:labels,thumbs:"thLabel",clr:"clrLabel",tag:"라벨",fileTag:"label"},
+  bruise:{arr:bruise,tag:"피멍",fileTag:"bruise",theme:"bruise",tab:"tabBruise",rev:0},
+  bone:{arr:bone,tag:"골절",fileTag:"bone",theme:"bone",tab:"tabBone",rev:0},
+  cut:{arr:cut,tag:"절단",fileTag:"cut",theme:"cut",tab:"tabCut",rev:0},
+  flesh:{arr:flesh,tag:"살점불량",fileTag:"flesh",theme:"flesh",tab:"tabFlesh",rev:0},
+  label:{arr:labels,thumbs:"thLabel",clr:"clrLabel",tag:"라벨",fileTag:"label",rev:0},
 };
 let activeDefect=DEFECT_KEYS[0],albumTarget=null;
+const pendingCaptureTokens=new Set();
+let shareBusy=false,photoRevision=0,editorOwned=false;
 const $=id=>document.getElementById(id);
 const todayMD=()=>{const d=new Date();return (d.getMonth()+1)+"."+d.getDate();};
 
 (function init(){
-  const d=LS.get("dr_draft",null);
-  $("ipgo").value=d&&d.ipgo!=null?d.ipgo:todayMD();
-  if(d){$("gihan").value=d.gihan||"";$("makerEtc").value=d.etc||"";kind=normalizeKind(d.kind,KINDS[0]);maker=d.maker||"";bong=d.bong||"";if(bong&&!BONG.includes(+bong))$("bongEtc").value=bong;}
+  const rawDraft=LS.get("dr_draft",null);
+  const d=rawDraft&&typeof rawDraft==="object"&&!Array.isArray(rawDraft)?rawDraft:null;
+  const text=v=>typeof v==="string"?v:"";
+  $("ipgo").value=d&&typeof d.ipgo==="string"?d.ipgo:todayMD();
+  if(d){
+    $("gihan").value=text(d.gihan);
+    kind=normalizeKind(d.kind,KINDS[0]);
+    const savedMaker=text(d.maker).trim(),savedEtc=text(d.etc);
+    if(makers.includes(savedMaker)){maker=savedMaker;$("makerEtc").value="";}
+    else{maker=savedEtc.trim();$("makerEtc").value=savedEtc;}
+    bong=text(d.bong);if(bong&&!BONG.some(n=>String(n)===bong))$("bongEtc").value=bong;
+  }
   $("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k===kind));
-  if(d&&d.kind!==kind)saveDraft();
   renderMakerChips();renderBongChips();renderDefectUI();render();renderHistory();updateShareUI();showDiag();
 })();
 function showDiag(){let has=!!navigator.share,f=false,tf=false;
@@ -288,31 +312,36 @@ function showDiag(){let has=!!navigator.share,f=false,tf=false;
 
 // ── 제조사 ──
 function renderMakerChips(){const box=$("makerChips");box.innerHTML="";
-  makers.forEach(m=>{const c=document.createElement("div");c.className="chip"+(m===maker?" on":"");
-    c.innerHTML=`<span>${m}</span>`;
-    c.querySelector("span").onclick=()=>{maker=m;$("makerEtc").value="";setAI($("makerEtc"),false);renderMakerChips();saveDraft();render();};
+  const direct=$("makerEtc").value.trim();
+  makers.forEach(m=>{const c=document.createElement("div");c.className="chip"+(m===maker&&!direct?" on":"");
+    const name=document.createElement("span");name.textContent=m;c.appendChild(name);
+    name.onclick=()=>{maker=m;$("makerEtc").value="";renderMakerChips();saveDraft();render();};
     if(editMakers){const x=document.createElement("button");x.className="del";x.textContent="×";
-      x.onclick=(e)=>{e.stopPropagation();const i=makers.indexOf(m);if(i>=0)makers.splice(i,1);LS.set("dr_makers",makers);if(maker===m)maker="";renderMakerChips();render();};c.appendChild(x);}
+      x.onclick=(e)=>{e.stopPropagation();const i=makers.indexOf(m);if(i>=0)makers.splice(i,1);LS.set("dr_makers",makers);
+        if(maker===m&&!$("makerEtc").value.trim())maker="";renderMakerChips();saveDraft();render();};c.appendChild(x);}
     box.appendChild(c);});}
 function toggleMakerEdit(){editMakers=!editMakers;$("makerEdit").classList.toggle("on",editMakers);
   $("makerEdit").textContent=editMakers?"완료":"편집";$("addMakerRow").style.display=editMakers?"flex":"none";renderMakerChips();}
 function addMakerPreset(){const v=$("newMaker").value.trim();if(!v)return;
-  if(!makers.includes(v))makers.push(v);LS.set("dr_makers",makers);$("newMaker").value="";maker=v;renderMakerChips();saveDraft();render();}
-$("makerEtc").addEventListener("input",e=>{maker=e.target.value.trim();setAI($("makerEtc"),false);renderMakerChips();saveDraft();render();});
+  if(!makers.includes(v))makers.push(v);LS.set("dr_makers",makers);$("newMaker").value="";$("makerEtc").value="";
+  maker=v;renderMakerChips();saveDraft();render();}
+$("makerEtc").addEventListener("input",e=>{maker=e.target.value.trim();renderMakerChips();saveDraft();render();});
 
 // ── 종류/필드 ──
-$("kindToggle").querySelectorAll("button").forEach(b=>{b.onclick=()=>{kind=b.dataset.k;
+$("kindToggle").querySelectorAll("button").forEach(b=>{b.onclick=()=>{if(kind!==b.dataset.k)$("actualCount").value="";kind=b.dataset.k;
   $("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));saveDraft();render();};});
-["ipgo","gihan"].forEach(id=>$(id).addEventListener("input",()=>{if(id==="gihan")setAI($("gihan"),false);saveDraft();render();}));
+["ipgo","gihan"].forEach(id=>$(id).addEventListener("input",()=>{saveDraft();render();}));
 // ── 손질 봉 수 ──
 function renderBongChips(){const box=$("bongChips");box.innerHTML="";
   BONG.forEach(n=>{const c=document.createElement("div");c.className="chip"+(String(n)===String(bong)?" on":"");
     c.innerHTML=`<span>${n}봉</span>`;
     c.onclick=()=>{bong=String(n);$("bongEtc").value="";renderBongChips();saveDraft();render();};box.appendChild(c);});}
-$("bongEtc").addEventListener("input",e=>{bong=e.target.value.replace(/[^0-9]/g,"");e.target.value=bong;renderBongChips();saveDraft();render();});
+$("bongEtc").addEventListener("input",e=>{bong=e.target.value;renderBongChips();saveDraft();render();});
+$("actualCount").addEventListener("input",()=>{saveDraft();render();});
 
 // ── 사진 공통 ──
-function afterPhotoChange(){queue=[];render();updateShareUI();}
+let photoSeq=0;
+function afterPhotoChange(){photoRevision++;queue=[];render();updateShareUI();savePhotoDraft();}
 function defectPhotoCount(){return DEFECT_KEYS.reduce((sum,key)=>sum+TCFG[key].arr.length,0);}
 function renderPhotoThumbs(key,box){const cfg=TCFG[key];box.innerHTML="";
   cfg.arr.forEach((p,i)=>{const d=document.createElement("div");d.className="thumb";
@@ -332,15 +361,16 @@ function selectDefect(key){if(!DEFECT_KEYS.includes(key))return;activeDefect=key
 function renderThumbsFor(key){const cfg=TCFG[key];if(!cfg)return;
   if(key==="label"){renderPhotoThumbs(key,$("thLabel"));$("clrLabel").style.display=cfg.arr.length?"block":"none";return;}
   renderDefectTabs();if(key===activeDefect)renderDefectPanel();}
-function addFiles(list,key){const cfg=TCFG[key],wasEmpty=cfg.arr.length===0;
-  [...list].forEach(f=>{const p={file:f,url:URL.createObjectURL(f)};
-    p.ready=compressFile(f).then(c=>{p.c=c;}).catch(()=>{p.c=f;});   // 미리 압축
+function addFiles(list,key){const cfg=TCFG[key];
+  [...list].forEach(f=>{const p={file:f,url:URL.createObjectURL(f),seq:++photoSeq,processing:true};
+    p.ready=new Promise(resolve=>{let done=false;const finish=c=>{if(done)return;done=true;clearTimeout(timer);
+      p.c=c;p.processing=false;resolve();updateShareUI();if(cfg.arr.includes(p))savePhotoDraft();};
+      const timer=setTimeout(()=>finish(f),10000);
+      Promise.resolve().then(()=>compressFile(f)).then(finish,()=>finish(f));});
     cfg.arr.push(p);});
-  renderThumbsFor(key);
-  if(key==="label"&&wasEmpty&&cfg.arr.length)runOCR(cfg.arr[0].file);
-  afterPhotoChange();}
-function clearType(key){const cfg=TCFG[key];cfg.arr.forEach(p=>URL.revokeObjectURL(p.url));cfg.arr.length=0;
-  if(key==="label"){$("labelStat").textContent="";$("labelStat").className="hint";}renderThumbsFor(key);afterPhotoChange();}
+  renderThumbsFor(key);afterPhotoChange();}
+function clearType(key){const cfg=TCFG[key];cancelPendingCaptures(cfg);cfg.rev++;cfg.arr.forEach(p=>URL.revokeObjectURL(p.url));cfg.arr.length=0;
+  renderThumbsFor(key);afterPhotoChange();}
 function openDefectCam(){openCam(activeDefect);}
 function openDefectAlbum(){albumTarget=activeDefect;$("defectAlbum").click();}
 function clearActiveDefect(){clearType(activeDefect);}
@@ -350,84 +380,107 @@ $("defectAlbum").addEventListener("change",e=>{const key=DEFECT_KEYS.includes(al
 
 // ── 라이브 카메라 ──
 let camStream=null,camTarget=null,camShotN=0,camRequestId=0,camScrollY=0,camScrollLocked=false,camBodyTop="";
+let camReady=false,camHistoryActive=false,camHistoryClosing=false,camHistoryCloseTimer=null,camShotTokens=[];
 function updateCamShotUI(){$("camCount").textContent=camShotN;$("camUndoBtn").disabled=camShotN<=0;}
+function settleCapture(token){if(!pendingCaptureTokens.delete(token))return;token.phase++;clearTimeout(token.timer);updateShareUI();}
+function dropCapture(token){token.cancelled=true;const i=camShotTokens.indexOf(token);
+  if(i>=0){camShotTokens.splice(i,1);camShotN=camShotTokens.length;updateCamShotUI();}settleCapture(token);}
+function cancelPendingCaptures(cfg){[...pendingCaptureTokens].forEach(token=>{if(token.cfg===cfg)dropCapture(token);});}
+function setCamReady(ready){camReady=ready;const btn=$("camShutterBtn");btn.disabled=!ready;
+  btn.setAttribute("aria-label",ready?"사진 촬영":"카메라 준비 중");
+  if(camTarget&&TCFG[camTarget])$("camTitle").textContent=TCFG[camTarget].tag+" 촬영"+(ready?"":" · 준비 중…");}
 function stopCamStream(stream){if(stream)stream.getTracks().forEach(t=>t.stop());}
 function lockCamScroll(){if(camScrollLocked)return;camScrollY=window.scrollY||document.documentElement.scrollTop||0;
   camBodyTop=document.body.style.top;document.body.style.top="-"+camScrollY+"px";
   document.documentElement.classList.add("cam-open");document.body.classList.add("cam-open");camScrollLocked=true;}
 function unlockCamScroll(){if(!camScrollLocked)return;document.documentElement.classList.remove("cam-open");document.body.classList.remove("cam-open");
   document.body.style.top=camBodyTop;camScrollLocked=false;window.scrollTo(0,camScrollY);}
-async function openCam(key){if(!TCFG[key])return;if(camTarget!==null||camStream)closeCam();
-  const requestId=++camRequestId;camTarget=key;camShotN=0;updateCamShotUI();
+async function openCam(key){if(!TCFG[key]||camTarget!==null||camStream||camHistoryClosing)return;
+  const requestId=++camRequestId;camTarget=key;camShotN=0;camShotTokens=[];updateCamShotUI();setCamReady(false);
   $("camSaveBtn").textContent=camSave?"원본저장 ✓":"원본저장 ✗";
   $("camSoundBtn").textContent=camSound?"소리 🔊":"소리 🔇";
-  $("camTitle").textContent=TCFG[key].tag+" 촬영";lockCamScroll();$("camOverlay").style.display="flex";
+  try{const state=window.history.state&&typeof window.history.state==="object"?window.history.state:{};
+    window.history.pushState(Object.assign({},state,{drCamera:true}),"");camHistoryActive=true;}catch(e){}
+  lockCamScroll();$("camOverlay").style.display="flex";
   try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
     if(requestId!==camRequestId||camTarget!==key){stopCamStream(stream);return;}
-    camStream=stream;$("camVideo").srcObject=stream;await $("camVideo").play();
+    camStream=stream;const v=$("camVideo");
+    const markReady=()=>{if(requestId===camRequestId&&camTarget===key&&camStream===stream&&v.readyState>=2&&v.videoWidth&&v.videoHeight)setCamReady(true);};
+    v.onloadeddata=markReady;v.oncanplay=markReady;v.srcObject=stream;
+    const track=stream.getVideoTracks?stream.getVideoTracks()[0]:null;
+    if(track)track.addEventListener("ended",()=>{if(camStream===stream)setCamReady(false);},{once:true});
+    await v.play();markReady();
   }catch(e){if(requestId!==camRequestId)return;closeCam();
     alert("카메라를 열 수 없어요. 카메라 권한을 허용했는지 확인하거나 '앨범'을 사용하세요.\n(이 미리보기 화면에선 카메라가 막혀 있어요 — 본인 도메인에 올리면 작동해요)");}}
-function closeCam(){camRequestId++;const stream=camStream;camStream=null;stopCamStream(stream);
-  const v=$("camVideo");try{v.pause();}catch(e){}v.srcObject=null;$("camOverlay").style.display="none";camTarget=null;unlockCamScroll();}
-function camShoot(){const v=$("camVideo"),key=camTarget,requestId=camRequestId;if(!key||!TCFG[key]||!v.videoWidth)return;
+function closeCam(fromPop=false){const shouldBack=camHistoryActive&&!fromPop;camHistoryActive=false;
+  if(shouldBack)camHistoryClosing=true;else if(fromPop)camHistoryClosing=false;
+  camRequestId++;setCamReady(false);const stream=camStream;camStream=null;stopCamStream(stream);
+  const v=$("camVideo");v.onloadeddata=null;v.oncanplay=null;try{v.pause();}catch(e){}v.srcObject=null;$("camOverlay").style.display="none";camTarget=null;unlockCamScroll();
+  if(shouldBack){try{window.history.back();}catch(e){camHistoryClosing=false;}
+    clearTimeout(camHistoryCloseTimer);camHistoryCloseTimer=setTimeout(()=>{camHistoryClosing=false;},700);}}
+window.addEventListener("popstate",()=>{if(camHistoryClosing){camHistoryClosing=false;clearTimeout(camHistoryCloseTimer);return;}
+  if(camHistoryActive||camTarget!==null)closeCam(true);});
+function camShoot(){const v=$("camVideo"),key=camTarget;
+  if(!key||!TCFG[key])return;
+  if(!camReady||!camStream||v.readyState<2||!v.videoWidth||!v.videoHeight){setCamReady(false);return;}
+  const cfg=TCFG[key],rev=cfg.rev;
+  const token={cfg,rev,seq:++photoSeq,cancelled:false,photo:null,timer:null,phase:0};camShotTokens.push(token);pendingCaptureTokens.add(token);
+  const capturePhase=token.phase;token.timer=setTimeout(()=>{if(token.phase===capturePhase)dropCapture(token);},10000);
+  camShotN++;updateCamShotUI();updateShareUI();
   shutterSound();
   const c=document.createElement("canvas");c.width=v.videoWidth;c.height=v.videoHeight;
   c.getContext("2d").drawImage(v,0,0);
-  c.toBlob(b=>{if(!b)return;const cfg=TCFG[key];const wasEmpty=cfg.arr.length===0;
-    const f=new File([b],"shot.jpg",{type:"image/jpeg"});
-    if(camSave)saveToDevice(b,TCFG[key].tag+"_"+Date.now()+".jpg");
-    cfg.arr.push((()=>{const p={file:f,url:URL.createObjectURL(f)};
-      p.ready=compressFile(f).then(c=>{p.c=c;}).catch(()=>{p.c=f;});return p;})());
+  c.toBlob(b=>{if(!b||cfg.rev!==rev){dropCapture(token);return;}
+    if(token.cancelled){settleCapture(token);return;}
+    let f,p;try{f=new File([b],"shot.jpg",{type:"image/jpeg"});
+      if(camSave)saveToDevice(b,TCFG[key].tag+"_"+Date.now()+".jpg");
+      token.phase++;clearTimeout(token.timer);p={file:f,url:URL.createObjectURL(f),seq:token.seq};token.photo=p;
+      p.ready=new Promise(resolve=>{let done=false;const finish=c=>{if(done)return;done=true;clearTimeout(token.timer);p.c=c;settleCapture(token);resolve();if(cfg.arr.includes(p))savePhotoDraft();};
+        const compressPhase=token.phase;token.timer=setTimeout(()=>{if(token.phase===compressPhase)finish(f);},10000);
+        Promise.resolve().then(()=>compressFile(f)).then(finish,()=>finish(f));});
+    }catch(e){dropCapture(token);return;}
+    cfg.arr.push(p);cfg.arr.sort((a,b)=>(a.seq||0)-(b.seq||0));
     renderThumbsFor(key);
-    if(requestId===camRequestId&&camTarget===key){camShotN++;updateCamShotUI();}
-    if(key==="label"&&wasEmpty)runOCR(f);
     afterPhotoChange();},"image/jpeg",0.95);}
-function camUndo(){if(!camTarget)return;const cfg=TCFG[camTarget];if(!cfg.arr.length||camShotN<=0)return;
-  const p=cfg.arr.pop();URL.revokeObjectURL(p.url);camShotN--;updateCamShotUI();renderThumbsFor(camTarget);afterPhotoChange();}
+function camUndo(){if(!camTarget||!camShotTokens.length)return;const token=camShotTokens.pop();token.cancelled=true;
+  const cfg=token.cfg,p=token.photo,i=p?cfg.arr.indexOf(p):-1;if(i>=0){URL.revokeObjectURL(p.url);cfg.arr.splice(i,1);renderThumbsFor(camTarget);afterPhotoChange();}
+  settleCapture(token);camShotN=camShotTokens.length;updateCamShotUI();}
 $("camOverlay").addEventListener("touchmove",e=>{if(e.cancelable)e.preventDefault();},{passive:false});
 
-// ── 라벨 OCR ──
-function setAI(el,on){if(el)el.classList.toggle("ai-filled",on);}
-function runOCR(file){const st=$("labelStat");st.className="hint";st.innerHTML='<span class="spin"></span> 라벨 인식 중…';
-  ocrLabel(file).then(r=>{
-    const found=[],missing=[];
-    const nd=r.기한?normDate(r.기한):"";
-    if(nd){$("gihan").value=nd;setAI($("gihan"),true);found.push("기한 "+nd);}else missing.push("기한");
-    if(r.제조사){matchMaker(r.제조사);found.push("제조사 "+maker);}else missing.push("제조사");
-    const recognizedKind=normalizeKind(r.종류);
-    if(recognizedKind){kind=recognizedKind;$("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k===kind));found.push("종류 "+kind);}
-    let msg = found.length ? "✓ 인식됨 — "+found.join(" · ") : "인식된 값 없음";
-    if(missing.length) msg += "   ✗ 못 읽음: "+missing.join("·")+" → 직접 입력";
-    st.textContent=msg; st.className="hint "+(found.length?"ok":"no");
-    saveDraft();render();
-  }).catch(()=>{st.textContent="✗ 자동인식 실패 — 기한·제조사 직접 입력하세요";st.className="hint no";});}
-function normDate(s){const m=String(s).match(/(\d{1,2})\s*[.\-\/월]\s*(\d{1,2})/);return m?parseInt(m[1],10)+"."+parseInt(m[2],10):"";}
-function matchMaker(raw){const hit=makers.find(m=>raw.includes(m)||m.includes(raw));
-  if(hit){maker=hit;$("makerEtc").value="";setAI($("makerEtc"),false);renderMakerChips();}
-  else{maker=raw.trim();$("makerEtc").value=maker;setAI($("makerEtc"),true);renderMakerChips();}saveDraft();}
-async function ocrLabel(file){const b64=await toBase64(file);
-  const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:[
-      {type:"image",source:{type:"base64",media_type:file.type||"image/jpeg",data:b64}},
-      {type:"text",text:`이 식품 포장 라벨 사진에서 아래 3개를 찾아줘.
-- 기한: "소비기한" 또는 "유통기한"만. 보통 "...까지"로 끝나는 날짜다. 월.일 형식으로(예: 6.30). 주의: "제조일자/포장일자"는 절대 기한으로 쓰지 마. 날짜가 여러 개면 가장 미래(늦은) 날짜가 보통 기한이다.
-- 제조사: 제조원/제조사 회사명 (간단한 핵심 상호만)
-- 종류: 제품명에 "북채"면 북채, "통날개" 또는 "날개"면 통날개. 앞의 두 종류가 없고 "신선육" 표기가 있으면 신선육, 없으면 ""
-JSON만 출력, 다른 말 금지. 못 찾으면 "".
-{"기한":"","제조사":"","종류":""}`}]}]})});
-  const data=await res.json();let t=(data.content||[]).map(c=>c.text||"").join("").replace(/```json|```/g,"").trim();return JSON.parse(t);}
-function toBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(",")[1]);r.onerror=rej;r.readAsDataURL(file);});}
-
 // ── 메시지 ──
-function buildMsg(){const ip=$("ipgo").value.trim(),gi=$("gihan").value.trim();const h=[];
+function buildMsg(){const error=quantityError();if(error)return "입력 확인: "+error;
+  const ip=$("ipgo").value.trim(),gi=$("gihan").value.trim();const h=[];
   if(ip)h.push("입고"+ip);if(gi)h.push("기한"+gi);if(maker)h.push(maker);h.push(kind);
   const d=[];DEFECT_KEYS.forEach(key=>{const cfg=TCFG[key];if(cfg.arr.length)d.push(cfg.tag+cfg.arr.length+"개");});
   const s=(h.join(" ")+(d.length?" "+d.join(" "):"")).trim();
-  const summary=["총 "+defectPhotoCount()+"개"];if(bong)summary.push(bong+"봉");
-  return s+"\n\n"+summary.join(", ");}
-function render(){$("preview").textContent=buildMsg()||"—";const tot=totalCount();
+  const q=shortageInfo();
+  const shortageLine=q&&q.shortage>0?`\n${kind} ${q.portions}포션 기준 ${q.shortage}개 부족`:"";
+  const summary=["총 "+(defectPhotoCount()+(q?.shortage||0))+"개"];if(bong)summary.push(bong+"봉");
+  return s+shortageLine+"\n\n"+summary.join(", ");}
+function quantityError(){
+  if(bong!==""&&(!/^\d{1,9}$/.test(bong)||Number(bong)<=0))return "손질 봉 수는 1 이상의 정수로 입력해 주세요. (최대 9자리)";
+  if(kind==="신선육")return "";
+  const raw=$("actualCount").value;
+  if(raw==="")return "";
+  if(!/^\d{1,9}$/.test(raw))return "전체 개수는 0 이상의 정수로 입력해 주세요. 소수·음수·문자는 사용할 수 없어요. (최대 9자리)";
+  if(Number(raw)<defectPhotoCount())return "전체 개수가 불량 개수보다 적어요. 불량을 포함한 전체 개수를 확인해 주세요.";
+  if(bong==="")return "부족분 계산을 위해 손질 봉 수를 선택하거나 입력해 주세요.";
+  return "";}
+function shortageInfo(){if(quantityError())return null;const perBag=kind==="통날개"?70:kind==="북채"?60:0;
+  const raw=$("actualCount").value,bags=Number(bong),actual=Number(raw),expected=perBag*bags;
+  if(!perBag||!/^\d+$/.test(raw)||!Number.isSafeInteger(actual)||!Number.isSafeInteger(bags)||bags<=0||!Number.isSafeInteger(expected))return null;
+  return {expected,actual,portions:expected/5,shortage:Math.max(0,expected-actual)};}
+function renderQuantity(){const supported=kind!=="신선육";$("quantityField").hidden=!supported;
+  const error=quantityError();$("inputError").hidden=!error;$("inputError").textContent=error;
+  if(!supported)return;
+  const q=shortageInfo(),base=kind==="통날개"?"봉당 70개 · 14포션":"봉당 60개 · 12포션";
+  $("quantityHint").textContent=q
+    ?`기준 ${q.expected}개 · 실제 ${q.actual}개 · ${q.shortage?"부족 "+q.shortage+"개":"부족 없음"} — 총합은 불량 ${defectPhotoCount()}개 + 부족 ${q.shortage}개예요.`
+    :`${base}. 손질 봉 수와 불량 포함 전체 개수를 입력하면 부족분을 총합에 더해요. 비워 두면 계산하지 않아요. 종류를 바꾸면 전체 개수는 비워져요.`;}
+function render(){renderQuantity();$("preview").textContent=buildMsg()||"—";const tot=totalCount();
   const bad=defectPhotoCount();$("totLine").textContent=tot?`첨부 사진 ${tot}장 · 불량 ${bad}장 · 라벨 ${labels.length}장${labels.length?" — 라벨이 맨 끝":""}`:"";}
-function saveDraft(){LS.set("dr_draft",{ipgo:$("ipgo").value,gihan:$("gihan").value,maker,kind,etc:$("makerEtc").value,bong});}
+function currentDraftFields(){return {ipgo:$("ipgo").value,gihan:$("gihan").value,maker,kind,etc:$("makerEtc").value,bong,actualCount:$("actualCount").value};}
+function saveDraft(){if(editorOwned)savePhotoDraft();}
 
 // ── 기록 ──
 function pushHistory(msg){if(!msg)return;const d=new Date();
@@ -436,21 +489,33 @@ function pushHistory(msg){if(!msg)return;const d=new Date();
 function renderHistory(){const box=$("histList");box.innerHTML="";
   if(!history.length){box.innerHTML='<div class="empty">아직 기록 없음. 공유하거나 복사하면 여기 남아요.</div>';return;}
   history.forEach((h,i)=>{const d=document.createElement("div");d.className="hitem";
-    d.innerHTML=`<div class="ht">${h.t}</div><div class="hm">${h.m}</div><div class="hb"><button>복사</button><button>×</button></div>`;
-    const [cp,del]=d.querySelectorAll(".hb button");
-    cp.onclick=async()=>{try{await navigator.clipboard.writeText(h.m);cp.textContent="✓";setTimeout(()=>cp.textContent="복사",1000);}catch(e){}};
+    const time=document.createElement("div");time.className="ht";time.textContent=h.t;
+    const msg=document.createElement("div");msg.className="hm";msg.textContent=h.m;
+    const actions=document.createElement("div");actions.className="hb";
+    const cp=document.createElement("button"),del=document.createElement("button");cp.textContent="복사";del.textContent="×";
+    actions.appendChild(cp);actions.appendChild(del);d.appendChild(time);d.appendChild(msg);d.appendChild(actions);
+    cp.onclick=async()=>{if(await writeClipboard(h.m)){cp.textContent="✓";setTimeout(()=>cp.textContent="복사",1000);}
+      else flash("기록의 문자 복사에 실패했어요. 문구를 직접 선택해 복사해 주세요.");};
     del.onclick=()=>{history.splice(i,1);LS.set("dr_history",history);renderHistory();};box.appendChild(d);});}
 function clearHistory(){if(confirm("보고 기록을 전부 지울까요?")){history=[];LS.set("dr_history",history);renderHistory();}}
 
 // ── 공유 (불량→라벨 순, 1회 10장씩 분할, 파일명 번호) ──
 function totalCount(){return defectPhotoCount()+labels.length;}
 function allPhotos(){const all=[];DEFECT_KEYS.forEach(key=>all.push(...TCFG[key].arr));all.push(...labels);return all;}
+const MIME_EXT={"image/jpeg":"jpg","image/jpg":"jpg","image/png":"png","image/webp":"webp","image/gif":"gif","image/avif":"avif",
+  "image/heic":"heic","image/heif":"heif","image/heic-sequence":"heics","image/heif-sequence":"heifs","image/bmp":"bmp","image/tiff":"tiff","image/svg+xml":"svg"};
+const EXT_MIME={jpg:"image/jpeg",jpeg:"image/jpeg",png:"image/png",webp:"image/webp",gif:"image/gif",avif:"image/avif",
+  heic:"image/heic",heif:"image/heif",heics:"image/heic-sequence",heifs:"image/heif-sequence",bmp:"image/bmp",tif:"image/tiff",tiff:"image/tiff",svg:"image/svg+xml"};
+function shareFileMeta(file){const raw=String(file.type||"").toLowerCase().split(";",1)[0];
+  const match=String(file.name||"").match(/\.([a-z0-9]{1,8})$/i);let ext=MIME_EXT[raw]||(match?match[1].toLowerCase():"bin");
+  if(ext==="jpeg")ext="jpg";let type=raw==="image/jpg"?"image/jpeg":raw;
+  if(!type||type==="application/octet-stream")type=EXT_MIME[ext]||"application/octet-stream";return {ext,type};}
 function namedFiles(){const items=[];
   DEFECT_KEYS.forEach(key=>{const cfg=TCFG[key];cfg.arr.forEach(p=>items.push({file:p.c||p.file,tag:cfg.fileTag}));});
   labels.forEach(p=>items.push({file:p.c||p.file,tag:TCFG.label.fileTag}));
-  return items.map((it,i)=>{const ext=(it.file.type&&it.file.type.indexOf("png")>=0)?"png":"jpg";
+  return items.map((it,i)=>{const {ext,type}=shareFileMeta(it.file);
     const name=String(i+1).padStart(3,"0")+"_"+it.tag+"."+ext;
-    try{return new File([it.file],name,{type:it.file.type||"image/jpeg"});}catch(e){return it.file;}});}
+    try{return new File([it.file],name,{type});}catch(e){return it.file;}});}
 async function prepareQueue(){                // 압축은 추가 시점에 이미 완료 — 여기선 대기만(즉시)
   const all=allPhotos();
   await Promise.all(all.map(p=>p.ready||Promise.resolve()));
@@ -463,7 +528,13 @@ async function prepareQueue(){                // 압축은 추가 시점에 이�
   if(cur.length)batches.push(cur);
   if(!batches.length)batches.push([]);
   return batches.map((c,i)=>({files:c,idx:i+1,total:batches.length}));}
+function processingPhotoCount(){return pendingCaptureTokens.size+allPhotos().filter(p=>p.processing).length;}
 function updateShareUI(){const btn=$("shareBtn"),hint=$("batchHint"),tot=totalCount();
+  if(shareBusy){btn.disabled=true;btn.textContent="공유 중…";return;}
+  const processing=processingPhotoCount();
+  if(processing){btn.disabled=true;btn.textContent=`사진 처리 중 (${processing})`;
+    hint.style.display="block";hint.className="hint warn";hint.textContent="첨부 사진을 준비하고 있어요. 잠시만 기다려 주세요.";return;}
+  btn.disabled=false;
   if(queue.length>0&&queue[0].total>1){const b=queue[0];btn.textContent=`남은 사진 전송 (${b.idx}/${b.total})`;
     hint.style.display="block";hint.className="hint warn";hint.textContent=`아직 ${queue.length}묶음 남았어요. 버튼을 눌러 ${b.idx}/${b.total}번째를 마저 보내세요.`;return;}
   btn.textContent="공유 (사진+문자)";
@@ -471,48 +542,145 @@ function updateShareUI(){const btn=$("shareBtn"),hint=$("batchHint"),tot=totalCo
     hint.textContent=`사진 ${tot}장 — 10장씩 나눠 전송돼요. 문구는 마지막 묶음에 함께 붙어요.`;}
   else hint.style.display="none";}
 async function shareAll(){
-  if(queue.length===0)queue=await prepareQueue();   // 압축은 이미 끝나 있어 즉시 반환
-  const batch=queue[0],isLast=batch.idx===batch.total;
-  const text=isLast?buildMsg():"";                  // 문구는 마지막 묶음에만 (네 순서: 사진→라벨→문구)
-  const files=batch.files;
-  const hasF=files.length>0;
-  const canTF=hasF&&text&&navigator.canShare&&navigator.canShare({text,files});
-  const canF =hasF&&navigator.canShare&&navigator.canShare({files});
+  if(shareBusy)return;
+  if(quantityError()){flash(quantityError());return;}
+  if(processingPhotoCount()){updateShareUI();return;}
+  shareBusy=true;updateShareUI();const revision=photoRevision,msg=buildMsg();let notice="";
   try{
+    if(queue.length===0){const prepared=await prepareQueue();
+      if(revision!==photoRevision||processingPhotoCount())return;queue=prepared;}
+    const batch=queue[0],isLast=batch.idx===batch.total,text=isLast?msg:"",files=batch.files,hasF=files.length>0;
+    const canTF=hasF&&text&&navigator.canShare&&navigator.canShare({text,files});
+    const canF=hasF&&navigator.canShare&&navigator.canShare({files});
+    let reportSaved=false;
     if(canTF){
-      await navigator.share({text,files});
+      await navigator.share({text,files});reportSaved=true;
     }else if(canF){
-      if(text){try{await navigator.clipboard.writeText(text);}catch(e){}}
+      const copied=text?await writeClipboard(text):false;
       await navigator.share({files});
-      if(text)flash("사진 첨부됨 · 문자는 복사됐어요 → 메시지창에서 길게 눌러 붙여넣기");
+      reportSaved=copied;
+      if(text)notice=copied?"사진 첨부됨 · 문자는 복사됐어요 → 메시지창에서 길게 눌러 붙여넣기":"사진은 첨부됐지만 문자 복사에 실패했어요. 미리보기 문구를 직접 선택해 복사해 주세요.";
     }else if(hasF){
-      try{await navigator.clipboard.writeText(buildMsg());}catch(e){}
-      pushHistory(buildMsg()); queue=[]; updateShareUI();
-      alert("이 브라우저가 사진 공유를 지원하지 않아요.\n문자는 복사됐어요. (안드로이드 크롬 권장)\n아래 진단 줄을 확인해 주세요."); return;
+      const copied=await writeClipboard(msg);if(copied)pushHistory(msg);
+      notice="이 브라우저에서 사진 공유를 지원하지 않아요. "+(copied?"문자는 복사됐어요.":"문자 복사도 실패했어요. 미리보기 문구를 직접 선택해 복사해 주세요.");return;
     }else{
-      if(navigator.share) await navigator.share({text:buildMsg()});
-      else { try{await navigator.clipboard.writeText(buildMsg());}catch(e){} }
+      if(navigator.share){await navigator.share({text:msg});reportSaved=true;}
+      else{reportSaved=await writeClipboard(msg);notice=reportSaved?"문자가 복사됐어요.":"문자 복사에 실패했어요. 미리보기 문구를 직접 선택해 복사해 주세요.";if(!reportSaved)return;}
     }
-    if(isLast)pushHistory(buildMsg());
-    queue.shift();updateShareUI();
-  }catch(err){if(err&&err.name==="AbortError"){updateShareUI();return;}
-    try{await navigator.clipboard.writeText(buildMsg());}catch(e){}pushHistory(buildMsg());
-    queue=[];updateShareUI();
-    alert("공유가 막혔어요. 문자는 복사됐고 기록에 저장됐어요.\n아래 진단 줄을 확인해 주세요.");}}
+    if(isLast&&reportSaved)pushHistory(msg);
+    if(queue[0]===batch)queue.shift();
+  }catch(err){if(err&&err.name==="AbortError")return;
+    const copied=await writeClipboard(msg);if(copied)pushHistory(msg);
+    notice="공유에 실패했어요. 남은 사진은 유지되니 다시 시도해 주세요. "+(copied?"문자는 복사됐어요.":"문자 복사도 실패했어요. 미리보기 문구를 직접 선택해 복사해 주세요.");
+  }finally{shareBusy=false;updateShareUI();if(notice)flash(notice);}}
+async function writeClipboard(text){try{await navigator.clipboard.writeText(text);return true;}catch(e){return false;}}
 function flash(msg){const h=$("batchHint");h.style.display="block";h.className="hint warn";h.textContent=msg;
   setTimeout(()=>updateShareUI(),6000);}
-async function copyText(ev){const msg=buildMsg();try{await navigator.clipboard.writeText(msg);}catch(e){}pushHistory(msg);
+async function copyText(ev){if(quantityError()){flash(quantityError());return;}const msg=buildMsg();if(!await writeClipboard(msg)){flash("문자 복사에 실패했어요. 미리보기 문구를 직접 선택해 복사해 주세요.");return;}pushHistory(msg);
   if(ev&&ev.target){const b=ev.target,t=b.textContent;b.textContent="복사됨!";setTimeout(()=>b.textContent=t,1200);}}
 
 // ── 초기화 ──
 function resetAll(){if(!confirm("현재 입력과 사진을 모두 지울까요?\n(제조사 목록·보고 기록은 유지됩니다)"))return;
-  [...DEFECT_KEYS,"label"].forEach(key=>{const a=TCFG[key].arr;a.forEach(p=>URL.revokeObjectURL(p.url));a.length=0;});
-  maker="";bong="";queue=[];
+  photoRevision++;
+  [...DEFECT_KEYS,"label"].forEach(key=>{const cfg=TCFG[key];cancelPendingCaptures(cfg);cfg.rev++;const a=cfg.arr;a.forEach(p=>URL.revokeObjectURL(p.url));a.length=0;});
+  maker="";bong="";queue=[];$("actualCount").value="";
   activeDefect=DEFECT_KEYS[0];renderDefectUI();renderThumbsFor("label");
-  $("labelStat").textContent="";$("labelStat").className="hint";$("gihan").value="";$("makerEtc").value="";$("bongEtc").value="";$("ipgo").value=todayMD();
-  setAI($("gihan"),false);setAI($("makerEtc"),false);
+  $("gihan").value="";$("makerEtc").value="";$("bongEtc").value="";$("ipgo").value=todayMD();
   kind=KINDS[0];$("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k===kind));
-  renderMakerChips();renderBongChips();LS.set("dr_draft",null);render();updateShareUI();}
+  renderMakerChips();renderBongChips();render();updateShareUI();savePhotoDraft();}
+
+// ── 사진 임시저장 (같은 브라우저·주소에서 복원) ──
+let photoDB=null,photoDraftReady=false,photoSaveChain=Promise.resolve(),photoSaveVersion=0,photoSavePending=0,photoSaveFailed=false;
+function draftStatus(message,warning=false){$("draftStatus").textContent=message;$("draftStatus").className="hint"+(warning?" warn":"");}
+function openPhotoDB(){return new Promise((resolve,reject)=>{
+  let finished=false,request;
+  const timer=setTimeout(()=>fail(new Error("저장 공간 응답 없음")),5000);
+  function fail(error){if(finished)return;finished=true;clearTimeout(timer);reject(error);}
+  try{request=indexedDB.open("defect-report-draft",1);
+    request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains("drafts"))request.result.createObjectStore("drafts");};
+    request.onerror=()=>fail(request.error);request.onblocked=()=>fail(new Error("저장 공간 사용 중"));
+    request.onsuccess=()=>{if(finished){request.result.close();return;}finished=true;clearTimeout(timer);resolve(request.result);};
+  }catch(e){fail(e);}
+});}
+function photoDraftTransaction(mode,value){return new Promise((resolve,reject)=>{
+  let tx,result,timer;
+  try{tx=photoDB.transaction("drafts",mode);const store=tx.objectStore("drafts");
+    const req=mode==="readonly"?store.get("current"):store.put(value,"current");
+    req.onsuccess=()=>{result=req.result;};
+    tx.oncomplete=()=>{clearTimeout(timer);resolve(result);};
+    tx.onabort=tx.onerror=()=>{clearTimeout(timer);reject(tx.error||new Error("임시저장 실패"));};
+    timer=setTimeout(()=>{try{tx.abort();}catch(e){}reject(new Error("임시저장 시간 초과"));},10000);
+  }catch(e){clearTimeout(timer);reject(e);}
+});}
+function savePhotoDraft(){if(!editorOwned||!photoDraftReady||!photoDB)return;
+  const version=++photoSaveVersion;
+  const fields=currentDraftFields();
+  const photos=[];[...DEFECT_KEYS,"label"].forEach(key=>TCFG[key].arr.forEach(p=>{
+    const file=p.c||p.file;photos.push({key,blob:file,name:file.name||"photo.jpg",seq:p.seq});}));
+  photoSavePending++;draftStatus("사진·입력 임시저장 중… 저장 완료 후 닫아 주세요.");
+  // 요청 순서대로 저장하므로 초기화·삭제 뒤 오래된 사진이 덮어쓰지 않는다.
+  photoSaveChain=photoSaveChain.then(()=>photoDraftTransaction("readwrite",{schema:2,fields,photos})).then(()=>{
+    if(version===photoSaveVersion){LS.set("dr_draft",fields);photoSaveFailed=false;draftStatus(`사진 ${photos.length}장·입력 임시저장 완료 · 같은 브라우저에서 복원돼요.`);}
+  }).catch(()=>{if(version===photoSaveVersion){photoSaveFailed=true;draftStatus("사진·입력 임시저장 실패 · 저장 공간을 확인해 주세요. 화면을 닫으면 최근 변경이 유실될 수 있어요.",true);}
+  }).finally(()=>{photoSavePending--;});
+}
+function applyDraftFields(value){const d=value&&typeof value==="object"&&!Array.isArray(value)?value:{};
+  const text=v=>typeof v==="string"?v:"";
+  $("ipgo").value=typeof d.ipgo==="string"?d.ipgo:todayMD();$("gihan").value=text(d.gihan);
+  kind=normalizeKind(d.kind,KINDS[0]);maker=text(d.maker).trim()||text(d.etc).trim();
+  $("makerEtc").value=makers.includes(maker)?"":maker;
+  bong=text(d.bong);$("bongEtc").value=BONG.some(n=>String(n)===bong)?"":bong;
+  $("actualCount").value=text(d.actualCount);
+  $("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k===kind));
+  renderMakerChips();renderBongChips();
+}
+function sessionMessage(message){$("appContent").inert=true;$("actionBar").inert=true;$("sessionGate").hidden=false;$("sessionMessage").textContent=message;}
+async function restorePhotoDraft(){
+  if(!editorOwned)return false;
+  sessionMessage("사진과 입력 내용을 불러오고 있어요…");
+  const restored=[];
+  try{photoDB=await openPhotoDB();
+    photoDB.onversionchange=()=>{photoDB.close();photoDB=null;photoDraftReady=false;photoSaveFailed=true;sessionMessage("저장 연결이 변경됐어요. 새로고침 후 다시 이용해 주세요.");};
+    const saved=await photoDraftTransaction("readonly");
+    if(saved!==undefined&&(!saved||!Array.isArray(saved.photos)))throw new Error("잘못된 임시저장");
+    if(saved?.schema!==undefined&&saved.schema!==2)throw new Error("지원하지 않는 임시저장 형식");
+    if(saved?.schema===2&&(!saved.fields||typeof saved.fields!=="object"||Array.isArray(saved.fields)))throw new Error("잘못된 입력 정보");
+    for(const item of saved?.photos||[]){
+      if(!item||![...DEFECT_KEYS,"label"].includes(item.key)||!(item.blob instanceof Blob))throw new Error("잘못된 사진");
+      const file=new File([item.blob],typeof item.name==="string"?item.name:"photo.jpg",{type:item.blob.type});
+      restored.push({key:item.key,p:{file,c:file,url:URL.createObjectURL(file),seq:++photoSeq,ready:Promise.resolve()}});
+    }
+    // 잠금 대기 중 다른 탭에서 변경됐을 수 있으므로 최신 목록·기록을 다시 읽는다.
+    const latestMakers=LS.get("dr_makers",DEFAULT_MAKERS.slice());
+    makers=Array.isArray(latestMakers)?[...new Set(latestMakers.filter(m=>typeof m==="string").map(m=>m.trim()).filter(Boolean))]:DEFAULT_MAKERS.slice();
+    const latestHistory=LS.get("dr_history",[]);history=Array.isArray(latestHistory)?latestHistory.filter(h=>h&&typeof h.t==="string"&&typeof h.m==="string").slice(0,20):[];
+    applyDraftFields(saved?.schema===2?saved.fields:LS.get("dr_draft",null));
+    [...DEFECT_KEYS,"label"].forEach(key=>{TCFG[key].arr.forEach(p=>URL.revokeObjectURL(p.url));TCFG[key].arr.length=0;});
+    restored.forEach(({key,p})=>TCFG[key].arr.push(p));renderHistory();
+    renderDefectUI();renderThumbsFor("label");render();updateShareUI();photoDraftReady=true;
+    // 기본 날짜도 첫 실행에서 저장한다. 구버전 사진은 현재 초안과 함께 통합 형식으로 이전한다.
+    if(saved?.schema!==2){savePhotoDraft();await photoSaveChain;}
+    else draftStatus(`사진 ${restored.length}장·입력 복원 완료 · 변경하면 자동 저장돼요.`);
+    $("appContent").inert=false;$("actionBar").inert=false;$("sessionGate").hidden=true;return true;
+  }catch(e){restored.forEach(({p})=>URL.revokeObjectURL(p.url));photoSaveFailed=true;
+    if(photoDB)photoDB.close();photoDB=null;
+    draftStatus("임시저장을 불러오지 못했어요. 저장된 내용은 유지됩니다.",true);
+    sessionMessage("저장 내용을 불러올 수 없어요.\n다른 작업을 닫고 새로고침해 주세요.\n저장된 내용은 덮어쓰지 않았어요.");return false;
+  }
+}
+window.addEventListener("beforeunload",e=>{if(photoSavePending||photoSaveFailed&&(totalCount()||photoSaveVersion)||processingPhotoCount()){
+  e.preventDefault();e.returnValue="";}});
+async function startEditorSession(){
+  sessionMessage("다른 탭에서 작업 중이면 이 화면은 대기합니다.\n기존 탭을 닫으면 저장된 내용을 불러와 이어서 작업할 수 있어요.");
+  if(!navigator.locks?.request){sessionMessage("이 브라우저에서는 안전한 탭 전환을 지원하지 않아요.\n최신 삼성인터넷 또는 크롬의 HTTPS 주소에서 열어 주세요.");return;}
+  try{await navigator.locks.request("defect-report-editor",{mode:"exclusive"},async()=>{
+    editorOwned=true;
+    try{await restorePhotoDraft();await new Promise(()=>{});}finally{editorOwned=false;}
+  });}catch(e){editorOwned=false;sessionMessage("작업 권한을 확인할 수 없어요. 새로고침해 주세요.");}
+}
+// 뒤로가기로 메모리에 남아 있던 페이지로 돌아오면 잠금·저장 상태를 다시 확인한다.
+window.addEventListener("pageshow",e=>{if(e.persisted)window.location.reload();});
+startEditorSession();
 </script>
 </body>
 </html>
