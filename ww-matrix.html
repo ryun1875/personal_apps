@@ -440,6 +440,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
         <div class="col-header"><h2 id="notesHeading">공략 노트</h2><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="returnToFormation()">편성으로 돌아가기</button><button class="btn btn-accent btn-sm" onclick="editNote()">+ 새 노트</button></div></div>
         <div id="noteShortcuts" role="group" aria-label="공략 노트 분류" style="display:none;gap:5px;flex-wrap:wrap;border-bottom:1px solid var(--border)">
           <button class="btn btn-sm note-shortcut" data-note-scope="all" aria-pressed="false" onclick="selectNoteScope('all')">전체</button>
+          <button class="btn btn-sm note-shortcut" data-note-scope="general" aria-pressed="false" onclick="selectNoteScope('general')">일반 공략</button>
           <button class="btn btn-sm note-shortcut" data-note-scope="explore" aria-pressed="false" onclick="selectNoteScope('explore')">업적·탐험</button>
           <button class="btn btn-sm note-shortcut" data-note-scope="inbox" aria-pressed="false" onclick="selectNoteScope('inbox')">미분류</button>
           <button class="btn btn-sm note-shortcut" data-note-scope="trash" aria-pressed="false" onclick="selectNoteScope('trash')">휴지통</button>
@@ -2681,7 +2682,7 @@ function renderNoteNavigation(){
 function renderNotes(){
   renderNoteNavigation();
   const character=chars.find(c=>c.id===selectedNoteChar);
-  const labels={all:'전체 노트',char:character?character.name+' 공략':'공명자 공략',boss:(bosses.find(b=>b.id===selectedNoteBoss)?.name||'보스')+' 연결 노트',explore:'업적 · 탐험',inbox:'미분류 보관함',trash:'휴지통'};
+  const labels={all:'전체 노트',general:'일반 공략',char:character?character.name+' 공략':'공명자 공략',boss:(bosses.find(b=>b.id===selectedNoteBoss)?.name||'보스')+' 연결 노트',explore:'업적 · 탐험',inbox:'미분류 보관함',trash:'휴지통'};
   document.getElementById('notesHeading').textContent=labels[noteScope]||'공략 노트';
   const query=document.getElementById('noteSearch').value.trim().toLocaleLowerCase(),status=document.getElementById('noteStatusFilter').value;
   const list=notes.filter(n=>{
@@ -2689,6 +2690,7 @@ function renderNotes(){
     if(noteScope==='char'&&!(n.charIds||[]).includes(selectedNoteChar))return false;
     if(noteScope==='boss'&&!(n.bossIds||[]).includes(selectedNoteBoss))return false;
     if(noteScope==='explore'&&!['업적','탐험','시크릿'].includes(n.kind))return false;
+    if(noteScope==='general'&&n.kind!=='일반 공략')return false;
     if(noteScope==='inbox'&&n.kind!=='미분류')return false;
     if(status&&n.status!==status)return false;
     return !query||[n.title,n.body,n.region,(n.tags||[]).join(' ')].join(' ').toLocaleLowerCase().includes(query);
@@ -2785,7 +2787,7 @@ function editNote(id=null,draft=null){
     }catch(_){}
   }
   const existing=notes.find(n=>n.id===id);
-  const n=draft||existing||{title:'',body:'',kind:noteScope==='char'?'공명자 공략':noteScope==='explore'?'업적':'미분류',status:'미시작',charIds:selectedNoteChar?[selectedNoteChar]:[],bossIds:selectedNoteBoss?[selectedNoteBoss]:[]};
+  const n=draft||existing||{title:'',body:'',kind:noteScope==='char'?'공명자 공략':noteScope==='explore'?'업적':noteScope==='general'?'일반 공략':'미분류',status:'미시작',charIds:selectedNoteChar?[selectedNoteChar]:[],bossIds:selectedNoteBoss?[selectedNoteBoss]:[]};
   editingNoteId=id||genId('note');
   document.getElementById('noteEditorModal')?.remove();
   const options=(items,value)=>items.map(v=>`<option${v===value?' selected':''}>${esc(v)}</option>`).join('');
@@ -2793,7 +2795,7 @@ function editNote(id=null,draft=null){
     <h3 style="margin-bottom:12px">${existing?'노트 편집':'새 공략 노트'}</h3>
     <div class="note-fields">
       <label style="grid-column:1/-1">제목<input class="fi" id="ntTitle" maxlength="200" value="${esc(n.title||'')}" placeholder="제목만으로도 저장 가능"></label>
-      <label>종류<select class="fi" id="ntKind">${options(['미분류','공명자 공략','딜사이클','업적','탐험','시크릿','기타'],n.kind)}</select></label>
+      <label>종류<select class="fi" id="ntKind">${options(['미분류','일반 공략','공명자 공략','딜사이클','업적','탐험','시크릿','기타'],n.kind)}</select></label>
       <label>진행<select class="fi" id="ntStatus">${options(['미시작','진행 중','완료'],n.status)}</select></label>
       <label>지역<input class="fi" id="ntRegion" value="${esc(n.region||'')}"></label>
       <label>태그 (쉼표 구분)<input class="fi" id="ntTags" value="${esc((n.tags||[]).join(', '))}"></label>
