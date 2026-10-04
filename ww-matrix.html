@@ -1207,7 +1207,7 @@ const GF={
     }
     const c=this.chars.find(c=>c.id===this.selectedChar&&!c.deleted);
     actions.innerHTML=`${['all','general','trash'].map((k,i)=>`<button class="btn btn-sm ${this.scope===k?'btn-accent':''}" onclick="GF.setScope('${k}')">${['전체','일반 공략','휴지통'][i]}</button>`).join('')}<strong>${esc(c?c.name+' 공략':'공략 노트')}</strong>${c?`<button class="btn btn-sm" onclick="GF.editChar('${c.id}')">캐릭터 편집</button>`:''}<button class="btn btn-accent btn-sm" onclick="GF.editNote()">+ 새 노트</button><button class="btn btn-sm" onclick="GF.recoverDraft()">임시 글 복구</button>`;
-    const list=this.notes.filter(n=>!!n.deletedAt===(this.scope==='trash')&&(this.scope!=='char'||(n.charIds||[]).includes(this.selectedChar))&&(this.scope!=='general'||!(n.charIds||[]).length)).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
+    const list=this.notes.filter(n=>!!n.deletedAt===(this.scope==='trash')&&(this.scope!=='char'||(n.charIds||[]).includes(this.selectedChar))&&(this.scope!=='general'||n.kind==='일반 공략')).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
     if(!list.some(n=>n.id===this.selectedNote))this.selectedNote=null;
     const selected=list.find(n=>n.id===this.selectedNote);
     content.innerHTML=`<input class="field" style="width:100%" id="gfNoteSearch" placeholder="제목·본문 검색" aria-label="소녀전선2 공략 검색" oninput="GF.filterNotes(this.value)"><p class="note-meta">노트 목록 · ${list.length}개 — 같은 노트를 다시 누르면 접힙니다.</p><div id="gfNoteList">${list.map(n=>`<button class="btn gf-note" data-gf-note="${n.id}" aria-pressed="${selected?.id===n.id}" onclick="GF.openNote('${n.id}')">${esc(n.title)}<small class="note-meta" style="display:block">${esc(n.kind||'공략')}</small>${noteDatesHTML(n)}</button>`).join('')||'<p class="note-meta">아직 노트가 없습니다.</p>'}</div><div id="gfNoteDetail">${selected?this.noteDetail(selected):''}</div>`;
@@ -1238,9 +1238,9 @@ const GF={
   cacheDraft(){if(this.editor?.type!=='note')return;try{localStorage.setItem(this.draftKey(),JSON.stringify(this.readNote()));document.getElementById('gfnStatus').textContent='기기 임시저장 완료 · 서버 반영은 저장 버튼을 눌러 주세요';}catch(_){showToast('임시저장 실패 · 서버에 저장해 주세요');}},
   editNote(id=null,draft=null){
     if(!draft){try{const old=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(old&&old.id!==id&&!confirm('다른 임시 글이 있습니다. 새 작성을 시작할까요?'))return;}catch(_){}}
-    const n=draft||this.notes.find(n=>n.id===id)||{title:'',body:'',kind:'공략',sources:[],charIds:this.selectedChar?[this.selectedChar]:[]};
+    const n=draft||this.notes.find(n=>n.id===id)||{title:'',body:'',kind:this.scope==='general'?'일반 공략':this.selectedChar?'캐릭터 공략':'미분류',sources:[],charIds:this.selectedChar?[this.selectedChar]:[]};
     this.editor={type:'note',id:id||draft?.id||genId('gfnote'),epoch:sessionEpoch};
-    this.modal('공략 노트 편집',`<div oninput="GF.cacheDraft()"><label>제목<input class="field" id="gfnTitle" value="${esc(n.title)}"></label><label>분류 (공략·운용법·팁 등)<input class="field" id="gfnKind" value="${esc(n.kind||'공략')}"></label><label>내용 · 체크리스트는 - [ ] 항목<textarea class="textarea" id="gfnBody" rows="10">${esc(n.body)}</textarea></label><label>출처 링크 · 한 줄에 하나<textarea class="textarea" id="gfnSources">${esc((n.sources||[]).join('\n'))}</textarea></label><p>관련 캐릭터 (여러 명 선택)</p><div id="gfnChars">${this.chars.filter(c=>!c.deleted).map(c=>`<label style="display:inline-block;margin-right:10px"><input type="checkbox" value="${c.id}" ${(n.charIds||[]).includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></div><p class="note-meta" id="gfnStatus">${draft?'임시 글 복구됨 · 저장 버튼을 눌러 주세요':'작성 중인 내용은 기기에 임시저장됩니다.'}</p><button class="btn btn-accent" id="gfnSave" onclick="GF.saveNoteEditor()">서버에 저장</button>`);
+    this.modal('공략 노트 편집',`<div oninput="GF.cacheDraft()"><label>제목<input class="field" id="gfnTitle" value="${esc(n.title)}"></label><label>분류<select class="field" id="gfnKind">${noteKindOptions(n.kind||'공략',this.notes)}</select></label><label>내용 · 체크리스트는 - [ ] 항목<textarea class="textarea" id="gfnBody" rows="10">${esc(n.body)}</textarea></label><label>출처 링크 · 한 줄에 하나<textarea class="textarea" id="gfnSources">${esc((n.sources||[]).join('\n'))}</textarea></label><p>관련 캐릭터 (여러 명 선택)</p><div id="gfnChars">${this.chars.filter(c=>!c.deleted).map(c=>`<label style="display:inline-block;margin-right:10px"><input type="checkbox" value="${c.id}" ${(n.charIds||[]).includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></div><p class="note-meta" id="gfnStatus">${draft?'임시 글 복구됨 · 저장 버튼을 눌러 주세요':'작성 중인 내용은 기기에 임시저장됩니다.'}</p><button class="btn btn-accent" id="gfnSave" onclick="GF.saveNoteEditor()">서버에 저장</button>`);
   },
   recoverDraft(){try{const d=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(d)this.editNote(d.id,d);else showToast('임시 글이 없습니다');}catch(_){showToast('임시 글을 읽을 수 없습니다');}},
   async persistNote(n){if(new TextEncoder().encode(JSON.stringify(n)).length>800000)throw new Error('노트가 너무 큽니다');const i=this.notes.findIndex(x=>x.id===n.id);if(i<0)this.notes.push(n);else this.notes[i]=n;const value=cloneData(n);await queueWrite('gf2:note:'+n.id,()=>window.FB.saveGFNote(value));},
@@ -1310,7 +1310,7 @@ const MG={
     }
     const c=this.chars.find(c=>c.id===this.selectedChar&&!c.deleted);
     actions.innerHTML=`${['all','general','trash'].map((k,i)=>`<button class="btn btn-sm ${this.scope===k?'btn-accent':''}" onclick="MG.setScope('${k}')">${['전체','일반 공략','휴지통'][i]}</button>`).join('')}<strong>${esc(c?c.name+' 공략':'공략 노트')}</strong>${c?`<button class="btn btn-sm" onclick="MG.editChar('${c.id}')">캐릭터 편집</button>`:''}<button class="btn btn-accent btn-sm" onclick="MG.editNote()">+ 새 노트</button><button class="btn btn-sm" onclick="MG.recoverDraft()">임시 글 복구</button>`;
-    const list=this.notes.filter(n=>!!n.deletedAt===(this.scope==='trash')&&(this.scope!=='char'||(n.charIds||[]).includes(this.selectedChar))&&(this.scope!=='general'||!(n.charIds||[]).length)).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
+    const list=this.notes.filter(n=>!!n.deletedAt===(this.scope==='trash')&&(this.scope!=='char'||(n.charIds||[]).includes(this.selectedChar))&&(this.scope!=='general'||n.kind==='일반 공략')).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
     if(!list.some(n=>n.id===this.selectedNote))this.selectedNote=null;
     const selected=list.find(n=>n.id===this.selectedNote);
     content.innerHTML=`<input class="field" style="width:100%" id="mgNoteSearch" placeholder="제목·본문 검색" aria-label="몬길: STAR DIVE 공략 검색" oninput="MG.filterNotes(this.value)"><p class="note-meta">노트 목록 · ${list.length}개 — 같은 노트를 다시 누르면 접힙니다.</p><div id="mgNoteList">${list.map(n=>`<button class="btn gf-note" data-mg-note="${n.id}" aria-pressed="${selected?.id===n.id}" onclick="MG.openNote('${n.id}')">${esc(n.title)}<small class="note-meta" style="display:block">${esc(n.kind||'공략')}</small>${noteDatesHTML(n)}</button>`).join('')||'<p class="note-meta">아직 노트가 없습니다.</p>'}</div><div id="mgNoteDetail">${selected?this.noteDetail(selected):''}</div>`;
@@ -1341,9 +1341,9 @@ const MG={
   cacheDraft(){if(this.editor?.type!=='note')return;try{localStorage.setItem(this.draftKey(),JSON.stringify(this.readNote()));document.getElementById('mgnStatus').textContent='기기 임시저장 완료 · 서버 반영은 저장 버튼을 눌러 주세요';}catch(_){showToast('임시저장 실패 · 서버에 저장해 주세요');}},
   editNote(id=null,draft=null){
     if(!draft){try{const old=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(old&&old.id!==id&&!confirm('다른 임시 글이 있습니다. 새 작성을 시작할까요?'))return;}catch(_){}}
-    const n=draft||this.notes.find(n=>n.id===id)||{title:'',body:'',kind:'공략',sources:[],charIds:this.selectedChar?[this.selectedChar]:[]};
+    const n=draft||this.notes.find(n=>n.id===id)||{title:'',body:'',kind:this.scope==='general'?'일반 공략':this.selectedChar?'캐릭터 공략':'미분류',sources:[],charIds:this.selectedChar?[this.selectedChar]:[]};
     this.editor={type:'note',id:id||draft?.id||genId('mgnote'),epoch:sessionEpoch};
-    this.modal('공략 노트 편집',`<div oninput="MG.cacheDraft()"><label>제목<input class="field" id="mgnTitle" value="${esc(n.title)}"></label><label>분류 (공략·운용법·팁 등)<input class="field" id="mgnKind" value="${esc(n.kind||'공략')}"></label><label>내용 · 체크리스트는 - [ ] 항목<textarea class="textarea" id="mgnBody" rows="10">${esc(n.body)}</textarea></label><label>출처 링크 · 한 줄에 하나<textarea class="textarea" id="mgnSources">${esc((n.sources||[]).join('\n'))}</textarea></label><p>관련 캐릭터 (여러 명 선택)</p><div id="mgnChars">${this.chars.filter(c=>!c.deleted).map(c=>`<label style="display:inline-block;margin-right:10px"><input type="checkbox" value="${c.id}" ${(n.charIds||[]).includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></div><p class="note-meta" id="mgnStatus">${draft?'임시 글 복구됨 · 저장 버튼을 눌러 주세요':'작성 중인 내용은 기기에 임시저장됩니다.'}</p><button class="btn btn-accent" id="mgnSave" onclick="MG.saveNoteEditor()">서버에 저장</button>`);
+    this.modal('공략 노트 편집',`<div oninput="MG.cacheDraft()"><label>제목<input class="field" id="mgnTitle" value="${esc(n.title)}"></label><label>분류<select class="field" id="mgnKind">${noteKindOptions(n.kind||'공략',this.notes)}</select></label><label>내용 · 체크리스트는 - [ ] 항목<textarea class="textarea" id="mgnBody" rows="10">${esc(n.body)}</textarea></label><label>출처 링크 · 한 줄에 하나<textarea class="textarea" id="mgnSources">${esc((n.sources||[]).join('\n'))}</textarea></label><p>관련 캐릭터 (여러 명 선택)</p><div id="mgnChars">${this.chars.filter(c=>!c.deleted).map(c=>`<label style="display:inline-block;margin-right:10px"><input type="checkbox" value="${c.id}" ${(n.charIds||[]).includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></div><p class="note-meta" id="mgnStatus">${draft?'임시 글 복구됨 · 저장 버튼을 눌러 주세요':'작성 중인 내용은 기기에 임시저장됩니다.'}</p><button class="btn btn-accent" id="mgnSave" onclick="MG.saveNoteEditor()">서버에 저장</button>`);
   },
   recoverDraft(){try{const d=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(d)this.editNote(d.id,d);else showToast('임시 글이 없습니다');}catch(_){showToast('임시 글을 읽을 수 없습니다');}},
   async persistNote(n){if(new TextEncoder().encode(JSON.stringify(n)).length>800000)throw new Error('노트가 너무 큽니다');const i=this.notes.findIndex(x=>x.id===n.id);if(i<0)this.notes.push(n);else this.notes[i]=n;const value=cloneData(n);await queueWrite('mongil:note:'+n.id,()=>window.FB.saveMGNote(value));},
@@ -2659,6 +2659,10 @@ function selectPoolChar(i){
   selectedNoteId=(linked.find(n=>(n.pinnedFor||[]).includes(selectedNoteChar))||linked.sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''))[0])?.id||null;
   renderPool();renderNotes();if(window.innerWidth<=900)goPanel(1);
 }
+function noteKindOptions(value,list=[],characterKind='캐릭터 공략'){
+  const kinds=[...new Set(['미분류','일반 공략',characterKind,'딜사이클','업적','탐험','시크릿','기타',...list.map(n=>n.kind),value].filter(v=>typeof v==='string'&&v.length))];
+  return kinds.map(kind=>`<option value="${esc(kind)}"${kind===value?' selected':''}>${esc(kind)}</option>`).join('');
+}
 function selectNoteScope(scope){
   noteScope=scope;selectedNoteChar=null;selectedNoteBoss=null;selectedNoteId=null;renderPool();renderNotes();
   if(window.innerWidth<=900)goPanel(1);
@@ -2795,7 +2799,7 @@ function editNote(id=null,draft=null){
     <h3 style="margin-bottom:12px">${existing?'노트 편집':'새 공략 노트'}</h3>
     <div class="note-fields">
       <label style="grid-column:1/-1">제목<input class="fi" id="ntTitle" maxlength="200" value="${esc(n.title||'')}" placeholder="제목만으로도 저장 가능"></label>
-      <label>종류<select class="fi" id="ntKind">${options(['미분류','일반 공략','공명자 공략','딜사이클','업적','탐험','시크릿','기타'],n.kind)}</select></label>
+      <label>분류<select class="fi" id="ntKind">${noteKindOptions(n.kind,notes,'공명자 공략')}</select></label>
       <label>진행<select class="fi" id="ntStatus">${options(['미시작','진행 중','완료'],n.status)}</select></label>
       <label>지역<input class="fi" id="ntRegion" value="${esc(n.region||'')}"></label>
       <label>태그 (쉼표 구분)<input class="fi" id="ntTags" value="${esc((n.tags||[]).join(', '))}"></label>
