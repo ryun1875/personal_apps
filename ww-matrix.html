@@ -150,11 +150,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .slots{display:flex;gap:6px}
 .slot{width:80px;height:98px;border:1.5px dashed rgba(255,255,255,0.1);border-radius:var(--radius);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;background:var(--bg3);position:relative;overflow:hidden;transition:border-color .15s;flex-shrink:0}
 .slot:hover{border-color:var(--border2)}
-.slot.filled{border-style:solid;border-color:var(--border);background:var(--bg2)}
+.slot.filled{border-style:solid;border-color:var(--border);background:var(--bg2);justify-content:flex-start}
 .slot.filled.is5{border-color:rgba(240,180,41,0.4)}
-.slot-portrait{width:100%;height:68px;overflow:hidden;position:relative;flex-shrink:0}
-.slot-name{font-size:10px;text-align:center;padding:2px 2px 1px;line-height:1.2;width:100%}
-.slot-memo{font-size:9px;color:var(--text3);text-align:center;padding:0 3px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
+.slot-portrait{width:100%;min-height:0;flex:1;overflow:hidden;position:relative}
+.slot-name{font-size:10px;text-align:center;padding:2px 2px 1px;line-height:1.2;width:100%;flex:0 0 15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot-memo{font-size:9px;color:var(--text3);text-align:center;padding:0 3px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;flex:0 0 13px;line-height:11px}
 .slot .rm{position:absolute;top:1px;right:2px;background:none;border:none;cursor:pointer;color:rgba(255,255,255,0.3);font-size:11px;z-index:4;padding:1px 3px}
 .slot .rm:hover{color:var(--red)}
 .applied-buff{display:flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;background:var(--bg4);margin-top:5px}
@@ -1920,9 +1920,9 @@ function renderParties(){
       if(s!==null&&charBySlot(s)){
         const c=charBySlot(s), mp=c.memo?c.memo.split('\n')[0]:'';
         return `<div class="slot filled${c.star5?' is5':''}" onclick="openSlot(${pi},${si})">
-          <div class="slot-portrait">${mkBg(c,80,68)}</div>
+          <div class="slot-portrait">${mkBg(c,80,68,true)}</div>
           <div class="slot-name">${esc(c.name)}</div>
-          ${mp?`<div class="slot-memo">${esc(mp)}</div>`:''}
+          <div class="slot-memo" title="${esc(mp)}">${esc(mp)}</div>
           <button class="rm" onclick="event.stopPropagation();rmSlot(${pi},${si})">×</button>
         </div>`;
       }
