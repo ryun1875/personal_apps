@@ -162,8 +162,8 @@
       <input type="text" id="bongEtc" inputmode="numeric" placeholder="직접 입력 (숫자)" style="margin-top:8px;text-align:left;font-size:16px;font-weight:600">
     </div>
     <div class="field" id="quantityField">
-      <label class="lbl" for="actualCount">실제 나온 전체 개수 (불량 포함 · 선택)</label>
-      <input type="text" id="actualCount" inputmode="numeric" placeholder="예: 67" aria-describedby="quantityHint inputError">
+      <label class="lbl" for="shortageCount">부족 개수 (전체 봉지 합계 · 선택)</label>
+      <input type="text" id="shortageCount" inputmode="numeric" placeholder="예: 3" aria-describedby="quantityHint inputError">
       <div class="hint" id="quantityHint" aria-live="polite"></div>
     </div>
     <div class="hint warn" id="inputError" role="alert" hidden></div>
@@ -232,7 +232,7 @@ const LS={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.par
          set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
 const DEFAULT_MAKERS=["마니커","케이탑푸드","하림","체리부로","사조"];
 const MAX_PER_SEND=10, SIZE_BUDGET=8*1024*1024;   // 브라우저 공유 한계: 1회 10장 · 약 8MB
-const APP_VER="v1.19 (수량 입력 오류 방지)";
+const APP_VER="v1.20 (부족 개수 직접 입력)";
 const rawMakers=LS.get("dr_makers",null);
 let makers=Array.isArray(rawMakers)
   ? [...new Set(rawMakers.filter(m=>typeof m==="string").map(m=>m.trim()).filter(Boolean))]
@@ -328,7 +328,7 @@ function addMakerPreset(){const v=$("newMaker").value.trim();if(!v)return;
 $("makerEtc").addEventListener("input",e=>{maker=e.target.value.trim();renderMakerChips();saveDraft();render();});
 
 // ── 종류/필드 ──
-$("kindToggle").querySelectorAll("button").forEach(b=>{b.onclick=()=>{if(kind!==b.dataset.k)$("actualCount").value="";kind=b.dataset.k;
+$("kindToggle").querySelectorAll("button").forEach(b=>{b.onclick=()=>{if(kind!==b.dataset.k)$("shortageCount").value="";kind=b.dataset.k;
   $("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));saveDraft();render();};});
 ["ipgo","gihan"].forEach(id=>$(id).addEventListener("input",()=>{saveDraft();render();}));
 // ── 손질 봉 수 ──
@@ -337,7 +337,7 @@ function renderBongChips(){const box=$("bongChips");box.innerHTML="";
     c.innerHTML=`<span>${n}봉</span>`;
     c.onclick=()=>{bong=String(n);$("bongEtc").value="";renderBongChips();saveDraft();render();};box.appendChild(c);});}
 $("bongEtc").addEventListener("input",e=>{bong=e.target.value;renderBongChips();saveDraft();render();});
-$("actualCount").addEventListener("input",()=>{saveDraft();render();});
+$("shortageCount").addEventListener("input",()=>{saveDraft();render();});
 
 // ── 사진 공통 ──
 let photoSeq=0;
@@ -454,32 +454,26 @@ function buildMsg(){const error=quantityError();if(error)return "입력 확인: 
   const d=[];DEFECT_KEYS.forEach(key=>{const cfg=TCFG[key];if(cfg.arr.length)d.push(cfg.tag+cfg.arr.length+"개");});
   const s=(h.join(" ")+(d.length?" "+d.join(" "):"")).trim();
   const q=shortageInfo();
-  const shortageLine=q&&q.shortage>0?`\n${kind} ${q.portions}포션 기준 ${q.shortage}개 부족`:"";
+  const shortageLine=q&&q.shortage>0?`\n${q.portions}포션 기준 ${q.shortage}개 부족`:"";
   const summary=["총 "+(defectPhotoCount()+(q?.shortage||0))+"개"];if(bong)summary.push(bong+"봉");
   return s+shortageLine+"\n\n"+summary.join(", ");}
 function quantityError(){
   if(bong!==""&&(!/^\d{1,9}$/.test(bong)||Number(bong)<=0))return "손질 봉 수는 1 이상의 정수로 입력해 주세요. (최대 9자리)";
   if(kind==="신선육")return "";
-  const raw=$("actualCount").value;
-  if(raw==="")return "";
-  if(!/^\d{1,9}$/.test(raw))return "전체 개수는 0 이상의 정수로 입력해 주세요. 소수·음수·문자는 사용할 수 없어요. (최대 9자리)";
-  if(Number(raw)<defectPhotoCount())return "전체 개수가 불량 개수보다 적어요. 불량을 포함한 전체 개수를 확인해 주세요.";
-  if(bong==="")return "부족분 계산을 위해 손질 봉 수를 선택하거나 입력해 주세요.";
+  const raw=$("shortageCount").value;
+  if(raw!==""&&!/^\d{1,9}$/.test(raw))return "부족 개수는 0 이상의 정수로 입력해 주세요. 소수·음수·문자는 사용할 수 없어요. (최대 9자리)";
   return "";}
-function shortageInfo(){if(quantityError())return null;const perBag=kind==="통날개"?70:kind==="북채"?60:0;
-  const raw=$("actualCount").value,bags=Number(bong),actual=Number(raw),expected=perBag*bags;
-  if(!perBag||!/^\d+$/.test(raw)||!Number.isSafeInteger(actual)||!Number.isSafeInteger(bags)||bags<=0||!Number.isSafeInteger(expected))return null;
-  return {expected,actual,portions:expected/5,shortage:Math.max(0,expected-actual)};}
+function shortageInfo(){if(quantityError()||kind==="신선육")return null;
+  return {portions:kind==="통날개"?14:12,shortage:Number($("shortageCount").value||0)};}
 function renderQuantity(){const supported=kind!=="신선육";$("quantityField").hidden=!supported;
   const error=quantityError();$("inputError").hidden=!error;$("inputError").textContent=error;
   if(!supported)return;
-  const q=shortageInfo(),base=kind==="통날개"?"봉당 70개 · 14포션":"봉당 60개 · 12포션";
-  $("quantityHint").textContent=q
-    ?`기준 ${q.expected}개 · 실제 ${q.actual}개 · ${q.shortage?"부족 "+q.shortage+"개":"부족 없음"} — 총합은 불량 ${defectPhotoCount()}개 + 부족 ${q.shortage}개예요.`
-    :`${base}. 손질 봉 수와 불량 포함 전체 개수를 입력하면 부족분을 총합에 더해요. 비워 두면 계산하지 않아요. 종류를 바꾸면 전체 개수는 비워져요.`;}
+  const q=shortageInfo(),base=kind==="통날개"?"봉당 14포션":"봉당 12포션";
+  $("quantityHint").textContent=base+" 기준. 전체 봉지에서 부족한 개수의 합계를 입력하세요. 봉 수를 곱하지 않아요. 비움·0은 부족 없음, 종류 변경 시 입력은 비워져요."
+    +(q?" 총합: 불량 "+defectPhotoCount()+"개 + 부족 "+q.shortage+"개.":"");}
 function render(){renderQuantity();$("preview").textContent=buildMsg()||"—";const tot=totalCount();
   const bad=defectPhotoCount();$("totLine").textContent=tot?`첨부 사진 ${tot}장 · 불량 ${bad}장 · 라벨 ${labels.length}장${labels.length?" — 라벨이 맨 끝":""}`:"";}
-function currentDraftFields(){return {ipgo:$("ipgo").value,gihan:$("gihan").value,maker,kind,etc:$("makerEtc").value,bong,actualCount:$("actualCount").value};}
+function currentDraftFields(){return {ipgo:$("ipgo").value,gihan:$("gihan").value,maker,kind,etc:$("makerEtc").value,bong,shortageCount:$("shortageCount").value};}
 function saveDraft(){if(editorOwned)savePhotoDraft();}
 
 // ── 기록 ──
@@ -583,7 +577,7 @@ async function copyText(ev){if(quantityError()){flash(quantityError());return;}c
 function resetAll(){if(!confirm("현재 입력과 사진을 모두 지울까요?\n(제조사 목록·보고 기록은 유지됩니다)"))return;
   photoRevision++;
   [...DEFECT_KEYS,"label"].forEach(key=>{const cfg=TCFG[key];cancelPendingCaptures(cfg);cfg.rev++;const a=cfg.arr;a.forEach(p=>URL.revokeObjectURL(p.url));a.length=0;});
-  maker="";bong="";queue=[];$("actualCount").value="";
+  maker="";bong="";queue=[];$("shortageCount").value="";
   activeDefect=DEFECT_KEYS[0];renderDefectUI();renderThumbsFor("label");
   $("gihan").value="";$("makerEtc").value="";$("bongEtc").value="";$("ipgo").value=todayMD();
   kind=KINDS[0];$("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k===kind));
@@ -630,7 +624,7 @@ function applyDraftFields(value){const d=value&&typeof value==="object"&&!Array.
   kind=normalizeKind(d.kind,KINDS[0]);maker=text(d.maker).trim()||text(d.etc).trim();
   $("makerEtc").value=makers.includes(maker)?"":maker;
   bong=text(d.bong);$("bongEtc").value=BONG.some(n=>String(n)===bong)?"":bong;
-  $("actualCount").value=text(d.actualCount);
+  $("shortageCount").value=text(d.shortageCount);
   $("kindToggle").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.k===kind));
   renderMakerChips();renderBongChips();
 }
