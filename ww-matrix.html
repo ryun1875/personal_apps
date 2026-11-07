@@ -250,6 +250,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .note-meta{font-size:12px;color:var(--text3);margin-top:5px;overflow-wrap:anywhere}
 .note-body{line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;margin:14px 0}
 .note-body a{color:var(--accent)}
+.note-image{display:block;max-width:100%;max-height:720px;margin:12px 0;border:1px solid var(--border);border-radius:10px;object-fit:contain;background:var(--panel)}
 .notes-col a{color:var(--accent);overflow-wrap:anywhere}
 .note-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .note-fields label{font-size:12px;color:var(--text2);display:flex;flex-direction:column;gap:4px}
@@ -1216,7 +1217,7 @@ const GF={
   openNote(id){const search=document.getElementById('gfNoteSearch').value;this.selectedNote=this.selectedNote===id?null:id;this.renderMain();document.getElementById('gfNoteSearch').value=search;this.filterNotes(search);},
   noteDetail(n){
     const body=(n.body||'').split('\n').map((line,i)=>{const m=line.match(/^\s*- \[([ xX])\] (.*)$/);return m?`<label style="display:block"><input type="checkbox" ${m[1]!==' '?'checked':''} ${n.deletedAt?'disabled':''} onchange="GF.checkNote('${n.id}',${i},this.checked)"> ${linkedText(m[2])}</label>`:linkedText(line);}).join('\n');
-    return `<article class="gf-detail"><p class="note-meta">선택한 노트 · 읽기</p><h3>${esc(n.title)}</h3>${noteDatesHTML(n)}<div class="gf-toolbar">${n.deletedAt?`<button class="btn btn-sm" onclick="GF.trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="GF.editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="GF.trashNote('${n.id}',true)">휴지통</button>`}</div><div class="note-body">${body}</div>${(n.sources||[]).map(s=>'<p>'+linkedText(s)+'</p>').join('')}</article>`;
+    return `<article class="gf-detail"><p class="note-meta">선택한 노트 · 읽기</p><h3>${esc(n.title)}</h3>${noteDatesHTML(n)}<div class="gf-toolbar">${n.deletedAt?`<button class="btn btn-sm" onclick="GF.trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="GF.editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="GF.trashNote('${n.id}',true)">휴지통</button>`}</div>${noteImageHTML(n.noteImage,n.title)}<div class="note-body">${body}</div>${(n.sources||[]).map(s=>'<p>'+linkedText(s)+'</p>').join('')}</article>`;
   },
   async addSquad(){this.squads.push({id:genId('squad'),name:'제대 '+(this.squads.length+1),slots:Array(5).fill(null),memo:''});this.renderMain();await this.save();},
   updateSquad(id,key,value){const s=this.squads.find(s=>s.id===id);if(s&&['name','memo'].includes(key)){s[key]=value;this.schedule();}},
@@ -1234,15 +1235,16 @@ const GF={
   async saveChar(){if(this.editor?.type!=='char')return;const name=document.getElementById('gfcName').value.trim();if(!name){showToast('이름을 입력하세요');return;}const old=this.chars.find(c=>c.id===this.editor.id),element=document.getElementById('gfcElement').value;if(element&&!Object.hasOwn(GF_ELEMENTS,element))return;const c={id:this.editor.id,name,star5:document.getElementById('gfcRarity').value==='5'?true:document.getElementById('gfcRarity').value==='4'?false:null,element,elementEdited:!!(old?.elementEdited||!old||gfElement(old)!==element),group:document.getElementById('gfcGroup').value.trim(),memo:document.getElementById('gfcMemo').value,img:this.editor.img||null};if(old&&c.group===old.group&&gfElement(old)!==element){c.group=c.group.split(' · ').map(t=>t===gfElement(old)?element:t).filter(Boolean).join(' · ');}const i=this.chars.findIndex(x=>x.id===c.id);if(i<0)this.chars.push(c);else this.chars[i]={...this.chars[i],...c};this.closeEditor();this.render();await this.save();},
   async deleteChar(id){if(!confirm('캐릭터를 목록과 제대에서 제거할까요? 연결된 공략 노트는 유지됩니다.'))return;const c=this.chars.find(c=>c.id===id);if(!c)return;c.deleted=true;this.squads.forEach(s=>s.slots=s.slots.map(v=>v===id?null:v));this.selectedChar=null;this.scope='all';this.closeEditor();this.render();await this.save();},
   draftKey(){return 'gf2-note-draft:'+window.FB.uid;},
-  readNote(){return {id:this.editor.id,title:document.getElementById('gfnTitle').value.trim(),body:document.getElementById('gfnBody').value,kind:document.getElementById('gfnKind').value.trim(),sources:document.getElementById('gfnSources').value.split('\n').map(s=>s.trim()).filter(Boolean),charIds:Array.from(document.querySelectorAll('#gfnChars input:checked'),el=>el.value)};},
+  readNote(){return {id:this.editor.id,title:document.getElementById('gfnTitle').value.trim(),body:document.getElementById('gfnBody').value,kind:document.getElementById('gfnKind').value.trim(),sources:document.getElementById('gfnSources').value.split('\n').map(s=>s.trim()).filter(Boolean),charIds:Array.from(document.querySelectorAll('#gfnChars input:checked'),el=>el.value),noteImage:this.editor.noteImage||null};},
   cacheDraft(){if(this.editor?.type!=='note')return;try{localStorage.setItem(this.draftKey(),JSON.stringify(this.readNote()));document.getElementById('gfnStatus').textContent='기기 임시저장 완료 · 서버 반영은 저장 버튼을 눌러 주세요';}catch(_){showToast('임시저장 실패 · 서버에 저장해 주세요');}},
   editNote(id=null,draft=null){
     if(!draft){try{const old=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(old&&old.id!==id&&!confirm('다른 임시 글이 있습니다. 새 작성을 시작할까요?'))return;}catch(_){}}
     const n=draft||this.notes.find(n=>n.id===id)||{title:'',body:'',kind:this.scope==='general'?'일반 공략':this.selectedChar?'캐릭터 공략':'미분류',sources:[],charIds:this.selectedChar?[this.selectedChar]:[]};
-    this.editor={type:'note',id:id||draft?.id||genId('gfnote'),epoch:sessionEpoch};
+    this.editor={type:'note',id:id||draft?.id||genId('gfnote'),epoch:sessionEpoch,noteImage:n.noteImage||null};
     this.modal('공략 노트 편집',`<div oninput="GF.cacheDraft()"><label>제목<input class="field" id="gfnTitle" value="${esc(n.title)}"></label><label>분류<select class="field" id="gfnKind">${noteKindOptions(n.kind||'공략',this.notes)}</select></label><label>내용 · 체크리스트는 - [ ] 항목<textarea class="textarea" id="gfnBody" rows="10">${esc(n.body)}</textarea></label><label>출처 링크 · 한 줄에 하나<textarea class="textarea" id="gfnSources">${esc((n.sources||[]).join('\n'))}</textarea></label><p>관련 캐릭터 (여러 명 선택)</p><div id="gfnChars">${this.chars.filter(c=>!c.deleted).map(c=>`<label style="display:inline-block;margin-right:10px"><input type="checkbox" value="${c.id}" ${(n.charIds||[]).includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></div><p class="note-meta" id="gfnStatus">${draft?'임시 글 복구됨 · 저장 버튼을 눌러 주세요':'작성 중인 내용은 기기에 임시저장됩니다.'}</p><button class="btn btn-accent" id="gfnSave" onclick="GF.saveNoteEditor()">서버에 저장</button>`);
   },
   recoverDraft(){try{const d=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(d)this.editNote(d.id,d);else showToast('임시 글이 없습니다');}catch(_){showToast('임시 글을 읽을 수 없습니다');}},
+  noteImage(file){const editor=this.editor;if(editor?.type!=='note')return;processNoteImage(file,out=>{if(this.editor!==editor)return;editor.noteImage=out;let el=document.getElementById('gfnImagePreview');if(!el){el=document.createElement('div');el.id='gfnImagePreview';document.getElementById('gfModalBody').appendChild(el);}el.innerHTML=noteImageHTML(out);this.cacheDraft();showToast('노트 이미지 적용됨');});},
   async persistNote(n){if(new TextEncoder().encode(JSON.stringify(n)).length>800000)throw new Error('노트가 너무 큽니다');const i=this.notes.findIndex(x=>x.id===n.id);if(i<0)this.notes.push(n);else this.notes[i]=n;const value=cloneData(n);await queueWrite('gf2:note:'+n.id,()=>window.FB.saveGFNote(value));},
   async saveNoteEditor(){
     const editor=this.editor;if(editor?.type!=='note')return;const n=this.readNote();if(!n.title){showToast('제목을 입력하세요');return;}if(n.sources.some(s=>!safeWebURL(s))){showToast('출처는 http 또는 https 링크여야 합니다');return;}
@@ -1267,7 +1269,7 @@ const GF={
     try{await flushAllWrites();const d=this.validate(await window.FB.restoreFullBackup(id,'gf2'));assertSession(epoch);await window.FB.saveFullBackup('복원 전 안전 백업 '+new Date().toLocaleString('ko'),this.snapshot(),'gf2');assertSession(epoch);await window.FB.restoreGF(d);assertSession(epoch);this.chars=d.chars;this.squads=d.squads;this.notes=d.notes;this.selectedChar=null;this.selectedNote=null;this.scope='all';this.closeEditor();this.render();showToast('소녀전선2 복원 완료');}catch(e){showToast('복원 실패: '+e.message);}finally{if(epoch===sessionEpoch){document.getElementById('app').inert=false;document.getElementById('gfModalBody').inert=false;}}
   }
 };
-document.addEventListener('paste',e=>{if(activeGame!=='gf2'||GF.editor?.type!=='char'||!isOpen('gfModal'))return;const item=Array.from(e.clipboardData?.items||[]).find(x=>x.type.startsWith('image/'));if(item){e.preventDefault();GF.image(item.getAsFile());}});
+document.addEventListener('paste',e=>{if(activeGame!=='gf2'||!isOpen('gfModal'))return;const item=Array.from(e.clipboardData?.items||[]).find(x=>x.type.startsWith('image/'));if(!item)return;if(GF.editor?.type==='note'){e.preventDefault();GF.noteImage(item.getAsFile());}else if(GF.editor?.type==='char'){e.preventDefault();GF.image(item.getAsFile());}});
 // 초기 명단: 나무모에 인게임 정보(2026-08-22), 넷마블 비비안 출시 공지(2026-09-09).
 // 2026-09-26 확인. 9/30 출시 예정 캐릭터는 제외. 최초 저장 이후에는 자동 보충하지 않는다.
 const MG_ELEMENTS={'땅':{bg:'#3b301c',text:'#e4c17b'},'불':{bg:'#40231e',text:'#ff896d'},'얼음':{bg:'#193448',text:'#91d5ff'},'번개':{bg:'#342347',text:'#cfafff'},'바람':{bg:'#123936',text:'#63d8c6'}};
@@ -1319,7 +1321,7 @@ const MG={
   openNote(id){const search=document.getElementById('mgNoteSearch').value;this.selectedNote=this.selectedNote===id?null:id;this.renderMain();document.getElementById('mgNoteSearch').value=search;this.filterNotes(search);},
   noteDetail(n){
     const body=(n.body||'').split('\n').map((line,i)=>{const m=line.match(/^\s*- \[([ xX])\] (.*)$/);return m?`<label style="display:block"><input type="checkbox" ${m[1]!==' '?'checked':''} ${n.deletedAt?'disabled':''} onchange="MG.checkNote('${n.id}',${i},this.checked)"> ${linkedText(m[2])}</label>`:linkedText(line);}).join('\n');
-    return `<article class="gf-detail"><p class="note-meta">선택한 노트 · 읽기</p><h3>${esc(n.title)}</h3>${noteDatesHTML(n)}<div class="gf-toolbar">${n.deletedAt?`<button class="btn btn-sm" onclick="MG.trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="MG.editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="MG.trashNote('${n.id}',true)">휴지통</button>`}</div><div class="note-body">${body}</div>${(n.sources||[]).map(s=>'<p>'+linkedText(s)+'</p>').join('')}</article>`;
+    return `<article class="gf-detail"><p class="note-meta">선택한 노트 · 읽기</p><h3>${esc(n.title)}</h3>${noteDatesHTML(n)}<div class="gf-toolbar">${n.deletedAt?`<button class="btn btn-sm" onclick="MG.trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="MG.editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="MG.trashNote('${n.id}',true)">휴지통</button>`}</div>${noteImageHTML(n.noteImage,n.title)}<div class="note-body">${body}</div>${(n.sources||[]).map(s=>'<p>'+linkedText(s)+'</p>').join('')}</article>`;
   },
   async addSquad(){this.squads.push({id:genId('squad'),name:'파티 '+(this.squads.length+1),slots:Array(3).fill(null),memo:''});this.renderMain();await this.save();},
   updateSquad(id,key,value){const s=this.squads.find(s=>s.id===id);if(s&&['name','memo'].includes(key)){s[key]=value;this.schedule();}},
@@ -1337,15 +1339,16 @@ const MG={
   async saveChar(){if(this.editor?.type!=='char')return;const name=document.getElementById('mgcName').value.trim();if(!name){showToast('이름을 입력하세요');return;}const old=this.chars.find(c=>c.id===this.editor.id),element=document.getElementById('mgcElement').value;if(element&&!Object.hasOwn(MG_ELEMENTS,element))return;const c={id:this.editor.id,name,star5:document.getElementById('mgcRarity').value==='5'?true:document.getElementById('mgcRarity').value==='4'?false:null,owned:document.getElementById('mgcOwned').checked,element,elementEdited:!!(old?.elementEdited||!old||mgElement(old)!==element),group:document.getElementById('mgcGroup').value.trim(),memo:document.getElementById('mgcMemo').value,img:this.editor.img||null};if(old&&c.group===old.group&&mgElement(old)!==element){c.group=c.group.split(' · ').map(t=>t===mgElement(old)?element:t).filter(Boolean).join(' · ');}const i=this.chars.findIndex(x=>x.id===c.id);if(i<0)this.chars.push(c);else this.chars[i]={...this.chars[i],...c};this.closeEditor();this.render();await this.save();},
   async deleteChar(id){if(!confirm('캐릭터를 목록과 파티에서 제거할까요? 연결된 공략 노트는 유지됩니다.'))return;const c=this.chars.find(c=>c.id===id);if(!c)return;c.deleted=true;this.squads.forEach(s=>s.slots=s.slots.map(v=>v===id?null:v));this.selectedChar=null;this.scope='all';this.closeEditor();this.render();await this.save();},
   draftKey(){return 'mongil-note-draft:'+window.FB.uid;},
-  readNote(){return {id:this.editor.id,title:document.getElementById('mgnTitle').value.trim(),body:document.getElementById('mgnBody').value,kind:document.getElementById('mgnKind').value.trim(),sources:document.getElementById('mgnSources').value.split('\n').map(s=>s.trim()).filter(Boolean),charIds:Array.from(document.querySelectorAll('#mgnChars input:checked'),el=>el.value)};},
+  readNote(){return {id:this.editor.id,title:document.getElementById('mgnTitle').value.trim(),body:document.getElementById('mgnBody').value,kind:document.getElementById('mgnKind').value.trim(),sources:document.getElementById('mgnSources').value.split('\n').map(s=>s.trim()).filter(Boolean),charIds:Array.from(document.querySelectorAll('#mgnChars input:checked'),el=>el.value),noteImage:this.editor.noteImage||null};},
   cacheDraft(){if(this.editor?.type!=='note')return;try{localStorage.setItem(this.draftKey(),JSON.stringify(this.readNote()));document.getElementById('mgnStatus').textContent='기기 임시저장 완료 · 서버 반영은 저장 버튼을 눌러 주세요';}catch(_){showToast('임시저장 실패 · 서버에 저장해 주세요');}},
   editNote(id=null,draft=null){
     if(!draft){try{const old=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(old&&old.id!==id&&!confirm('다른 임시 글이 있습니다. 새 작성을 시작할까요?'))return;}catch(_){}}
     const n=draft||this.notes.find(n=>n.id===id)||{title:'',body:'',kind:this.scope==='general'?'일반 공략':this.selectedChar?'캐릭터 공략':'미분류',sources:[],charIds:this.selectedChar?[this.selectedChar]:[]};
-    this.editor={type:'note',id:id||draft?.id||genId('mgnote'),epoch:sessionEpoch};
+    this.editor={type:'note',id:id||draft?.id||genId('mgnote'),epoch:sessionEpoch,noteImage:n.noteImage||null};
     this.modal('공략 노트 편집',`<div oninput="MG.cacheDraft()"><label>제목<input class="field" id="mgnTitle" value="${esc(n.title)}"></label><label>분류<select class="field" id="mgnKind">${noteKindOptions(n.kind||'공략',this.notes)}</select></label><label>내용 · 체크리스트는 - [ ] 항목<textarea class="textarea" id="mgnBody" rows="10">${esc(n.body)}</textarea></label><label>출처 링크 · 한 줄에 하나<textarea class="textarea" id="mgnSources">${esc((n.sources||[]).join('\n'))}</textarea></label><p>관련 캐릭터 (여러 명 선택)</p><div id="mgnChars">${this.chars.filter(c=>!c.deleted).map(c=>`<label style="display:inline-block;margin-right:10px"><input type="checkbox" value="${c.id}" ${(n.charIds||[]).includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></div><p class="note-meta" id="mgnStatus">${draft?'임시 글 복구됨 · 저장 버튼을 눌러 주세요':'작성 중인 내용은 기기에 임시저장됩니다.'}</p><button class="btn btn-accent" id="mgnSave" onclick="MG.saveNoteEditor()">서버에 저장</button>`);
   },
   recoverDraft(){try{const d=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(d)this.editNote(d.id,d);else showToast('임시 글이 없습니다');}catch(_){showToast('임시 글을 읽을 수 없습니다');}},
+  noteImage(file){const editor=this.editor;if(editor?.type!=='note')return;processNoteImage(file,out=>{if(this.editor!==editor)return;editor.noteImage=out;let el=document.getElementById('mgnImagePreview');if(!el){el=document.createElement('div');el.id='mgnImagePreview';document.getElementById('mgModalBody').appendChild(el);}el.innerHTML=noteImageHTML(out);this.cacheDraft();showToast('노트 이미지 적용됨');});},
   async persistNote(n){if(new TextEncoder().encode(JSON.stringify(n)).length>800000)throw new Error('노트가 너무 큽니다');const i=this.notes.findIndex(x=>x.id===n.id);if(i<0)this.notes.push(n);else this.notes[i]=n;const value=cloneData(n);await queueWrite('mongil:note:'+n.id,()=>window.FB.saveMGNote(value));},
   async saveNoteEditor(){
     const editor=this.editor;if(editor?.type!=='note')return;const n=this.readNote();if(!n.title){showToast('제목을 입력하세요');return;}if(n.sources.some(s=>!safeWebURL(s))){showToast('출처는 http 또는 https 링크여야 합니다');return;}
@@ -1370,12 +1373,18 @@ const MG={
     try{await flushAllWrites();const d=this.validate(await window.FB.restoreFullBackup(id,'mongil'));assertSession(epoch);await window.FB.saveFullBackup('복원 전 안전 백업 '+new Date().toLocaleString('ko'),this.snapshot(),'mongil');assertSession(epoch);await window.FB.restoreMG(d);assertSession(epoch);this.chars=d.chars;this.squads=d.squads;this.notes=d.notes;this.selectedChar=null;this.selectedNote=null;this.scope='all';this.closeEditor();this.render();showToast('몬길: STAR DIVE 복원 완료');}catch(e){showToast('복원 실패: '+e.message);}finally{if(epoch===sessionEpoch){document.getElementById('app').inert=false;document.getElementById('mgModalBody').inert=false;}}
   }
 };
-document.addEventListener('paste',e=>{if(activeGame!=='mongil'||MG.editor?.type!=='char'||!isOpen('mgModal'))return;const item=Array.from(e.clipboardData?.items||[]).find(x=>x.type.startsWith('image/'));if(item){e.preventDefault();MG.image(item.getAsFile());}});
+document.addEventListener('paste',e=>{if(activeGame!=='mongil'||!isOpen('mgModal'))return;const item=Array.from(e.clipboardData?.items||[]).find(x=>x.type.startsWith('image/'));if(!item)return;if(MG.editor?.type==='note'){e.preventDefault();MG.noteImage(item.getAsFile());}else if(MG.editor?.type==='char'){e.preventDefault();MG.image(item.getAsFile());}});
 
 // buffs/bosses = 전역 풀(벤치). activeBuffs/activeBosses = 현재 시즌에서 활성화된 id 목록.
 let chars=[], parties=[], buffs=[], bosses=[];
+let seasonUsage={};
+function charUseLimit(c){return (Object.hasOwn(seasonUsage,c.id)?seasonUsage[c.id]:c.dupe)?2:1;}
+function renderSeasonUsage(){
+  return '<div style="margin:12px 0"><h3>현재 시즌 · 공명자 사용 횟수</h3><p class="note-meta">체크하면 이번 시즌에서 2회 사용합니다. 기존 공명자 설정은 기본값으로 유지됩니다. 시즌 예외는 새 시즌에 복사되지 않습니다.</p>'+chars.filter(c=>!c.deleted).map(c=>`<label style="display:inline-block;margin:6px"><input type="checkbox" ${charUseLimit(c)===2?'checked':''} onchange="setSeasonUsage('${c.id}',this.checked)"> ${esc(c.name)}</label>`).join('')+'</div>';
+}
+async function setSeasonUsage(id,value){if(!curSid)return;seasonUsage[id]=value;renderAll();await saveSeason();}
 let activeBuffs=[], activeBosses=[];
-let notes=[],appMode='matrix',noteScope='all',selectedNoteChar=null,selectedNoteId=null,selectedNoteBoss=null;
+let notes=[],appMode='matrix',noteScope='all',selectedNoteChar=null,selectedNoteId=null,selectedNoteBoss=null,noteEditorImage=null;
 let dataReady=false;
 let seasons=[], curSid=null;
 let editCharIdx=null, memoIdx=null, editBossId=null, editBuffId=null, editSid=null;
@@ -1427,6 +1436,26 @@ function processImage(file, cb){
   };
   reader.readAsDataURL(file);
 }
+function processNoteImage(file, cb){
+  if(!file)return;
+  if(!file.type.startsWith('image/')){showToast('이미지 파일만 붙여넣을 수 있어요');return;}
+  const reader=new FileReader();
+  reader.onerror=()=>showToast('이미지를 읽을 수 없어요');
+  reader.onload=e=>{
+    const img=new Image();
+    img.onload=()=>{
+      const max=1000;let w=img.width,h=img.height;
+      if(w>max||h>max){const r=Math.min(max/w,max/h);w=Math.round(w*r);h=Math.round(h*r);}
+      try{const cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);const out=cv.toDataURL('image/jpeg',.8);if(out.length>700000){showToast('이미지가 너무 커요. 더 작은 캡처를 사용해 주세요');return;}cb(out);}
+      catch(_){if(e.target.result.length<=700000)cb(e.target.result);else showToast('이미지를 저장할 수 없어요');}
+    };
+    img.onerror=()=>showToast('이미지를 불러올 수 없어요');img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function noteImageHTML(src,alt='공략 이미지'){
+  return src&&/^data:image\//.test(src)?`<img class="note-image" src="${esc(src)}" alt="${esc(alt)}" loading="lazy">`:'';
+}
 
 // ── 초기화 ──
 async function appInit(){
@@ -1468,6 +1497,7 @@ async function loadSeasonData(sid){
   const uid=window.FB.uid,epoch=sessionEpoch;
   const d = await window.FB.loadSeasonData(sid);
   if(uid!==window.FB.uid||epoch!==sessionEpoch)throw new Error('시즌을 읽는 중 계정이 변경되었습니다');
+  seasonUsage=d&&d.seasonUsage&&typeof d.seasonUsage==='object'?cloneData(d.seasonUsage):{};
   if(!d){
     parties=[{name:'파티 1',slots:[null,null,null],buffId:null,bossIds:[],score:'',hp:'',memo:''}];
     activeBuffs=[]; activeBosses=[];
@@ -1513,14 +1543,14 @@ async function loadSeasonData(sid){
   activeBosses = activeBosses.filter(bid=>bosses.some(b=>b.id===bid));
 
   if(migrated){
-    await window.FB.saveMigratedSeason(sid,cloneData({parties,activeBuffs,activeBosses}),cloneData(buffs),cloneData(bosses));
+    await window.FB.saveMigratedSeason(sid,cloneData({parties,activeBuffs,activeBosses,seasonUsage}),cloneData(buffs),cloneData(bosses));
     if(uid!==window.FB.uid||epoch!==sessionEpoch)throw new Error('시즌 변환 중 계정이 변경되었습니다');
   }
 }
 async function saveSeason(){
   if(!curSid) return;
   recordPartyHistory();
-  const sid=curSid,data=cloneData({parties,activeBuffs,activeBosses});
+  const sid=curSid,data=cloneData({parties,activeBuffs,activeBosses,seasonUsage});
   return queueWrite('season:'+sid,()=>window.FB.saveSeasonData(sid,data));
 }
 async function saveChars(){
@@ -1735,7 +1765,7 @@ async function pickSeason(sid){
 async function switchSeason(sid){
   if(seasonSwitchBusy||sid===curSid) return;
   seasonSwitchBusy=true;
-  const epoch=sessionEpoch,previous=curSid,snapshot=cloneData({parties,activeBuffs,activeBosses,buffs,bosses});
+  const epoch=sessionEpoch,previous=curSid,snapshot=cloneData({parties,activeBuffs,activeBosses,buffs,bosses,seasonUsage});
   document.getElementById('mainLayout').inert=true;
   try{
     await flushAllWrites();
@@ -1743,7 +1773,7 @@ async function switchSeason(sid){
     curSid=sid;await loadSeasonData(sid);resetPartyHistory();rememberSeason(sid);
     renderSeasonBar();renderAll();
   }catch(e){
-    if(epoch===sessionEpoch){curSid=previous;({parties,activeBuffs,activeBosses,buffs,bosses}=snapshot);}throw e;
+    if(epoch===sessionEpoch){curSid=previous;({parties,activeBuffs,activeBosses,buffs,bosses,seasonUsage}=snapshot);}throw e;
   }finally{if(epoch===sessionEpoch){seasonSwitchBusy=false;document.getElementById('mainLayout').inert=false;}}
 }
 let seasonSwitchBusy=false;
@@ -1787,7 +1817,7 @@ function renderSeasonList(){
   const el = document.getElementById('seasonList');
   if(!seasons.length){ el.innerHTML='<p style="font-size:13px;color:var(--text3)">등록된 시즌 없음</p>'; return; }
   // 최신 시즌이 위 — 시즌이 쌓이면 최근 것부터 보는 게 자연스러움
-  el.innerHTML = seasons.slice().reverse().map(s=>{
+  el.innerHTML = (curSid?renderSeasonUsage():'') + seasons.slice().reverse().map(s=>{
     const period = s.start&&s.end ? `<span style="font-size:11px;color:var(--text3);display:block;margin-top:2px">${s.start} ~ ${s.end}</span>` : '';
     return `<div class="season-row">
       <div style="flex:1;min-width:0">
@@ -1887,7 +1917,7 @@ function renderPool(){
     chars.forEach((c,i)=>{
       if(!fn(c)||(!c.owned&&!includeUnowned)||c.deleted) return;
       if(search&&!c.name.toLocaleLowerCase().includes(search)||attr&&c.attr!==attr) return;
-      const ex=(used[c.id]||0)>=(c.dupe?2:1);
+      const ex=(used[c.id]||0)>=charUseLimit(c);
       if(available&&ex) return;
       html+=`<div class="char-card${c.star5?' star5':''}${!c.owned?' unowned':''}${ex&&appMode==='matrix'?' exhausted':''}${appMode==='notes'&&selectedNoteChar===c.id?' note-selected':''}"
         draggable="true"
@@ -1900,7 +1930,7 @@ function renderPool(){
         ondrop="charDragDrop(event,${i})"
         ondragend="charDragEnd()"
         title="${esc(c.name)}${!c.owned?' (미보유)':''} — 클릭: ${appMode==='notes'?'공략 노트':'메모'} | 드래그: 순서 변경">
-        ${c.star5?'<div class="star5-corner"></div>':''}${c.dupe?'<span class="dupe-tag">×2</span>':''}
+        ${c.star5?'<div class="star5-corner"></div>':''}${charUseLimit(c)===2?'<span class="dupe-tag">×2</span>':''}
         ${c.memo?'<div class="memo-dot"></div>':''}
         <div class="portrait-wrap">${mkBg(c,63,63,true)}</div>
         <div class="char-name">${esc(c.name)}</div>
@@ -1991,7 +2021,8 @@ function renderParties(){
 }
 function renderInfo(){
   const t=Object.values(getUsed()).reduce((a,b)=>a+b,0);
-  document.getElementById('info').textContent=t?`${t}명 배치 중`:'';
+  const excess=chars.filter(c=>(getUsed()[c.id]||0)>charUseLimit(c));
+  document.getElementById('info').textContent=(t?`${t}명 배치 중`:'')+(excess.length?' · 사용 횟수 초과: '+excess.map(c=>c.name).join(', '):'');
   renderScorePanel();
 }
 function renderScorePanel(){
@@ -2125,9 +2156,9 @@ function openSlot(pi,si){
     let g='';
     chars.forEach((c,i)=>{
       if(!fn(c)||!c.owned||c.deleted) return;
-      const out=(used[c.id]||0)>=(c.dupe?2:1)&&c.id!==cur;
+      const out=(used[c.id]||0)>=charUseLimit(c)&&c.id!==cur;
       g+=`<div class="mc${out?' out':''}${c.star5?' s5':''}" onclick="pickChar(${pi},${si},${i})">
-        ${c.dupe?'<span class="dupe-tag">×2</span>':''}${c.star5?'<div class="star5-corner"></div>':''}
+        ${charUseLimit(c)===2?'<span class="dupe-tag">×2</span>':''}${c.star5?'<div class="star5-corner"></div>':''}
         <div style="height:52px;overflow:hidden">${mkBg(c,62,52)}</div>
         <div style="font-size:10px;padding:2px;text-align:center;line-height:1.2">${esc(c.name)}</div>
       </div>`;
@@ -2140,7 +2171,7 @@ function openSlot(pi,si){
 async function pickChar(pi,si,i){
   const c=chars[i];
   if(!c||c.deleted||!c.owned) return;
-  if(parties[pi].slots[si]!==c.id&&(getUsed()[c.id]||0)>=(c.dupe?2:1)) return;
+  if(parties[pi].slots[si]!==c.id&&(getUsed()[c.id]||0)>=charUseLimit(c)) return;
   parties[pi].slots[si]=c.id; closeM('slotModal'); renderAll(); await saveSeason();
 }
 
@@ -2736,7 +2767,7 @@ function renderNoteDetail(n){
     <div class="note-meta">${esc((n.charIds||[]).map(id=>chars.find(c=>c.id===id)?.name||'삭제된 공명자').join(' · '))}${n.verified?' · 확인 '+esc(n.verified):''}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
       ${n.deletedAt?`<button class="btn btn-sm" onclick="trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="trashNote('${n.id}',true)">휴지통</button>${selectedNoteChar?`<button class="btn btn-sm" onclick="pinNote('${n.id}')">${(n.pinnedFor||[]).includes(selectedNoteChar)?'고정 해제':'이 공명자 대표 공략으로 고정'}</button>`:''}`}
-    </div><div class="note-section-label" style="border-top:1px solid var(--border);padding-top:12px">본문</div><div class="note-body">${body||'<span class="note-meta">작성된 본문이 없습니다.</span>'}</div>
+    </div><div class="note-section-label" style="border-top:1px solid var(--border);padding-top:12px">본문</div>${noteImageHTML(n.noteImage,n.title)}<div class="note-body">${body||'<span class="note-meta">작성된 본문이 없습니다.</span>'}</div>
     ${(n.sources||[]).map(url=>`<div class="note-meta">↗ ${linkedText(url)}</div>`).join('')}
     <div class="note-meta">${esc((n.tags||[]).map(t=>'#'+t).join(' '))}</div>`;
 }
@@ -2773,7 +2804,7 @@ function readNoteEditor(){
   const get=id=>document.getElementById(id).value;
   return {id:editingNoteId,title:get('ntTitle').trim(),body:get('ntBody'),kind:get('ntKind'),status:get('ntStatus'),region:get('ntRegion').trim(),version:get('ntVersion').trim(),verified:get('ntVerified'),
     tags:get('ntTags').split(',').map(t=>t.trim()).filter(Boolean),sources:get('ntSources').split('\n').map(s=>s.trim()).filter(Boolean),
-    charIds:Array.from(document.querySelectorAll('#ntChars input:checked'),x=>x.value),bossIds:Array.from(document.querySelectorAll('#ntBosses input:checked'),x=>x.value)};
+    charIds:Array.from(document.querySelectorAll('#ntChars input:checked'),x=>x.value),bossIds:Array.from(document.querySelectorAll('#ntBosses input:checked'),x=>x.value),noteImage:noteEditorImage||null};
 }
 function cacheNoteDraft(){
   noteDraftRevision++;
@@ -2783,6 +2814,7 @@ function cacheNoteDraft(){
   }catch(_){setNoteDraftStatus('기기 임시저장 실패 · 서버 저장 버튼을 눌러 주세요');showToast('기기 임시저장 공간이 부족합니다. 저장 버튼을 눌러 주세요');}
 }
 function setNoteDraftStatus(message){const el=document.getElementById('noteDraftStatus');if(el)el.textContent=message;}
+function handleNoteImage(file){processNoteImage(file,out=>{noteEditorImage=out;const el=document.getElementById('ntImagePreview');if(el)el.innerHTML=noteImageHTML(out);cacheNoteDraft();showToast('노트 이미지 적용됨');});}
 function editNote(id=null,draft=null){
   if(!draft){
     try{
@@ -2792,6 +2824,7 @@ function editNote(id=null,draft=null){
   }
   const existing=notes.find(n=>n.id===id);
   const n=draft||existing||{title:'',body:'',kind:noteScope==='char'?'공명자 공략':noteScope==='explore'?'업적':noteScope==='general'?'일반 공략':'미분류',status:'미시작',charIds:selectedNoteChar?[selectedNoteChar]:[],bossIds:selectedNoteBoss?[selectedNoteBoss]:[]};
+  noteEditorImage=n.noteImage||null;
   editingNoteId=id||genId('note');
   document.getElementById('noteEditorModal')?.remove();
   const options=(items,value)=>items.map(v=>`<option${v===value?' selected':''}>${esc(v)}</option>`).join('');
@@ -2807,6 +2840,7 @@ function editNote(id=null,draft=null){
       <label>내용 확인일<input class="fi" type="date" id="ntVerified" value="${esc(n.verified||'')}"></label>
       <label style="grid-column:1/-1">내용 · 체크리스트는 - [ ] 항목 형식<textarea class="fi" id="ntBody" rows="10">${esc(n.body||'')}</textarea></label>
       <label style="grid-column:1/-1">출처 링크 (한 줄에 하나 · 유튜브 시간 링크 가능)<textarea class="fi" id="ntSources" rows="3">${esc((n.sources||[]).join('\n'))}</textarea></label>
+      <div style="grid-column:1/-1"><span class="note-meta">본문 이미지 · Ctrl+V로 게임 캡처를 붙여넣을 수 있어요</span><div style="display:flex;gap:8px;align-items:center;margin-top:6px"><button class="btn btn-sm" type="button" onclick="document.getElementById('ntImageFile').click()">이미지 선택</button><button class="btn btn-sm" type="button" onclick="noteEditorImage=null;document.getElementById('ntImagePreview').innerHTML=''">이미지 제거</button><input id="ntImageFile" type="file" accept="image/*" style="display:none" onchange="handleNoteImage(this.files[0])"></div><div id="ntImagePreview">${noteImageHTML(n.noteImage)}</div></div>
     </div>
     <details style="margin:10px 0" ${(n.charIds||[]).length?'open':''}><summary>관련 공명자 (여러 명 선택)</summary><div id="ntChars" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${chars.filter(c=>!c.deleted).map(c=>`<label><input type="checkbox" value="${c.id}" ${(n.charIds||[]).includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></details>
     <details><summary>관련 보스 (선택 사항)</summary><div id="ntBosses" style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0">${bosses.map(b=>`<label><input type="checkbox" value="${b.id}" ${(n.bossIds||[]).includes(b.id)?'checked':''}> ${esc(b.name)}</label>`).join('')}</div></details>
@@ -2882,7 +2916,8 @@ document.addEventListener('paste', e=>{
   for(const it of items){ if(it.type&&it.type.indexOf('image')===0){ file=it.getAsFile(); break; } }
   if(!file) return;
   // 우선순위: 보스 폼 > 공명자 편집 > 공명자 추가 (위에 떠있는 모달 우선)
-  if(isOpen('bossMgrModal')){ e.preventDefault(); processImage(file,out=>applyPasted(out,'boss','bossPrev','bossUrl')); }
+  if(isOpen('noteEditorModal')){ e.preventDefault(); processNoteImage(file,out=>{noteEditorImage=out;const el=document.getElementById('ntImagePreview');if(el)el.innerHTML=noteImageHTML(out);cacheNoteDraft();showToast('노트 이미지 적용됨');}); }
+  else if(isOpen('bossMgrModal')){ e.preventDefault(); processImage(file,out=>applyPasted(out,'boss','bossPrev','bossUrl')); }
   else if(isOpen('editCharModal')){ e.preventDefault(); processImage(file,out=>applyPasted(out,'e','ePrev','eUrl')); }
   else if(isOpen('charMgrModal') && document.getElementById('cpane-add').classList.contains('active')){
     e.preventDefault(); processImage(file,out=>applyPasted(out,'n','nPrev','nUrl'));
