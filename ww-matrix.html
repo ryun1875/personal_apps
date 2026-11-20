@@ -1994,10 +1994,6 @@ function renderParties(){
         <button class="party-order-btn" onclick="moveParty(${pi},1)" ${pi===parties.length-1?'disabled':''} title="아래로 이동" aria-label="아래로 이동"><i class="ti ti-chevron-down"></i></button>
         <input class="party-name-input" value="${esc(p.name)}" oninput="renameParty(${pi},this.value)">
         ${actBuffs.length?`<select class="buff-sel" onchange="setPartyBuff(${pi},this.value)">${buffOpts}</select>`:''}
-        <button class="btn btn-sm btn-icon" style="position:relative;flex-shrink:0" onclick="openPartyMemo(${pi})" title="파티 메모">
-          <i class="ti ti-note"></i>
-          ${p.memo?`<span class="party-memo-dot" style="position:absolute;top:-2px;right:-2px;width:5px;height:5px"></span>`:''}
-        </button>
         ${parties.length>1?`<button class="rm-party" onclick="rmParty(${pi})"><i class="ti ti-trash"></i></button>`:''}
       </div>
       <div class="slots">${slots}</div>
