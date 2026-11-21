@@ -103,7 +103,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   .mobile-dots{display:none!important}
 }
 .col{display:flex;flex-direction:column;min-height:0;overflow:hidden}
-.col-inner{flex:1;overflow-y:auto;padding-right:2px}
+.col-inner{flex:1;min-height:0;overflow-y:auto;overscroll-behavior-y:contain;padding-right:2px}
 .char-controls{padding:10px 10px 0;flex-shrink:0}
 .char-scroll{flex:1 1 0;min-height:0;overflow-y:scroll;overscroll-behavior-y:contain;scrollbar-gutter:stable;scrollbar-width:auto;scrollbar-color:var(--text3) var(--bg2);padding:4px 10px 10px}
 .char-scroll::-webkit-scrollbar{width:10px}
@@ -129,7 +129,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .char-name{font-size:10px;color:var(--text);padding:3px 2px;line-height:1.2;word-break:keep-all}
 /* parties */
 .parties-area{display:flex;flex-direction:column;gap:7px}
-.party-row{touch-action:none}
+.party-row{touch-action:auto}
 .party-row.dragging{opacity:0.45;border-style:dashed}
 .party-row.drag-over{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
 .party-memo-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;margin-left:3px;vertical-align:middle}
@@ -1380,7 +1380,7 @@ let chars=[], parties=[], buffs=[], bosses=[];
 let seasonUsage={};
 function charUseLimit(c){return (Object.hasOwn(seasonUsage,c.id)?seasonUsage[c.id]:c.dupe)?2:1;}
 function renderSeasonUsage(){
-  return '<div style="margin:12px 0"><h3>현재 시즌 · 공명자 사용 횟수</h3><p class="note-meta">체크하면 이번 시즌에서 2회 사용합니다. 기존 공명자 설정은 기본값으로 유지됩니다. 시즌 예외는 새 시즌에 복사되지 않습니다.</p>'+chars.filter(c=>!c.deleted).map(c=>`<label style="display:inline-block;margin:6px"><input type="checkbox" ${charUseLimit(c)===2?'checked':''} onchange="setSeasonUsage('${c.id}',this.checked)"> ${esc(c.name)}</label>`).join('')+'</div>';
+  return '<div style="margin:12px 0"><h3>'+esc(seasons.find(s=>s.id===curSid)?.name||'현재 시즌')+' · 2회 사용 설정</h3><p class="note-meta">체크하면 이번 시즌에서 2회 사용합니다. 기존 공명자 설정은 기본값으로 유지됩니다. 시즌 예외는 새 시즌에 복사되지 않습니다.</p>'+chars.filter(c=>!c.deleted).map(c=>`<label style="display:inline-block;margin:6px"><input type="checkbox" ${charUseLimit(c)===2?'checked':''} onchange="setSeasonUsage('${c.id}',this.checked)"> ${esc(c.name)}</label>`).join('')+'</div>';
 }
 async function setSeasonUsage(id,value){if(!curSid)return;seasonUsage[id]=value;renderAll();await saveSeason();}
 let activeBuffs=[], activeBosses=[];
