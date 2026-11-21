@@ -87,8 +87,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   /* 좁은 화면에선 관리 버튼을 아이콘만 남겨 탭 스트립 폭을 확보 */
   .s-mgr-label{display:none}
   .s-mgr{padding:5px 10px}
-  .main-layout{display:block;height:calc(100dvh - 110px);position:relative;overflow:hidden}
-  .mobile-swipe-wrap{display:flex;height:100%;transition:transform .32s cubic-bezier(.4,0,.2,1);will-change:transform}
+  .main-layout{display:block;height:0;position:relative;overflow:hidden}
+  .mobile-swipe-wrap{display:flex;position:absolute;inset:0;height:100%;min-height:0;transition:transform .32s cubic-bezier(.4,0,.2,1);will-change:transform}
   .col{flex:0 0 100vw;width:100vw;height:100%;overflow:hidden}
   .col-wrap{border-radius:0;border-left:none;border-right:none;height:100%}
   .mobile-dots{display:flex!important}
@@ -111,7 +111,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .char-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .col-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 8px;border-bottom:0.5px solid var(--border);flex-shrink:0}
 .col-header h2{font-size:13px;font-weight:600;color:var(--text)}
-.col-wrap{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--radius2);height:100%;display:flex;flex-direction:column;overflow:hidden}
+.col-wrap{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--radius2);height:100%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 /* char grid */
 .char-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:5px;margin-bottom:10px}
 .char-card{border:0.5px solid var(--border);border-radius:var(--radius);text-align:center;cursor:pointer;background:var(--bg2);user-select:none;position:relative;overflow:hidden;transition:border-color .15s,opacity .15s}
@@ -1653,7 +1653,7 @@ const saveSeasonDebounced = debounce(()=>saveSeason(), 600);
 function renderAll(){
   const has = !!curSid||appMode==='notes';
   document.getElementById('noSeason').style.display  = has?'none':'flex';
-  document.getElementById('mainLayout').style.display= has?'grid':'none';
+  document.getElementById('mainLayout').style.display= has?'':'none';
   const dots = document.getElementById('mobileDots');
   if(dots) dots.style.display = (has && window.innerWidth<=900) ? 'flex' : 'none';
   if(!has) return;
