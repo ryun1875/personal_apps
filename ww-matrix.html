@@ -125,6 +125,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .attr-badge{position:absolute;bottom:2px;right:2px;font-size:9px;font-weight:500;padding:1px 4px;border-radius:3px;line-height:14px;z-index:2}
 .memo-dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--accent);z-index:3}
 .dupe-tag{position:absolute;top:2px;left:2px;font-size:9px;background:var(--accent2);color:#fff;border-radius:3px;padding:0 3px;line-height:15px;z-index:3}
+.breakthrough-badge{position:absolute;bottom:3px;left:3px;z-index:4;border-radius:4px;padding:1px 4px;background:rgba(10,14,22,.85);border:1px solid #8896ac;color:#fff;font-size:9px;line-height:14px;pointer-events:none}
+#apRoster .gf-portrait{height:auto;aspect-ratio:1;font-size:18px}#apRoster .mg-unowned{opacity:.55}#apRoster .gf-char small{font-size:10px}#apRoster .gf-char{min-width:0}
+@media(max-width:650px){#apWorkspace{padding:0 6px}.ap-pairs{gap:4px}.ap-pair .gf-portrait{height:74px;font-size:14px}.ap-pair small{font-size:10px;padding:3px;overflow-wrap:anywhere}}
 .star5-corner{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 13px 13px 0;border-color:transparent var(--gold) transparent transparent;z-index:2}
 .char-name{font-size:10px;color:var(--text);padding:3px 2px;line-height:1.2;word-break:keep-all}
 /* parties */
@@ -286,6 +289,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 </style>
 <style>
 #wwWorkspace{display:contents}#wwWorkspace[hidden],#gfWorkspace[hidden]{display:none!important}
+#apWorkspace{display:flex;flex:1;min-height:0;flex-direction:column;gap:10px}#apWorkspace[hidden]{display:none!important}
+#apRoster{display:grid;grid-template-columns:repeat(auto-fill,minmax(66px,1fr));gap:5px}#apRoster>.sec-title{grid-column:1/-1}.ap-pairs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.ap-pair{display:flex;flex-direction:column;gap:4px}.ap-pair .gf-char{width:100%;min-width:0}
 #gfWorkspace{display:flex;flex:1;min-height:0;flex-direction:column;gap:10px}
 .gf-layout{display:grid;grid-template-columns:minmax(220px,30%) minmax(0,1fr);gap:12px;flex:1;min-height:0}
 .gf-pane{background:var(--bg2);border:1px solid var(--border);border-radius:12px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
@@ -329,10 +334,10 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 
 <div id="app">
   <div class="top-bar">
-    <select id="gameSelect" class="fi" aria-label="게임 선택" onchange="switchGame(this.value)"><option value="ww">명조</option><option value="gf2">소녀전선2</option><option value="mongil">몬길: STAR DIVE</option></select>
+    <select id="gameSelect" class="fi" aria-label="게임 선택" onchange="switchGame(this.value)"><option value="ww">명조</option><option value="gf2">소녀전선2</option><option value="mongil">몬길: STAR DIVE</option><option value="azur">아주르 프로밀리아</option></select>
     <h1 id="gameTitle">매트릭스 파티 편성</h1>
     <img class="user-avatar" id="userAvatar" src="" alt="">
-    <button class="btn btn-sm" onclick="activeGame==='gf2'?GF.openBackups():activeGame==='mongil'?MG.openBackups():openSaves()"><i class="ti ti-folder"></i> 백업/복원</button>
+    <button class="btn btn-sm" onclick="activeGame==='gf2'?GF.openBackups():activeGame==='mongil'?MG.openBackups():activeGame==='azur'?AP.openBackups():openSaves()"><i class="ti ti-folder"></i> 백업/복원</button>
     <button class="btn btn-icon btn-sm" onclick="doSignOut()" title="로그아웃"><i class="ti ti-logout"></i></button>
   </div>
 
@@ -480,9 +485,17 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <section class="gf-pane"><div id="mgActions" class="gf-toolbar"></div><div id="mgContent" class="gf-scroll"></div></section>
     </div>
   </div>
+  <div id="apWorkspace" hidden>
+    <div class="gf-toolbar"><button class="btn" id="apSquadTab" onclick="AP.mode('squads')">캐릭터·키보 편성</button><button class="btn" id="apNoteTab" onclick="AP.mode('notes')">공략 노트</button><button class="btn btn-sm" style="margin-left:auto" id="apStatus" onclick="retryFailedWrites()" aria-live="polite">서버 저장 완료</button></div>
+    <p class="note-meta" style="margin:0 4px">공개 정보 기반 초기 명단 · 이름·속성·보유 여부를 직접 수정할 수 있습니다. <a href="https://peak.nexon.com/en/post/1391" target="_blank" rel="noopener">캐릭터 3명 + 키보 3마리 구성 출처</a></p><div class="gf-layout">
+      <aside class="gf-pane"><div class="gf-toolbar"><strong>캐릭터 · 키보</strong><button class="btn btn-sm" onclick="AP.editChar()">+ 등록</button><button class="btn btn-sm" onclick="AP.manageChars()">목록 수정</button></div><div class="gf-toolbar"><input id="apCharSearch" class="field" placeholder="이름·역할·속성·무기 검색" aria-label="아주르 프로밀리아 캐릭터 검색" oninput="AP.renderRoster()" style="width:100%"></div><div class="gf-toolbar"><select id="apElementFilter" class="field" aria-label="아주르 프로밀리아 종류 필터" onchange="AP.renderRoster()"><option value="">전체 종류</option></select></div><div class="gf-toolbar"><label><input type="checkbox" id="apOwnedOnly" onchange="AP.renderRoster()"> 보유만 보기</label></div><div class="gf-scroll" id="apRosterScroll"><div class="gf-roster" id="apRoster"></div></div></aside>
+      <section class="gf-pane"><div id="apActions" class="gf-toolbar"></div><div id="apContent" class="gf-scroll"></div></section>
+    </div>
+  </div>
 </div><!-- end app -->
 <div class="modal-bg" id="gfModal"><div class="modal gf-editor" id="gfModalBody"></div></div>
 <div class="modal-bg" id="mgModal"><div class="modal gf-editor" id="mgModalBody"></div></div>
+<div class="modal-bg" id="apModal"><div class="modal gf-editor" id="apModalBody"></div></div>
 
 <!-- 슬롯 선택 -->
 <div class="modal-bg" id="slotModal">
@@ -679,6 +692,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
         <div style="display:flex;gap:14px;flex-wrap:wrap">
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="nOwned" checked style="accent-color:var(--accent)"> 보유</label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="nDupe" style="accent-color:var(--accent)"> 2회 사용</label>
+          <label>돌파<select class="fi" id="nBreakthrough"><option value="">미설정</option><option value="0">0돌</option><option value="1">1돌</option><option value="2">2돌</option><option value="3">3돌</option><option value="4">4돌</option><option value="5">5돌</option><option value="6">6돌</option></select></label>
           <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="nStar5" style="accent-color:var(--accent)"> 5성</label>
         </div>
         <button class="btn btn-accent" style="justify-content:center" onclick="addChar()"><i class="ti ti-plus"></i> 추가</button>
@@ -705,6 +719,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <div><p style="font-size:12px;color:var(--text2);margin-bottom:5px">속성</p><div class="apills" id="eAttrs"></div></div>
       <div style="display:flex;gap:14px;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="eDupe" style="accent-color:var(--accent)"> 2회 사용</label>
+        <label>돌파<select class="fi" id="eBreakthrough"><option value="">미설정</option><option value="0">0돌</option><option value="1">1돌</option><option value="2">2돌</option><option value="3">3돌</option><option value="4">4돌</option><option value="5">5돌</option><option value="6">6돌</option></select></label>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer"><input type="checkbox" id="eStar5" style="accent-color:var(--accent)"> 5성</label>
       </div>
       <button class="btn btn-accent" style="justify-content:center" onclick="saveEditChar()">저장</button>
@@ -974,6 +989,35 @@ window.FB = {
     data.notes.forEach(n=>batch.set(doc(db,'users',uid,'mongil_notes',n.id),n));
     stale.forEach(n=>batch.delete(n.ref));await batch.commit();
   },
+  async loadAP(){
+    const uid=_uid;
+    const [d,n]=await Promise.all([getDoc(doc(db,'users',uid,'azur_data','workspace')),getDocs(collection(db,'users',uid,'azur_notes'))]);
+    const state=d.exists()?d.data():{chars:[],squads:[]};
+    return {initialized:d.exists(),chars:await unpackImages(state.chars||[],uid,'azur'),squads:state.squads||[],notes:n.docs.map(x=>({...x.data(),id:x.id}))};
+  },
+  async saveAP(data){
+    const uid=_uid,epoch=sessionEpoch;
+    const packed={chars:await packImages(data.chars,uid,'azur'),squads:data.squads};
+    if(uid!==_uid||epoch!==sessionEpoch)throw new Error('저장 중 계정이 변경되었습니다');
+    if(new TextEncoder().encode(JSON.stringify(packed)).length>800000)throw new Error('캐릭터·파티 데이터가 너무 큽니다');
+    await setDoc(doc(db,'users',uid,'azur_data','workspace'),packed);
+  },
+  async saveAPNote(note){
+    if(new TextEncoder().encode(JSON.stringify(note)).length>800000)throw new Error('노트가 너무 큽니다');
+    await setDoc(doc(db,'users',_uid,'azur_notes',note.id),note);
+  },
+  async restoreAP(data){
+    const uid=_uid,epoch=sessionEpoch;
+    const old=await getDocs(collection(db,'users',uid,'azur_notes'));
+    const ids=new Set(data.notes.map(n=>n.id)),stale=old.docs.filter(n=>!ids.has(n.id));
+    if(data.notes.length+stale.length+1>450)throw new Error('안전한 일괄 복원 범위를 넘었습니다');
+    const packed={chars:await packImages(data.chars,uid,'azur'),squads:data.squads};
+    if(new TextEncoder().encode(JSON.stringify(packed)).length>800000)throw new Error('복원 데이터가 너무 큽니다');
+    if(uid!==_uid||epoch!==sessionEpoch)throw new Error('복원 중 계정이 변경되었습니다');
+    const batch=writeBatch(db);batch.set(doc(db,'users',uid,'azur_data','workspace'),packed);
+    data.notes.forEach(n=>batch.set(doc(db,'users',uid,'azur_notes',n.id),n));
+    stale.forEach(n=>batch.delete(n.ref));await batch.commit();
+  },
   async replaceSnapshot(data){
     const uid=_uid;
     const oldSeasons=await getDocs(collection(db,'users',uid,'ww_seasons')),oldNotes=await getDocs(collection(db,'users',uid,'ww_notes'));
@@ -1094,20 +1138,21 @@ const DC=[
 // ── 상태 ──
 let activeGame='ww',gameSwitchBusy=false;
 async function switchGame(game){
-  if(!['ww','gf2','mongil'].includes(game)||gameSwitchBusy||game===activeGame){document.getElementById('gameSelect').value=activeGame;return;}
+  if(!['ww','gf2','mongil','azur'].includes(game)||gameSwitchBusy||game===activeGame){document.getElementById('gameSelect').value=activeGame;return;}
   if(!dataReady||document.querySelector('.modal-bg.open')){document.getElementById('gameSelect').value=activeGame;showToast('열린 편집창을 저장하거나 닫은 뒤 게임을 전환해 주세요');return;}
   gameSwitchBusy=true;const epoch=sessionEpoch;
   document.getElementById('gameSelect').disabled=true;
   document.getElementById('app').inert=true;
   try{
     await flushAllWrites();assertSession(epoch);
-    if(game==='gf2')await GF.load();if(game==='mongil')await MG.load();assertSession(epoch);
+    if(game==='gf2')await GF.load();if(game==='mongil')await MG.load();if(game==='azur')await AP.load();assertSession(epoch);
     activeGame=game;
     document.getElementById('wwWorkspace').hidden=game!=='ww';
     document.getElementById('gfWorkspace').hidden=game!=='gf2';
     document.getElementById('mgWorkspace').hidden=game!=='mongil';
-    document.getElementById('gameTitle').textContent=game==='ww'?'매트릭스 파티 편성':game==='gf2'?'소녀전선2 · 제대와 공략':'몬길: STAR DIVE · 파티와 공략';
-    if(game==='gf2')GF.render();if(game==='mongil')MG.render();
+    document.getElementById('apWorkspace').hidden=game!=='azur';
+    document.getElementById('gameTitle').textContent=game==='ww'?'매트릭스 파티 편성':game==='gf2'?'소녀전선2 · 제대와 공략':game==='azur'?'아주르 프로밀리아 · 캐릭터와 키보':'몬길: STAR DIVE · 파티와 공략';
+    if(game==='gf2')GF.render();if(game==='mongil')MG.render();if(game==='azur')AP.render();
   }catch(e){showToast('게임 전환 실패: '+e.message);}
   finally{if(epoch===sessionEpoch){gameSwitchBusy=false;document.getElementById('gameSelect').disabled=false;document.getElementById('gameSelect').value=activeGame;document.getElementById('app').inert=false;}}
 }
@@ -1193,7 +1238,7 @@ const GF={
   async flush(){if(this.timer){clearTimeout(this.timer);this.timer=null;await this.save();}},
   manageChars(){this.editor={type:'char-list'};this.modal('캐릭터 목록 수정',`<p class="note-meta">이 목록은 직접 관리합니다. 이름·속성·초상화·메모를 수정하거나 캐릭터를 추가·삭제할 수 있습니다. 삭제한 캐릭터는 자동으로 다시 등록되지 않습니다.</p><div class="gf-toolbar"><input id="gfManageSearch" class="field" placeholder="이름·속성·역할 검색" aria-label="수정할 캐릭터 검색" oninput="GF.renderCharManager()"><button class="btn btn-accent" onclick="GF.editChar()">+ 캐릭터 등록</button></div><div id="gfManageList"></div>`);this.renderCharManager();},
   renderCharManager(){const q=document.getElementById('gfManageSearch').value.trim().toLowerCase();document.getElementById('gfManageList').innerHTML=this.chars.filter(c=>!c.deleted&&[c.name,c.element,c.group].join(' ').toLowerCase().includes(q)).map(c=>`<div class="gf-toolbar"><strong>${esc(c.name)}</strong><span class="note-meta">${esc(c.group||gfElement(c))}</span><button class="btn btn-sm" style="margin-left:auto" onclick="GF.editChar('${c.id}')">수정</button></div>`).join('')||'<p class="note-meta">검색 결과가 없습니다.</p>';},
-  portrait(c){const src=c?.img,element=gfElement(c),color=GF_ELEMENTS[element];return `<div class="gf-portrait"${color?` style="--gf-element-bg:${color.bg};--gf-element-text:${color.text}"`:''}>${src?`<img src="${esc(src)}" alt="" onerror="this.hidden=true">`:esc(c?.name?.slice(0,2)||'+')}${typeof c?.star5==='boolean'?`<span class="mg-rarity ${c.star5?'is-five':'is-four'}">★${c.star5?5:4}</span>`:''}${element?`<span class="gf-element-badge">${element}</span>`:''}</div>`;},
+  portrait(c){const src=c?.img,element=gfElement(c),color=GF_ELEMENTS[element];return `<div class="gf-portrait"${color?` style="--gf-element-bg:${color.bg};--gf-element-text:${color.text}"`:''}>${src?`<img src="${esc(src)}" alt="" onerror="this.hidden=true">`:esc(c?.name?.slice(0,2)||'+')}${breakthroughBadge(c)}${typeof c?.star5==='boolean'?`<span class="mg-rarity ${c.star5?'is-five':'is-four'}">★${c.star5?5:4}</span>`:''}${element?`<span class="gf-element-badge">${element}</span>`:''}</div>`;},
   mode(view){this.scrolls[this.view]=document.getElementById('gfContent').scrollTop;this.view=view;this.render();document.getElementById('gfContent').scrollTop=this.scrolls[view]||0;},
   render(){this.renderRoster();this.renderMain();if(this.view==='notes'){document.getElementById('gfNoteSearch').value=this.noteQuery;this.filterNotes(this.noteQuery);}document.getElementById('gfSquadTab').classList.toggle('btn-accent',this.view==='squads');document.getElementById('gfNoteTab').classList.toggle('btn-accent',this.view==='notes');},
   renderRoster(){
@@ -1235,10 +1280,10 @@ const GF={
   pickSlot(sid,slot){if(!this.squads.some(s=>s.id===sid))return;this.editor={type:'slot'};this.modal('제대 캐릭터 선택',`<div class="gf-element-choices"><button class="btn" onclick="GF.assign('${sid}',${slot},null)">슬롯 비우기</button><select id="gfSlotElement" class="field" aria-label="제대 배치 속성 필터" onchange="GF.renderSlotChoices('${sid}',${slot})">${gfElementOptions('',true)}</select></div><div class="gf-roster" id="gfSlotChoices"></div>`);this.renderSlotChoices(sid,slot);},
   renderSlotChoices(sid,slot){const squad=this.squads.find(s=>s.id===sid);if(!squad)return;const filter=document.getElementById('gfSlotElement').value;document.getElementById('gfSlotChoices').innerHTML=this.chars.filter(c=>!c.deleted&&gfMatchElement(c,filter)).map(c=>`<button class="gf-char" ${squad.slots.includes(c.id)&&squad.slots[slot]!==c.id?'disabled':''} onclick="GF.assign('${sid}',${slot},'${c.id}')">${this.portrait(c)}<small>${esc(c.name)}</small></button>`).join('')||'<p class="note-meta">해당 속성의 캐릭터가 없습니다.</p>';},
   async assign(sid,slot,cid){const s=this.squads.find(s=>s.id===sid);if(!s||slot<0||slot>4||cid&&(!this.chars.some(c=>c.id===cid&&!c.deleted)||s.slots.some((id,i)=>id===cid&&i!==slot)))return;s.slots[slot]=cid;this.closeEditor();this.renderMain();await this.save();},
-  editChar(id=null){const c=this.chars.find(c=>c.id===id)||{name:'',group:'',memo:'',img:null};this.editor={type:'char',id:id||genId('gfchar'),img:c.img,epoch:sessionEpoch};this.modal(id?'캐릭터 편집':'캐릭터 등록',`<label>이름<input class="field" id="gfcName" value="${esc(c.name)}"></label><label>등급<select class="field" id="gfcRarity" onchange="GF.updateCharPreview()"><option value="" ${typeof c.star5!=='boolean'?'selected':''}>미지정</option><option value="5" ${c.star5===true?'selected':''}>★5 · 정예</option><option value="4" ${c.star5===false?'selected':''}>★4 · 표준</option></select></label><label>속성<select class="field" id="gfcElement" onchange="GF.updateCharPreview()">${gfElementOptions(gfElement(c))}</select></label><label>분류 · 역할 (자유 입력)<input class="field" id="gfcGroup" value="${esc(c.group||'')}"></label><label>간단 메모<textarea class="textarea" id="gfcMemo">${esc(c.memo||'')}</textarea></label><label>초상화 · 파일 선택 또는 Ctrl+V<input type="file" accept="image/*" onchange="GF.image(this.files[0])"></label><div id="gfcPreview">${this.portrait(c)}</div><button class="btn btn-sm" onclick="GF.editor.img=null;GF.updateCharPreview()">이미지 제거</button><div class="gf-toolbar"><button class="btn btn-accent" onclick="GF.saveChar()">서버에 저장</button>${id?`<button class="btn" onclick="GF.deleteChar('${id}')">캐릭터 삭제</button>`:''}</div>`);},
+  editChar(id=null){const c=this.chars.find(c=>c.id===id)||{name:'',group:'',memo:'',img:null};this.editor={type:'char',id:id||genId('gfchar'),img:c.img,epoch:sessionEpoch};this.modal(id?'캐릭터 편집':'캐릭터 등록',`<label>이름<input class="field" id="gfcName" value="${esc(c.name)}"></label><label>돌파<select class="field" id="gfcBreakthrough" onchange="GF.updateCharPreview()">${breakthroughOptions(c.breakthrough)}</select></label><label>등급<select class="field" id="gfcRarity" onchange="GF.updateCharPreview()"><option value="" ${typeof c.star5!=='boolean'?'selected':''}>미지정</option><option value="5" ${c.star5===true?'selected':''}>★5 · 정예</option><option value="4" ${c.star5===false?'selected':''}>★4 · 표준</option></select></label><label>속성<select class="field" id="gfcElement" onchange="GF.updateCharPreview()">${gfElementOptions(gfElement(c))}</select></label><label>분류 · 역할 (자유 입력)<input class="field" id="gfcGroup" value="${esc(c.group||'')}"></label><label>간단 메모<textarea class="textarea" id="gfcMemo">${esc(c.memo||'')}</textarea></label><label>초상화 · 파일 선택 또는 Ctrl+V<input type="file" accept="image/*" onchange="GF.image(this.files[0])"></label><div id="gfcPreview">${this.portrait(c)}</div><button class="btn btn-sm" onclick="GF.editor.img=null;GF.updateCharPreview()">이미지 제거</button><div class="gf-toolbar"><button class="btn btn-accent" onclick="GF.saveChar()">서버에 저장</button>${id?`<button class="btn" onclick="GF.deleteChar('${id}')">캐릭터 삭제</button>`:''}</div>`);},
   image(file){const editor=this.editor;if(editor?.type!=='char')return;processImage(file,out=>{if(this.editor!==editor||editor.epoch!==sessionEpoch)return;editor.img=out;this.updateCharPreview();});},
-  updateCharPreview(){if(this.editor?.type==='char')document.getElementById('gfcPreview').innerHTML=this.portrait({name:document.getElementById('gfcName').value,img:this.editor.img,star5:document.getElementById('gfcRarity').value==='5'?true:document.getElementById('gfcRarity').value==='4'?false:null,element:document.getElementById('gfcElement').value});},
-  async saveChar(){if(this.editor?.type!=='char')return;const name=document.getElementById('gfcName').value.trim();if(!name){showToast('이름을 입력하세요');return;}const old=this.chars.find(c=>c.id===this.editor.id),element=document.getElementById('gfcElement').value;if(element&&!Object.hasOwn(GF_ELEMENTS,element))return;const c={id:this.editor.id,name,star5:document.getElementById('gfcRarity').value==='5'?true:document.getElementById('gfcRarity').value==='4'?false:null,element,elementEdited:!!(old?.elementEdited||!old||gfElement(old)!==element),group:document.getElementById('gfcGroup').value.trim(),memo:document.getElementById('gfcMemo').value,img:this.editor.img||null};if(old&&c.group===old.group&&gfElement(old)!==element){c.group=c.group.split(' · ').map(t=>t===gfElement(old)?element:t).filter(Boolean).join(' · ');}const i=this.chars.findIndex(x=>x.id===c.id);if(i<0)this.chars.push(c);else this.chars[i]={...this.chars[i],...c};this.closeEditor();this.render();await this.save();},
+  updateCharPreview(){if(this.editor?.type==='char')document.getElementById('gfcPreview').innerHTML=this.portrait({name:document.getElementById('gfcName').value,breakthrough:readBreakthrough('gfcBreakthrough'),img:this.editor.img,star5:document.getElementById('gfcRarity').value==='5'?true:document.getElementById('gfcRarity').value==='4'?false:null,element:document.getElementById('gfcElement').value});},
+  async saveChar(){if(this.editor?.type!=='char')return;const name=document.getElementById('gfcName').value.trim();if(!name){showToast('이름을 입력하세요');return;}const old=this.chars.find(c=>c.id===this.editor.id),element=document.getElementById('gfcElement').value;if(element&&!Object.hasOwn(GF_ELEMENTS,element))return;const c={id:this.editor.id,name,breakthrough:readBreakthrough('gfcBreakthrough'),star5:document.getElementById('gfcRarity').value==='5'?true:document.getElementById('gfcRarity').value==='4'?false:null,element,elementEdited:!!(old?.elementEdited||!old||gfElement(old)!==element),group:document.getElementById('gfcGroup').value.trim(),memo:document.getElementById('gfcMemo').value,img:this.editor.img||null};if(old&&c.group===old.group&&gfElement(old)!==element){c.group=c.group.split(' · ').map(t=>t===gfElement(old)?element:t).filter(Boolean).join(' · ');}const i=this.chars.findIndex(x=>x.id===c.id);if(i<0)this.chars.push(c);else this.chars[i]={...this.chars[i],...c};this.closeEditor();this.render();await this.save();},
   async deleteChar(id){if(!confirm('캐릭터를 목록과 제대에서 제거할까요? 연결된 공략 노트는 유지됩니다.'))return;const c=this.chars.find(c=>c.id===id);if(!c)return;c.deleted=true;this.squads.forEach(s=>s.slots=s.slots.map(v=>v===id?null:v));this.selectedChar=null;this.scope='all';this.closeEditor();this.render();await this.save();},
   draftKey(){return 'gf2-note-draft:'+window.FB.uid;},
   readNote(){return {id:this.editor.id,title:document.getElementById('gfnTitle').value.trim(),body:document.getElementById('gfnBody').value,kind:document.getElementById('gfnKind').value.trim(),sources:document.getElementById('gfnSources').value.split('\n').map(s=>s.trim()).filter(Boolean),charIds:Array.from(document.querySelectorAll('#gfnChars input:checked'),el=>el.value),noteImage:this.editor.noteImage||null};},
@@ -1380,6 +1425,104 @@ const MG={
   }
 };
 document.addEventListener('paste',e=>{if(activeGame!=='mongil'||!isOpen('mgModal'))return;const item=Array.from(e.clipboardData?.items||[]).find(x=>x.type.startsWith('image/'));if(!item)return;if(MG.editor?.type==='note'){e.preventDefault();MG.noteImage(item.getAsFile());}else if(MG.editor?.type==='char'){e.preventDefault();MG.image(item.getAsFile());}});
+
+// 공개 전투 구성 및 명칭: https://peak.nexon.com/en/post/1391 (2026-05-10). 능력치/등급은 추정하지 않는다.
+const AP_CATALOG=[...['캐시벨','애니스','멧사','한유유','아비'].map(name=>({name,kind:'character'})),...['쿠쿠르케','스타 만타','레이저','블루 시그니','불티새','하로'].map(name=>({name,kind:'kibo'}))].map((c,i)=>({...c,id:'ap_seed_'+i,owned:false,element:'',group:'',memo:'',img:null}));
+function apElement(c){return c?.element||'';}
+const AP={
+  chars:[],squads:[],notes:[],loaded:false,view:'squads',selectedChar:null,selectedNote:null,scope:'all',timer:null,editor:null,dragId:null,noteQuery:'',scrolls:{squads:0,notes:0},
+  reset(){clearTimeout(this.timer);this.timer=null;this.chars=[];this.squads=[];this.notes=[];this.loaded=false;this.view='squads';this.selectedChar=null;this.selectedNote=null;this.scope='all';this.editor=null;this.dragId=null;this.noteQuery='';this.scrolls={squads:0,notes:0};},
+  async load(){if(this.loaded)return;const epoch=sessionEpoch,data=await window.FB.loadAP();assertSession(epoch);this.chars=data.initialized===false?AP_CATALOG.map(c=>({...c})):data.chars;this.squads=data.squads;this.notes=data.notes;if(data.initialized===false){await this.save();assertSession(epoch);}this.loaded=true;},
+  async save(){const snapshot=cloneData({chars:this.chars,squads:this.squads});return queueWrite('azur:workspace',()=>window.FB.saveAP(snapshot));},
+  schedule(){clearTimeout(this.timer);this.timer=setTimeout(()=>{this.timer=null;this.save();},600);updateSaveStatus();},
+  async flush(){if(this.timer){clearTimeout(this.timer);this.timer=null;await this.save();}},
+  manageChars(){this.editor={type:'char-list'};this.modal('캐릭터·키보 목록 수정',`<p class="note-meta">이 목록은 직접 관리합니다. 이름·속성·초상화·메모를 수정하거나 캐릭터를 추가·삭제할 수 있습니다. 삭제한 캐릭터는 자동으로 다시 등록되지 않습니다.</p><div class="gf-toolbar"><input id="apManageSearch" class="field" placeholder="이름·속성·역할 검색" aria-label="수정할 캐릭터 검색" oninput="AP.renderCharManager()"><button class="btn btn-accent" onclick="AP.editChar()">+ 캐릭터·키보 등록</button></div><div id="apManageList"></div>`);this.renderCharManager();},
+  renderCharManager(){const q=document.getElementById('apManageSearch').value.trim().toLowerCase();document.getElementById('apManageList').innerHTML=this.chars.filter(c=>!c.deleted&&[c.name,c.element,c.group].join(' ').toLowerCase().includes(q)).map(c=>`<div class="gf-toolbar"><label><input type="checkbox" ${c.owned?'checked':''} aria-label="${esc(c.name)} 보유" onchange="AP.setOwned('${c.id}',this.checked)"> 보유</label><strong>${esc(c.name)}</strong><span class="note-meta">${esc(c.group||apElement(c))}</span><button class="btn btn-sm" style="margin-left:auto" onclick="AP.editChar('${c.id}')">수정</button></div>`).join('')||'<p class="note-meta">검색 결과가 없습니다.</p>';},
+  async setOwned(id,owned){const c=this.chars.find(c=>c.id===id&&!c.deleted);if(!c)return;c.owned=owned;this.renderRoster();await this.save();},
+  portrait(c){return `<div class="gf-portrait" style="background:${c?.kind==='kibo'?'#163b38':'#24334c'}">${c?.img?`<img src="${esc(c.img)}" alt="" onerror="this.hidden=true">`:esc(c?.name?.slice(0,2)||'+')}<span class="gf-element-badge">${c?c.kind==='kibo'?'키보':'캐릭터':''}</span></div>`;},
+  mode(view){this.scrolls[this.view]=document.getElementById('apContent').scrollTop;this.view=view;this.render();document.getElementById('apContent').scrollTop=this.scrolls[view]||0;},
+  render(){this.renderRoster();this.renderMain();if(this.view==='notes'){document.getElementById('apNoteSearch').value=this.noteQuery;this.filterNotes(this.noteQuery);}document.getElementById('apSquadTab').classList.toggle('btn-accent',this.view==='squads');document.getElementById('apNoteTab').classList.toggle('btn-accent',this.view==='notes');},
+  renderRoster(){
+    const q=document.getElementById('apCharSearch').value.trim().toLowerCase();
+    const filter=document.getElementById('apElementFilter'),selected=filter.value;
+    filter.innerHTML='<option value="">모두</option><option value="character">캐릭터</option><option value="kibo">키보</option>';filter.value=selected;
+    const visible=this.chars.filter(c=>!c.deleted&&(!document.getElementById('apOwnedOnly').checked||c.owned)&&(!selected||c.kind===selected)&&(!q||[c.name,c.group,c.element,c.memo].join(' ').toLowerCase().includes(q)));
+    document.getElementById('apRoster').innerHTML=['character','kibo'].map(kind=>'<p class="sec-title">'+(kind==='kibo'?'키보':'캐릭터')+'</p>'+visible.filter(c=>c.kind===kind).map(c=>`<button class="gf-char${c.owned?'':' mg-unowned'}" aria-pressed="${this.selectedChar===c.id}" onclick="AP.selectChar('${c.id}')">${this.portrait(c)}<small>${esc(c.name)}</small></button>`).join('')).join('');
+  },
+  selectChar(id){this.selectedChar=id;this.selectedNote=null;this.scope='char';this.noteQuery='';this.mode('notes');},
+  setScope(scope){this.scope=scope;this.selectedChar=null;this.selectedNote=null;this.render();},
+  renderMain(){
+    const actions=document.getElementById('apActions'),content=document.getElementById('apContent');
+    if(this.view==='squads'){
+      actions.innerHTML='<strong>파티 · 캐릭터 3명 + 키보 3마리</strong><button class="btn btn-accent btn-sm" onclick="AP.addSquad()">+ 파티 추가</button><span class="note-meta">공개 전투 소개 기준 · 세로로 연결된 캐릭터와 키보가 한 쌍입니다.</span>';
+      content.innerHTML=this.squads.map((s,i)=>`<article class="gf-squad" ondragover="event.preventDefault()" ondrop="AP.dropSquad(event,'${s.id}')"><div style="display:flex;gap:6px;align-items:center"><span draggable="true" ondragstart="AP.dragId='${s.id}';event.dataTransfer.setData('text/plain','${s.id}')" ondragend="AP.dragId=null" title="파티 순서 변경" style="cursor:grab">⠿</span><input class="field" style="min-width:0;flex:1" aria-label="파티 이름" value="${esc(s.name)}" oninput="AP.updateSquad('${s.id}','name',this.value)"><button class="btn btn-sm" onclick="AP.moveSquad('${s.id}',-1)" ${i===0?'disabled':''} aria-label="파티 위로">↑</button><button class="btn btn-sm" onclick="AP.moveSquad('${s.id}',1)" ${i===this.squads.length-1?'disabled':''} aria-label="파티 아래로">↓</button><button class="btn btn-sm" onclick="AP.removeSquad('${s.id}')" aria-label="파티 삭제">×</button></div><div class="ap-pairs">${this.pairSlots(s)}</div><textarea class="textarea" style="width:100%;min-height:55px" aria-label="파티 용도와 운용 메모" placeholder="용도 · 운용법 · 교체 후보" oninput="AP.updateSquad('${s.id}','memo',this.value)">${esc(s.memo||'')}</textarea></article>`).join('')||'<p class="note-meta">파티를 추가하고 3개의 슬롯을 눌러 캐릭터를 배치하세요.</p>';
+      return;
+    }
+    const c=this.chars.find(c=>c.id===this.selectedChar&&!c.deleted);
+    actions.innerHTML=`${['all','general','trash'].map((k,i)=>`<button class="btn btn-sm ${this.scope===k?'btn-accent':''}" onclick="AP.setScope('${k}')">${['전체','일반 공략','휴지통'][i]}</button>`).join('')}<strong>${esc(c?c.name+' 공략':'공략 노트')}</strong>${c?`<button class="btn btn-sm" onclick="AP.editChar('${c.id}')">캐릭터·키보 편집</button>`:''}<button class="btn btn-accent btn-sm" onclick="AP.editNote()">+ 새 노트</button><button class="btn btn-sm" onclick="AP.recoverDraft()">임시 글 복구</button>`;
+    const list=this.notes.filter(n=>!!n.deletedAt===(this.scope==='trash')&&(this.scope!=='char'||(n.charIds||[]).includes(this.selectedChar))&&(this.scope!=='general'||n.kind==='일반 공략')).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
+    if(!list.some(n=>n.id===this.selectedNote))this.selectedNote=null;
+    const selected=list.find(n=>n.id===this.selectedNote);
+    content.innerHTML=`<input class="field" style="width:100%" id="apNoteSearch" placeholder="제목·본문 검색" aria-label="아주르 프로밀리아 공략 검색" oninput="AP.filterNotes(this.value)"><p class="note-meta">노트 목록 · ${list.length}개 — 같은 노트를 다시 누르면 접힙니다.</p><div id="apNoteList">${list.map(n=>`<button class="btn gf-note" data-ap-note="${n.id}" aria-pressed="${selected?.id===n.id}" onclick="AP.openNote('${n.id}')">${esc(n.title)}<small class="note-meta" style="display:block">${esc(n.kind||'공략')}</small>${noteDatesHTML(n)}</button>`).join('')||'<p class="note-meta">아직 노트가 없습니다.</p>'}</div><div id="apNoteDetail">${selected?this.noteDetail(selected):''}</div>`;
+  },
+  filterNotes(q){this.noteQuery=q;q=q.toLowerCase();document.querySelectorAll('[data-ap-note]').forEach(el=>{const n=this.notes.find(n=>n.id===el.dataset.apNote);el.hidden=![n?.title,n?.body].join(' ').toLowerCase().includes(q);});},
+  openNote(id){const search=document.getElementById('apNoteSearch').value;this.selectedNote=this.selectedNote===id?null:id;this.renderMain();document.getElementById('apNoteSearch').value=search;this.filterNotes(search);},
+  noteDetail(n){
+    const body=(n.body||'').split('\n').map((line,i)=>{const m=line.match(/^\s*- \[([ xX])\] (.*)$/);return m?`<label style="display:block"><input type="checkbox" ${m[1]!==' '?'checked':''} ${n.deletedAt?'disabled':''} onchange="AP.checkNote('${n.id}',${i},this.checked)"> ${linkedText(m[2])}</label>`:linkedText(line);}).join('\n');
+    return `<article class="gf-detail"><p class="note-meta">선택한 노트 · 읽기</p><h3>${esc(n.title)}</h3>${noteDatesHTML(n)}<div class="gf-toolbar">${n.deletedAt?`<button class="btn btn-sm" onclick="AP.trashNote('${n.id}',false)">복구</button>`:`<button class="btn btn-sm" onclick="AP.editNote('${n.id}')">편집</button><button class="btn btn-sm" onclick="AP.trashNote('${n.id}',true)">휴지통</button>`}</div>${noteImageHTML(n.noteImage,n.title)}<div class="note-body">${body}</div>${(n.sources||[]).map(s=>'<p>'+linkedText(s)+'</p>').join('')}</article>`;
+  },
+  async addSquad(){this.squads.push({id:genId('squad'),name:'파티 '+(this.squads.length+1),slots:Array(3).fill(null),kibos:Array(3).fill(null),memo:''});this.renderMain();await this.save();},
+  updateSquad(id,key,value){const s=this.squads.find(s=>s.id===id);if(s&&['name','memo'].includes(key)){s[key]=value;this.schedule();}},
+  async moveSquad(id,delta){const i=this.squads.findIndex(s=>s.id===id),to=i+delta;if(i<0||to<0||to>=this.squads.length)return;this.squads.splice(to,0,this.squads.splice(i,1)[0]);this.renderMain();await this.save();},
+  async dropSquad(e,id){e.preventDefault();const from=this.squads.findIndex(s=>s.id===this.dragId),to=this.squads.findIndex(s=>s.id===id);this.dragId=null;if(from<0||to<0||from===to)return;this.squads.splice(to,0,this.squads.splice(from,1)[0]);this.renderMain();await this.save();},
+  async removeSquad(id){if(!confirm('이 파티를 삭제할까요? 캐릭터와 공략은 유지됩니다.'))return;this.squads=this.squads.filter(s=>s.id!==id);this.renderMain();await this.save();},
+  modal(title,body){document.getElementById('apModalBody').innerHTML=`<div class="gf-toolbar"><h3>${esc(title)}</h3><button class="btn btn-sm" style="margin-left:auto" onclick="AP.closeEditor()">닫기</button></div>${body}`;document.getElementById('apModal').classList.add('open');},
+  closeEditor(){if(this.editor?.type==='note')this.cacheDraft();this.editor=null;closeM('apModal');},
+  pickSlot(sid,slot,kind='character'){const squad=this.squads.find(s=>s.id===sid);if(!squad)return;this.editor={type:'slot'};const key=kind==='kibo'?'kibos':'slots';this.modal(kind==='kibo'?'키보 선택':'캐릭터 선택',`<button class="btn" onclick="AP.assign('${sid}',${slot},null,'${kind}')">비우기</button><div class="gf-roster">${this.chars.filter(c=>!c.deleted&&c.kind===kind).map(c=>`<button class="gf-char" ${(squad[key]||[]).includes(c.id)&&squad[key]?.[slot]!==c.id?'disabled':''} onclick="AP.assign('${sid}',${slot},'${c.id}','${kind}')">${this.portrait(c)}<small>${esc(c.name)}</small></button>`).join('')}</div>`);},
+  pairSlots(s){return [0,1,2].map(i=>'<div class="ap-pair">'+['character','kibo'].map(kind=>{const key=kind==='kibo'?'kibos':'slots',c=this.chars.find(c=>c.id===s[key]?.[i]&&!c.deleted);return `<button class="gf-char" onclick="AP.pickSlot('${s.id}',${i},'${kind}')">${this.portrait(c)}<small>${esc(c?.name||(kind==='kibo'?'키보 배치':'캐릭터 배치'))}</small></button>`;}).join('<span class="note-meta" style="text-align:center">↕</span>')+'</div>').join('');},
+  async assign(sid,slot,cid,kind='character'){const s=this.squads.find(s=>s.id===sid),key=kind==='kibo'?'kibos':'slots';if(!s||slot<0||slot>2||!Number.isInteger(slot))return;const slots=s[key]||[null,null,null];if(cid&&(!this.chars.some(c=>c.id===cid&&!c.deleted&&c.kind===kind)||slots.some((id,i)=>id===cid&&i!==slot)))return;s[key]=slots;s[key][slot]=cid;this.closeEditor();this.renderMain();await this.save();},
+  editChar(id=null){const c=this.chars.find(c=>c.id===id)||{name:'',group:'',memo:'',img:null};this.editor={type:'char',id:id||genId('apchar'),img:c.img,epoch:sessionEpoch};this.modal(id?'캐릭터·키보 편집':'캐릭터·키보 등록',`<label>이름<input class="field" id="apcName" value="${esc(c.name)}"></label><label><input type="checkbox" id="apcOwned" ${c.owned?'checked':''}> 보유 중</label><label>종류<select class="field" id="apcKind" ${id?'disabled':''}><option value="character" ${c.kind!=='kibo'?'selected':''}>캐릭터</option><option value="kibo" ${c.kind==='kibo'?'selected':''}>키보</option></select></label><label>속성 (자유 입력)<input class="field" id="apcElement" value="${esc(c.element||'')}"></label><label>분류 · 역할 (자유 입력)<input class="field" id="apcGroup" value="${esc(c.group||'')}"></label><label>간단 메모<textarea class="textarea" id="apcMemo">${esc(c.memo||'')}</textarea></label><label>초상화 · 파일 선택 또는 Ctrl+V<input type="file" accept="image/*" onchange="AP.image(this.files[0])"></label><div id="apcPreview">${this.portrait(c)}</div><button class="btn btn-sm" onclick="AP.editor.img=null;AP.updateCharPreview()">이미지 제거</button><div class="gf-toolbar"><button class="btn btn-accent" onclick="AP.saveChar()">서버에 저장</button>${id?`<button class="btn" onclick="AP.deleteChar('${id}')">캐릭터 삭제</button>`:''}</div>`);},
+  image(file){const editor=this.editor;if(editor?.type!=='char')return;processImage(file,out=>{if(this.editor!==editor||editor.epoch!==sessionEpoch)return;editor.img=out;this.updateCharPreview();});},
+  updateCharPreview(){if(this.editor?.type==='char')document.getElementById('apcPreview').innerHTML=this.portrait({name:document.getElementById('apcName').value,img:this.editor.img,kind:document.getElementById('apcKind').value});},
+  async saveChar(){if(this.editor?.type!=='char')return;const name=document.getElementById('apcName').value.trim();if(!name){showToast('이름을 입력하세요');return;}const old=this.chars.find(c=>c.id===this.editor.id);const c={...old,id:this.editor.id,name,kind:old?.kind||(document.getElementById('apcKind').value==='kibo'?'kibo':'character'),owned:document.getElementById('apcOwned').checked,element:document.getElementById('apcElement').value.trim(),group:document.getElementById('apcGroup').value.trim(),memo:document.getElementById('apcMemo').value,img:this.editor.img||null};const i=this.chars.findIndex(x=>x.id===c.id);if(i<0)this.chars.push(c);else this.chars[i]=c;this.closeEditor();this.render();await this.save();},
+  async deleteChar(id){if(!confirm('캐릭터를 목록과 파티에서 제거할까요? 연결된 공략 노트는 유지됩니다.'))return;const c=this.chars.find(c=>c.id===id);if(!c)return;c.deleted=true;this.squads.forEach(s=>{s.slots=s.slots.map(v=>v===id?null:v);s.kibos=(s.kibos||[null,null,null]).map(v=>v===id?null:v);});this.selectedChar=null;this.scope='all';this.closeEditor();this.render();await this.save();},
+  draftKey(){return 'azur-note-draft:'+window.FB.uid;},
+  readNote(){return {id:this.editor.id,title:document.getElementById('apnTitle').value.trim(),body:document.getElementById('apnBody').value,kind:document.getElementById('apnKind').value.trim(),sources:document.getElementById('apnSources').value.split('\n').map(s=>s.trim()).filter(Boolean),charIds:Array.from(document.querySelectorAll('#apnChars input:checked'),el=>el.value),noteImage:this.editor.noteImage||null};},
+  cacheDraft(){if(this.editor?.type!=='note')return;try{localStorage.setItem(this.draftKey(),JSON.stringify(this.readNote()));document.getElementById('apnStatus').textContent='기기 임시저장 완료 · 서버 반영은 저장 버튼을 눌러 주세요';}catch(_){showToast('임시저장 실패 · 서버에 저장해 주세요');}},
+  editNote(id=null,draft=null){
+    if(!draft){try{const old=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(old&&old.id!==id&&!confirm('다른 임시 글이 있습니다. 새 작성을 시작할까요?'))return;}catch(_){}}
+    const n=draft||this.notes.find(n=>n.id===id)||{title:'',body:'',kind:this.scope==='general'?'일반 공략':this.selectedChar?'캐릭터 공략':'미분류',sources:[],charIds:this.selectedChar?[this.selectedChar]:[]};
+    this.editor={type:'note',id:id||draft?.id||genId('apnote'),epoch:sessionEpoch,noteImage:n.noteImage||null};
+    this.modal('공략 노트 편집',`<div oninput="AP.cacheDraft()"><label>제목<input class="field" id="apnTitle" value="${esc(n.title)}"></label><label>분류<select class="field" id="apnKind">${noteKindOptions(n.kind||'공략',this.notes)}</select></label><label>내용 · 체크리스트는 - [ ] 항목<textarea class="textarea" id="apnBody" rows="10">${esc(n.body)}</textarea></label><label>출처 링크 · 한 줄에 하나<textarea class="textarea" id="apnSources">${esc((n.sources||[]).join('\n'))}</textarea></label><div class="note-meta">이미지 · Ctrl+V 붙여넣기 (새 이미지는 기존 이미지를 교체합니다)</div><div id="apnImagePreview">${noteImageHTML(n.noteImage)}</div><button class="btn btn-sm" type="button" onclick="AP.editor.noteImage=null;document.getElementById('apnImagePreview').innerHTML='';AP.cacheDraft()">이미지 제거</button><p>관련 캐릭터·키보 (여러 항목 선택)</p><div id="apnChars">${this.chars.filter(c=>!c.deleted).map(c=>`<label style="display:inline-block;margin-right:10px"><input type="checkbox" value="${c.id}" ${(n.charIds||[]).includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></div><p class="note-meta" id="apnStatus">${draft?'임시 글 복구됨 · 저장 버튼을 눌러 주세요':'작성 중인 내용은 기기에 임시저장됩니다.'}</p><button class="btn btn-accent" id="apnSave" onclick="AP.saveNoteEditor()">서버에 저장</button>`);
+  },
+  recoverDraft(){try{const d=JSON.parse(localStorage.getItem(this.draftKey())||'null');if(d)this.editNote(d.id,d);else showToast('임시 글이 없습니다');}catch(_){showToast('임시 글을 읽을 수 없습니다');}},
+  noteImage(file){const editor=this.editor;if(editor?.type!=='note')return;processNoteImage(file,out=>{if(this.editor!==editor)return;editor.noteImage=out;let el=document.getElementById('apnImagePreview');if(!el){el=document.createElement('div');el.id='apnImagePreview';document.getElementById('apModalBody').appendChild(el);}el.innerHTML=noteImageHTML(out);this.cacheDraft();showToast('노트 이미지 적용됨');});},
+  async persistNote(n){if(new TextEncoder().encode(JSON.stringify(n)).length>800000)throw new Error('노트가 너무 큽니다');const i=this.notes.findIndex(x=>x.id===n.id);if(i<0)this.notes.push(n);else this.notes[i]=n;const value=cloneData(n);await queueWrite('azur:note:'+n.id,()=>window.FB.saveAPNote(value));},
+  async saveNoteEditor(){
+    const editor=this.editor;if(editor?.type!=='note')return;const n=this.readNote();if(!n.title){showToast('제목을 입력하세요');return;}if(n.sources.some(s=>!safeWebURL(s))){showToast('출처는 http 또는 https 링크여야 합니다');return;}
+    const modal=document.getElementById('apModalBody');modal.inert=true;
+    try{await this.persistNote({...this.notes.find(x=>x.id===n.id),...n,...noteEditDates(this.notes.find(x=>x.id===n.id)),deletedAt:null});if(this.editor!==editor||editor.epoch!==sessionEpoch)return;localStorage.removeItem(this.draftKey());this.editor=null;closeM('apModal');this.selectedNote=n.id;this.render();showToast('노트 서버 저장 완료');}finally{modal.inert=false;}
+  },
+  async checkNote(id,line,checked){const n=this.notes.find(n=>n.id===id);if(!n||n.deletedAt)return;const lines=n.body.split('\n');lines[line]=lines[line].replace(/\[[ xX]\]/,checked?'[x]':'[ ]');const updated={...n,body:lines.join('\n'),updatedAt:new Date().toISOString()};refreshNoteDates(updated);await this.persistNote(updated);},
+  async trashNote(id,trash){const n=this.notes.find(n=>n.id===id);if(!n)return;if(trash&&!confirm('노트를 휴지통으로 보낼까요? 복구할 수 있습니다.'))return;const epoch=sessionEpoch;await this.persistNote({...n,deletedAt:trash?new Date().toISOString():null});if(epoch!==sessionEpoch)return;this.selectedNote=null;this.renderMain();},
+  snapshot(){return {game:'azur',version:1,chars:cloneData(this.chars),squads:cloneData(this.squads),notes:cloneData(this.notes)};},
+  validate(raw){
+    if(raw?.game!=='azur'||raw.version!==1)throw new Error('아주르 프로밀리아 백업이 아닙니다');
+    const d=cloneData(raw),validId=x=>typeof x==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(x);
+    for(const key of ['chars','squads','notes'])if(!Array.isArray(d[key])||d[key].some(x=>!x||!validId(x.id))||new Set(d[key].map(x=>x.id)).size!==d[key].length)throw new Error('백업 목록이 손상되었습니다');
+    if(d.chars.some(c=>!['character','kibo'].includes(c.kind)||typeof c.name!=='string'||(c.img!=null&&typeof c.img!=='string')))throw new Error('캐릭터 데이터 오류');
+    const ids=new Set(d.chars.map(c=>c.id));
+    if(d.squads.some(s=>typeof s.name!=='string'||['slots','kibos'].some(key=>!Array.isArray(s[key])||s[key].length!==3||s[key].some(id=>id!==null&&(!ids.has(id)||d.chars.find(c=>c.id===id)?.kind!==(key==='kibos'?'kibo':'character')))||new Set(s[key].filter(Boolean)).size!==s[key].filter(Boolean).length)))throw new Error('캐릭터·키보 편성 데이터 오류');
+    if(d.notes.some(n=>typeof n.title!=='string'||typeof n.body!=='string'||!Array.isArray(n.charIds)||n.charIds.some(id=>!ids.has(id))||!Array.isArray(n.sources)||n.sources.some(s=>!safeWebURL(s))||new TextEncoder().encode(JSON.stringify(n)).length>800000))throw new Error('공략 노트 데이터 오류');return d;
+  },
+  async openBackups(){await flushAllWrites();const epoch=sessionEpoch,list=await window.FB.loadSaves('azur');assertSession(epoch);this.editor={type:'backup'};this.modal('아주르 프로밀리아 백업 / 복원',`<p class="note-meta">이 게임의 캐릭터·파티·공략만 백업합니다. 명조에는 영향을 주지 않습니다.</p><button class="btn btn-accent" onclick="AP.backup()">현재 데이터 백업</button>${list.map(s=>`<div class="gf-toolbar"><span>${esc(s.name)} · ${esc(s.date)}</span><button class="btn btn-sm" onclick="AP.restore('${s.id}')">복원</button></div>`).join('')}`);},
+  async backup(){document.getElementById('apModalBody').inert=true;try{await flushAllWrites();const epoch=sessionEpoch;await window.FB.saveFullBackup('아주르 프로밀리아 '+new Date().toLocaleString('ko'),this.snapshot(),'azur');assertSession(epoch);await this.openBackups();showToast('아주르 프로밀리아 백업 완료');}finally{document.getElementById('apModalBody').inert=false;}},
+  async restore(id){if(!confirm('아주르 프로밀리아 데이터를 이 백업으로 교체할까요? 현재 데이터는 먼저 안전 백업합니다. 명조는 유지됩니다.'))return;document.getElementById('app').inert=true;document.getElementById('apModalBody').inert=true;const epoch=sessionEpoch;
+    try{await flushAllWrites();const d=this.validate(await window.FB.restoreFullBackup(id,'azur'));assertSession(epoch);await window.FB.saveFullBackup('복원 전 안전 백업 '+new Date().toLocaleString('ko'),this.snapshot(),'azur');assertSession(epoch);await window.FB.restoreAP(d);assertSession(epoch);this.chars=d.chars;this.squads=d.squads;this.notes=d.notes;this.selectedChar=null;this.selectedNote=null;this.scope='all';this.closeEditor();this.render();showToast('아주르 프로밀리아 복원 완료');}catch(e){showToast('복원 실패: '+e.message);}finally{if(epoch===sessionEpoch){document.getElementById('app').inert=false;document.getElementById('apModalBody').inert=false;}}
+  }
+};
+document.addEventListener('paste',e=>{if(activeGame!=='azur'||!isOpen('apModal'))return;const item=Array.from(e.clipboardData?.items||[]).find(x=>x.type.startsWith('image/'));if(!item)return;if(AP.editor?.type==='note'){e.preventDefault();AP.noteImage(item.getAsFile());}else if(AP.editor?.type==='char'){e.preventDefault();AP.image(item.getAsFile());}});
+
 
 // buffs/bosses = 전역 풀(벤치). activeBuffs/activeBosses = 현재 시즌에서 활성화된 id 목록.
 let chars=[], parties=[], buffs=[], bosses=[];
@@ -1575,8 +1718,11 @@ let sessionEpoch=0;
 function assertSession(epoch){if(epoch!==sessionEpoch)throw new Error('계정이 변경되어 작업을 중단했습니다');}
 const failedWrites=new Map(),writeVersions=new Map();
 function resetSession(){
+  partyReviewContext=null;document.getElementById('partyReviewModal')?.remove();
+  document.getElementById('apCharSearch').value='';document.getElementById('apElementFilter').value='';document.getElementById('apOwnedOnly').checked=false;
   document.getElementById('charIncludeUnowned').checked=false;
   if(GF.editor?.type==='note')GF.cacheDraft();
+  if(AP.editor?.type==='note')AP.cacheDraft();AP.reset();document.getElementById('apWorkspace').hidden=true;closeM('apModal');
   if(MG.editor?.type==='note')MG.cacheDraft();MG.reset();
   document.getElementById('mgWorkspace').hidden=true;
   document.getElementById('mgCharSearch').value='';document.getElementById('mgElementFilter').value='';document.getElementById('mgOwnedOnly').checked=false;
@@ -1606,6 +1752,7 @@ function updateSaveStatus(){
   const gf=document.getElementById('gfStatus');
   if(gf){gf.textContent=GF.timer?'서버 저장 대기 중…':el.textContent;gf.style.color=el.style.color;}
   const mg=document.getElementById('mgStatus');if(mg){mg.textContent=MG.timer?'서버 저장 대기 중…':el.textContent;mg.style.color=el.style.color;}
+  const ap=document.getElementById('apStatus');if(ap){ap.textContent=AP.timer?'서버 저장 대기 중…':el.textContent;ap.style.color=el.style.color;}
 }
 function queueWrite(key,fn){
   if(!dataReady)return Promise.reject(new Error('데이터를 먼저 다시 불러와 주세요'));
@@ -1632,13 +1779,13 @@ async function retryFailedWrites(){
   if(appMode==='notes')renderNotes();
 }
 async function flushAllWrites(){
-  await GF.flush();await MG.flush();
+  await GF.flush();await MG.flush();await AP.flush();
   await saveSeasonDebounced.flush();
   await writeTail;
   if(failedWrites.size) throw new Error('저장되지 않은 변경이 있습니다');
 }
 window.addEventListener('beforeunload',e=>{
-  if(writeCount||failedWrites.size||saveSeasonDebounced.pending()||GF.timer||MG.timer) {e.preventDefault();e.returnValue='';}
+  if(writeCount||failedWrites.size||saveSeasonDebounced.pending()||GF.timer||MG.timer||AP.timer) {e.preventDefault();e.returnValue='';}
 });
 window.addEventListener('unhandledrejection',e=>{
   console.error(e.reason);showToast('작업 실패: '+(e.reason?.code||e.reason?.message||'다시 시도해 주세요'));e.preventDefault();
@@ -1798,7 +1945,7 @@ async function importPartyFormation(sourceSid){
   try{ d=await window.FB.loadSeasonData(sourceSid); }
   catch(e){ showToast('편성을 불러오지 못했습니다'); return; }
   if(!d||!Array.isArray(d.parties)||!d.parties.length){ showToast('선택한 시즌에 편성이 없습니다'); return; }
-  if(!confirm(`"${source.name}"의 공명자 편성으로 현재 시즌 파티를 교체할까요?\n보스·버프·점수·HP·메모는 복사하지 않습니다.`)) return;
+  if(!confirm(`"${source.name}"의 공명자 편성으로 현재 시즌 파티를 교체할까요?\n현재 파티의 실전 기록도 함께 교체됩니다. 필요한 기록은 먼저 백업해 주세요.\n보스·버프·점수·HP·메모·실전 기록은 복사하지 않습니다.`)) return;
   parties=d.parties.map((p,i)=>({
     name:p.name||`파티 ${i+1}`,
     slots:normalizeSlots(p.slots),
@@ -1903,7 +2050,7 @@ async function deleteSeason(sid){
 function cc(c){ return (c.attr&&ATTRS[c.attr])?ATTRS[c.attr]:COLS[c.color%COLS.length]; }
 function mkBg(c,w,h,fill=false){
   const col=cc(c);
-  const badge=c.attr&&ATTRS[c.attr]?`<span class="attr-badge" style="background:${ATTRS[c.attr].bg};color:${ATTRS[c.attr].text}">${c.attr}</span>`:'';
+  const badge=breakthroughBadge(c)+(c.attr&&ATTRS[c.attr]?`<span class="attr-badge" style="background:${ATTRS[c.attr].bg};color:${ATTRS[c.attr].text}">${c.attr}</span>`:'');
   const nm=esc(c.name.slice(0,2));
   const fb=`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:${Math.floor(w*.28)}px;font-weight:500;background:${col.bg};color:${col.text}">${nm}</div>`;
   if(c.img) return `<div style="width:${fill?'100%':w+'px'};height:${fill?'100%':h+'px'};position:relative;overflow:hidden;background:${col.bg}">${fb}<img src="${esc(c.img)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;z-index:1" onerror="this.style.display='none'"><div style="position:absolute;inset:0;z-index:2;pointer-events:none">${badge}</div></div>`;
@@ -1999,6 +2146,7 @@ function renderParties(){
         <button class="party-order-btn" onclick="moveParty(${pi},-1)" ${pi===0?'disabled':''} title="위로 이동" aria-label="위로 이동"><i class="ti ti-chevron-up"></i></button>
         <button class="party-order-btn" onclick="moveParty(${pi},1)" ${pi===parties.length-1?'disabled':''} title="아래로 이동" aria-label="아래로 이동"><i class="ti ti-chevron-down"></i></button>
         <input class="party-name-input" value="${esc(p.name)}" oninput="renameParty(${pi},this.value)">
+        <button class="btn btn-sm" style="padding:2px 5px;flex-shrink:0" onclick="openPartyReviews(${pi})" title="시즌별 실전 후기와 당시 편성 기록">기록${p.reviews?.length?' '+p.reviews.length:''}</button>
         ${actBuffs.length?`<select class="buff-sel" onchange="setPartyBuff(${pi},this.value)">${buffOpts}</select>`:''}
         ${parties.length>1?`<button class="rm-party" onclick="rmParty(${pi})"><i class="ti ti-trash"></i></button>`:''}
       </div>
@@ -2081,6 +2229,62 @@ function dragEnd(){
   document.querySelectorAll('.party-row').forEach(r=>{
     r.classList.remove('dragging','drag-over');
   });
+}
+let partyReviewContext=null;
+function makePartyReview(p,text,guideIds=[],reference=''){
+  const buff=buffs.find(b=>b.id===p.buffId);
+  return {id:genId('review'),createdAt:new Date().toISOString(),seasonId:curSid,seasonName:seasons.find(s=>s.id===curSid)?.name||'',partyName:p.name||'',text,reference,
+    members:p.slots.map(id=>{const c=chars.find(c=>c.id===id);return c?{id:c.id,name:c.name,breakthrough:Number.isInteger(c.breakthrough)?c.breakthrough:null}:null;}),
+    bosses:(p.bossIds||[]).map(id=>({id,name:bosses.find(b=>b.id===id)?.name||'삭제된 보스'})),
+    buff:buff?{id:buff.id,name:buff.name,desc:buff.desc||''}:null,score:p.score||'',hp:p.hp||'',
+    guides:notes.filter(n=>guideIds.includes(n.id)&&!n.deletedAt).map(n=>({id:n.id,title:n.title,updatedAt:n.updatedAt||null,version:n.version||'',sources:(n.sources||[]).filter(s=>safeWebURL(s))}))};
+}
+function openPartyReviews(pi){
+  const p=parties[pi];if(!p||!curSid)return;
+  partyReviewContext={party:p,sid:curSid,epoch:sessionEpoch,busy:false};
+  document.getElementById('partyReviewModal')?.remove();
+  document.body.insertAdjacentHTML('beforeend',`<div class="modal-bg open" id="partyReviewModal"><div class="modal" style="max-width:720px">
+    <div class="gf-toolbar"><h3>${esc(seasons.find(s=>s.id===curSid)?.name||'')} · ${esc(p.name)} 실전 기록</h3><button class="btn btn-sm" onclick="closeM('partyReviewModal')">닫기</button></div>
+    <p class="note-meta">저장 당시의 편성·돌파·보스·버프·점수와 공략 제목을 함께 보관합니다. 캐릭터 편집에서 돌파를 먼저 설정해 주세요.</p>
+    <label>후기<textarea id="partyReviewText" class="fi" rows="4" maxlength="4000" style="width:100%" placeholder="운용 순서, 성공·실패 원인, 다음에 바꿀 점"></textarea></label>
+    <label>참고 공략·영상 (선택)<input id="partyReviewReference" class="fi" maxlength="1500" style="width:100%" placeholder="링크 또는 공략 이름"></label>
+    <details style="margin:10px 0"><summary>사용한 공략 노트 선택</summary><div id="partyReviewGuides" style="max-height:180px;overflow:auto">${notes.filter(n=>!n.deletedAt).map(n=>`<label style="display:block;padding:4px"><input type="checkbox" value="${esc(n.id)}"> ${esc(n.title)}</label>`).join('')||'<p class="note-meta">공략 노트가 없습니다.</p>'}</div></details>
+    <button class="btn btn-accent" onclick="savePartyReview()">현재 상태로 기록 저장</button><div id="partyReviewList"></div>
+  </div></div>`);
+  renderPartyReviews();
+}
+function renderPartyReviews(){
+  const ctx=partyReviewContext;if(!ctx)return;
+  document.getElementById('partyReviewList').innerHTML=(ctx.party.reviews||[]).slice().reverse().map(r=>`<article class="note-card" style="cursor:default;margin-top:14px">
+    <div class="gf-toolbar"><strong>${esc(formatNoteDate(r.createdAt))}</strong><button class="btn btn-sm" onclick="deletePartyReview('${esc(r.id)}')">기록 삭제</button></div>
+    <div class="note-meta">${esc(r.seasonName)} · ${esc(r.partyName)}</div>
+    <p>${esc((r.members||[]).filter(Boolean).map(c=>c.name+' '+(Number.isInteger(c.breakthrough)?c.breakthrough+'돌':'돌파 미설정')).join(' / '))}</p>
+    <div class="note-meta">보스: ${esc((r.bosses||[]).map(b=>b.name).join(', ')||'미지정')} · 버프: ${esc(r.buff?.name||'미지정')} · 점수: ${esc(r.score||'미입력')}</div>
+    ${r.buff?.desc?`<details><summary>당시 버프 내용</summary><div class="note-body">${esc(r.buff.desc)}</div></details>`:''}
+    <div class="note-body">${linkedText(r.text)}</div>
+    ${r.reference?`<p>참고: ${linkedText(r.reference)}</p>`:''}
+    ${(r.guides||[]).map(g=>`<div class="note-meta">공략: ${esc(g.title)}${g.version?' · '+esc(g.version):''} · 당시 수정일 ${esc(formatNoteDate(g.updatedAt))}${(g.sources||[]).map(url=>'<div>'+linkedText(url)+'</div>').join('')}</div>`).join('')}
+  </article>`).join('')||'<p class="note-meta">아직 실전 기록이 없습니다.</p>';
+}
+function validPartyReviewContext(){const c=partyReviewContext;return c&&c.epoch===sessionEpoch&&c.sid===curSid&&parties.includes(c.party)&&!c.busy?c:null;}
+async function savePartyReview(){
+  const ctx=validPartyReviewContext();if(!ctx)return;
+  const text=document.getElementById('partyReviewText').value.trim(),reference=document.getElementById('partyReviewReference').value.trim();
+  if(!text){showToast('후기를 입력해 주세요');return;}
+  if(text.length>4000||reference.length>1500){showToast('기록이 너무 깁니다');return;}
+  const ids=Array.from(document.querySelectorAll('#partyReviewGuides input:checked'),x=>x.value),record=makePartyReview(ctx.party,text,ids,reference);
+  const reviews=ctx.party.reviews||[];
+  const nextParties=parties.map(p=>p===ctx.party?{...p,reviews:[...reviews,record]}:p);
+  if(new TextEncoder().encode(JSON.stringify({parties:nextParties,activeBuffs,activeBosses,seasonUsage})).length>800000){showToast('시즌 기록 용량이 큽니다. 백업 후 오래된 기록을 정리해 주세요');return;}
+  ctx.party.reviews=[...reviews,record];ctx.busy=true;
+  document.getElementById('partyReviewText').value='';document.getElementById('partyReviewReference').value='';
+  renderPartyReviews();renderAll();
+  try{await saveSeason();if(ctx.epoch===sessionEpoch)showToast('실전 기록 저장 완료');}finally{ctx.busy=false;}
+}
+async function deletePartyReview(id){
+  const ctx=validPartyReviewContext();if(!ctx||!confirm('이 실전 기록을 삭제할까요?'))return;
+  ctx.party.reviews=(ctx.party.reviews||[]).filter(r=>r.id!==id);ctx.busy=true;renderPartyReviews();renderAll();
+  try{await saveSeason();}finally{ctx.busy=false;}
 }
 async function movePartyTo(pi){
   if(!parties[pi])return;
@@ -2442,6 +2646,7 @@ function openEditChar(i){
   document.getElementById('eFile').value='';
   const p=document.getElementById('ePrev');if(c.img){p.src=c.img;p.style.display='block';}else p.style.display='none';
   document.getElementById('eDupe').checked=c.dupe;document.getElementById('eStar5').checked=c.star5;
+  document.getElementById('eBreakthrough').value=Number.isInteger(c.breakthrough)?String(c.breakthrough):'';
   eC=COLS[c.color%COLS.length];eA=c.attr||'회절';renderPills('e');
   document.getElementById('editCharModal').classList.add('open');
 }
@@ -2450,6 +2655,7 @@ async function saveEditChar(){
   const c=chars[editCharIdx],url=document.getElementById('eUrl').value.trim();
   c.img=eUp||url||null;c.color=COLS.indexOf(eC);c.attr=eA;
   c.dupe=document.getElementById('eDupe').checked;c.star5=document.getElementById('eStar5').checked;
+  c.breakthrough=readBreakthrough('eBreakthrough');
   closeM('editCharModal');renderCharEditList();renderAll();await saveChars();showToast(`${c.name} 저장됨`);
 }
 function openMemo(i){
@@ -2502,10 +2708,11 @@ async function addChar(){
   const name=document.getElementById('nName').value.trim();if(!name){showToast('이름을 입력하세요');return;}
   const url=document.getElementById('nUrl').value.trim();
   chars.push({id:genId('char'),legacySlot:null,name,img:nUp||url||null,color:COLS.indexOf(nC),attr:nA,memo:'',
-    owned:document.getElementById('nOwned').checked,dupe:document.getElementById('nDupe').checked,star5:document.getElementById('nStar5').checked});
+    breakthrough:readBreakthrough('nBreakthrough'),owned:document.getElementById('nOwned').checked,dupe:document.getElementById('nDupe').checked,star5:document.getElementById('nStar5').checked});
   ['nName','nUrl'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('nFile').value='';document.getElementById('nPrev').style.display='none';
   document.getElementById('nOwned').checked=true;document.getElementById('nDupe').checked=false;document.getElementById('nStar5').checked=false;
+  document.getElementById('nBreakthrough').value='';
   nUp=null;nA='회절';renderPills('n');renderCharEditList();renderAll();await saveChars();showToast(`${name} 추가됨`);
 }
 function renderPills(m){
@@ -2705,6 +2912,9 @@ function selectPoolChar(i){
   selectedNoteId=(linked.find(n=>(n.pinnedFor||[]).includes(selectedNoteChar))||linked.sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''))[0])?.id||null;
   renderPool();renderNotes();if(window.innerWidth<=900)goPanel(1);
 }
+function breakthroughOptions(value){return '<option value="">미설정</option>'+Array.from({length:7},(_,i)=>`<option value="${i}"${value===i?' selected':''}>${i}돌</option>`).join('');}
+function readBreakthrough(id){const v=document.getElementById(id).value;if(v==='')return null;const n=Number(v);if(!Number.isInteger(n)||n<0||n>6)throw new Error('돌파는 0~6단계로 입력해 주세요');return n;}
+function breakthroughBadge(c){return Number.isInteger(c?.breakthrough)&&c.breakthrough>=0&&c.breakthrough<=6?`<span class="breakthrough-badge">${c.breakthrough}돌</span>`:'';}
 function noteKindOptions(value,list=[],characterKind='캐릭터 공략'){
   const kinds=[...new Set(['미분류','일반 공략',characterKind,'딜사이클','업적','탐험','시크릿','기타',...list.map(n=>n.kind),value].filter(v=>typeof v==='string'&&v.length))];
   return kinds.map(kind=>`<option value="${esc(kind)}"${kind===value?' selected':''}>${esc(kind)}</option>`).join('');
