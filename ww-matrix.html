@@ -2155,7 +2155,7 @@ function renderParties(){
       <div class="party-record">
         <div class="party-record-field">
           <span class="party-record-label">점수</span>
-          <input class="party-record-input" type="number" placeholder="0" value="${esc(score)}"
+          <input class="party-record-input" id="partyScore${pi}" type="number" placeholder="0" value="${esc(score)}"
             oninput="setPartyScore(${pi},this.value)" onclick="event.stopPropagation()">
         </div>
         <div class="party-record-field">
@@ -2164,6 +2164,7 @@ function renderParties(){
             oninput="setPartyHp(${pi},this.value)" onclick="event.stopPropagation()">
           <span style="font-size:9px;color:var(--text3)">%</span>
         </div>
+        <button class="btn btn-sm" style="padding:2px 5px;font-size:10px" onclick="resetPartyRecord(${pi})" title="이 파티의 점수와 HP 입력을 비웁니다" aria-label="${pi+1}번 파티 점수와 HP 초기화">↺ 초기화</button>
         ${selB?`<div class="applied-buff" style="margin-top:0"><span style="font-size:11px">${esc(selB.icon||'🎯')}</span><span style="font-size:10px;color:var(--text2)">${esc(selB.name)}</span></div>`:''}
       </div>
     </div>`;
@@ -2358,6 +2359,14 @@ async function togglePartyBoss(pi,bid){
   const arr=parties[pi].bossIds, idx=arr.indexOf(bid);
   if(idx>=0) arr.splice(idx,1); else arr.push(bid);
   renderParties(); renderInfo(); await saveSeason();
+}
+async function resetPartyRecord(pi){
+  const p=parties[pi];if(!p)return;
+  recordPartyHistory();
+  p.score='';p.hp='';
+  renderParties();renderInfo();
+  document.getElementById('partyScore'+pi)?.focus();
+  await saveSeason();
 }
 function setPartyScore(pi,v){
   parties[pi].score=v;
